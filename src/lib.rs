@@ -29,9 +29,14 @@ pub fn run(filename: String) -> Result<(), SpruceError> {
 fn valid_tokens() {
 	let mut lexer = Lexer::new("+ - * / () {} []".into());
     
-	while let Ok(current) = lexer.next() {
-		if current.kind == TokenKind::Eof {
-			break;
+	loop {
+		match lexer.next() {
+			Ok(t) => {
+				if t.kind == TokenKind::Eof {
+					break;
+				}
+			}
+			Err(e) => panic!("{}", e),
 		}
 	}
 }

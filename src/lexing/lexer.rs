@@ -66,7 +66,7 @@ impl Lexer {
 
 		// End of the line
 		Err(SpruceError::Lexer(
-			format!("Unknown character found '{}' at {}:{}", self.source.as_bytes()[self.ip], self.line, self.column)
+			format!("Unknown character found '{}' at {}:{}", self.source.as_bytes()[self.ip] as char, self.line, self.column)
 		))
 	}
 }
