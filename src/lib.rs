@@ -27,7 +27,7 @@ pub fn run(filename: String) -> Result<(), SpruceError> {
 
 #[test]
 fn valid_tokens() {
-	let mut lexer = Lexer::new("+ - * / () {} []".into());
+	let mut lexer = Lexer::new(fs::read_to_string("./testsrc/valid_tokens.sp").unwrap());
     
 	loop {
 		match lexer.next() {
