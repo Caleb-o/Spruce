@@ -2,15 +2,15 @@
 pub enum TokenKind {
 	Plus, Minus, Star, Slash,
 
-	Number, String, Bool,
 	Colon, ColonColon, Equal,
 	Dot, Comma, Semicolon,
 
 	OpenParen, CloseParen,
 	OpenCurly, CloseCurly,
 	OpenSquare, CloseSquare,
-
+	
 	Identifier,
+	Number, String, Bool,
 	Eof,
 }
 

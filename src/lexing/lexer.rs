@@ -52,6 +52,17 @@ impl Lexer {
 		Rc::new(Token::new(self.line, self.column - 1, kind, Lexeme::Char(self.source.as_bytes()[self.ip-1])))
 	}
 
+	fn get_chars(&mut self, a: TokenKind, b: TokenKind, ch: char) -> Rc<Token> {
+		self.advance();
+
+		if self.peek() == ch {
+			self.advance();
+			return Rc::new(Token::new(self.line, self.column - 1, b, Lexeme::Char(self.source.as_bytes()[self.ip-2])));
+		}
+
+		Rc::new(Token::new(self.line, self.column - 1, a, Lexeme::Char(self.source.as_bytes()[self.ip-1])))
+	}
+
 	fn find_keyword(&self, lexeme: &String) -> Option<TokenKind> {
 		match lexeme.as_str() {
 			"true" | "false" => Some(TokenKind::Bool),
@@ -155,7 +166,14 @@ impl Lexer {
 			'[' => return Ok(self.get_char(TokenKind::OpenSquare)),
 			']' => return Ok(self.get_char(TokenKind::CloseSquare)),
 
+			'.' => return Ok(self.get_char(TokenKind::Dot)),
+			',' => return Ok(self.get_char(TokenKind::Comma)),
+			
 			'"' => return Ok(self.get_string()),
+
+			// Double Characaters
+			':' => return Ok(self.get_chars(TokenKind::Colon, TokenKind::ColonColon, ':')),
+
 			_ => {} // Skip to error
 		}
 
