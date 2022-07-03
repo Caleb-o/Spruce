@@ -19,6 +19,7 @@ pub enum Lexeme {
 	None,
 	Char(u8),
 	String(String),
+	Number(f32),
 }
 
 impl std::fmt::Display for Lexeme {
@@ -27,6 +28,7 @@ impl std::fmt::Display for Lexeme {
 			Lexeme::None => write!(f, "None"),
 			Lexeme::Char(c) => write!(f, "{}", *c as char),
 			Lexeme::String(s) => write!(f, "{}", *s),
+			Lexeme::Number(n) => write!(f, "{}", *n),
 		}
     }
 }
