@@ -62,3 +62,12 @@ fn test_constant_operation() {
 		Err(e) => panic!("{e}"),
 	}
 }
+
+#[test]
+fn test_constant_range() {
+	let mut parser = Parser::new(fs::read_to_string("./testsrc/constant_range.sp").unwrap());
+	match parser.parse() {
+		Ok(p) => assert_eq!(p.to_sexpr(), "((const foo 10)(const bar 5)(const range foo..(* bar bar)))"),
+		Err(e) => panic!("{e}"),
+	}
+}

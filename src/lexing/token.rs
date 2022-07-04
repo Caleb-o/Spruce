@@ -1,9 +1,10 @@
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[repr(u8)]
 pub enum TokenKind {
 	Plus, Minus, Star, Slash,
 
 	Colon, ColonColon, Equal, Bang,
-	Dot, Comma, Semicolon, Arrow,
+	Dot, DotDot, Comma, Semicolon, Arrow,
 
 	OpenParen, CloseParen,
 	OpenCurly, CloseCurly,

@@ -18,7 +18,7 @@ impl Lexer {
 	pub fn next(&mut self) -> Result<Rc<Token>, SpruceError> {
 		self.skip_whitespace();
 
-		if self.ip >= self.source.len() {
+		if self.at_end() {
 			return Ok(Rc::new(Token::new(self.line, self.column, TokenKind::Eof, Lexeme::None)));
 		}
 
@@ -48,7 +48,6 @@ impl Lexer {
 			'[' => return Ok(self.get_char(TokenKind::OpenSquare)),
 			']' => return Ok(self.get_char(TokenKind::CloseSquare)),
 
-			'.' => return Ok(self.get_char(TokenKind::Dot)),
 			',' => return Ok(self.get_char(TokenKind::Comma)),
 			';' => return Ok(self.get_char(TokenKind::Semicolon)),
 			
@@ -57,6 +56,7 @@ impl Lexer {
 			// Double Characters
 			':' => return Ok(self.get_char_or_chars(TokenKind::Colon, TokenKind::ColonColon, ':')),
 			'-' => return Ok(self.get_char_or_chars(TokenKind::Minus, TokenKind::Arrow, '>')),
+			'.' => return Ok(self.get_char_or_chars(TokenKind::Dot, TokenKind::DotDot, '.')),
 
 			_ => {} // Skip to error
 		}
@@ -85,14 +85,32 @@ impl Lexer {
 		self.source.as_bytes()[self.ip] as char
 	}
 
+	fn peek_next(&self) -> char {
+		if self.ip + 1>= self.source.len() {
+			return '\0';
+		}
+		self.source.as_bytes()[self.ip + 1] as char
+	}
+
+	fn at_end(&self) -> bool {
+		self.ip >= self.source.len()
+	}
+
 	fn is_identifier(&self) -> bool {
 		let ch = self.peek();
 		char::is_alphanumeric(ch) || ch == '_'
 	}
 
 	fn skip_whitespace(&mut self) {
-		while self.ip < self.source.len() {
+		while !self.at_end() {
 			match self.source.as_bytes()[self.ip] {
+				b'#' => {
+					self.advance();
+
+					while !self.at_end() && self.peek() != '\n' {
+						self.advance()
+					}
+				}
 				b' ' | b'\t' | b'\r' => self.advance(),
 				b'\n' => self.advance_line(),
 				_ => break,
@@ -110,9 +128,9 @@ impl Lexer {
 
 		if self.peek() == ch {
 			self.advance();
-			return Rc::new(Token::new(self.line, self.column - 1, b, Lexeme::Char(self.source.as_bytes()[self.ip-2])));
+			return Rc::new(Token::new(self.line, self.column - 2, b, Lexeme::String(self.source[self.ip-2..self.ip].to_string())));
 		}
-
+		
 		Rc::new(Token::new(self.line, self.column - 1, a, Lexeme::Char(self.source.as_bytes()[self.ip-1])))
 	}
 
@@ -129,7 +147,7 @@ impl Lexer {
 		let start_col = self.column;
 		self.advance();
 
-		while self.ip < self.source.len() && self.is_identifier() {
+		while !self.at_end() && self.is_identifier() {
 			self.advance();
 		}
 
@@ -151,7 +169,7 @@ impl Lexer {
 		let start_ip = self.ip;
 		let start_col = self.column;
 
-		while self.ip < self.source.len() && self.peek() != '"' {
+		while !self.at_end() && self.peek() != '"' {
 			if self.source.as_bytes()[self.ip] == b'\n' {
 				self.advance_line()
 			} else {
@@ -170,10 +188,10 @@ impl Lexer {
 		let start_col = self.column;
 		let mut has_decimal = false;
 		
-		while self.ip < self.source.len() && char::is_digit(self.peek(), 10) {
+		while !self.at_end() && self.peek().is_ascii_digit() {
 			self.advance();
 			
-			if self.peek() == '.' {
+			if self.peek() == '.' && self.peek_next().is_numeric() {
 				if has_decimal {
 					return Err(SpruceError::Lexer(format!("Cannot use multiple decimals in a number {}:{}", self.line, self.column)));
 				}
@@ -182,7 +200,7 @@ impl Lexer {
 				self.advance();
 			}
 		}
-
+		
 		Ok(Rc::new(Token::new(self.line, start_col, TokenKind::Number, Lexeme::Number(self.source[start_ip..self.ip].parse::<f32>().unwrap()))))
 	}
 }

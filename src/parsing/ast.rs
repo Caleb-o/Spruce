@@ -15,6 +15,7 @@ pub enum AST {
 
 	BinOp { operator: Rc<Token>, left: Box<AST>, right: Box<AST> },
 	UnaryOp { operator: Rc<Token>, right: Box<AST> },
+	Range { left: Box<AST>, right: Box<AST> },
 }
 
 impl AST {
@@ -60,7 +61,7 @@ impl AST {
 			}
 
 			AST::BinOp { operator, left, right } => {
-				let mut sexpr = String::with_capacity(32);
+				let mut sexpr = String::with_capacity(16);
 
 				sexpr.push('(');
 				sexpr.push_str(&format!("{}", operator.lexeme));
@@ -74,7 +75,7 @@ impl AST {
 			}
 
 			AST::UnaryOp { operator, right } => {
-				let mut sexpr = String::with_capacity(32);
+				let mut sexpr = String::with_capacity(16);
 
 				sexpr.push('(');
 				sexpr.push_str(&format!("{}", operator.lexeme));
@@ -95,6 +96,16 @@ impl AST {
 
 			AST::Identifier(i) => {
 				i.clone()
+			}
+
+			AST::Range { left, right } => {
+				let mut sexpr = String::with_capacity(16);
+
+				sexpr.push_str(&left.to_sexpr());
+				sexpr.push_str("..");
+				sexpr.push_str(&right.to_sexpr());
+
+				sexpr
 			}
 		}
 	}

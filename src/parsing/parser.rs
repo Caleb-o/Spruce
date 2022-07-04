@@ -131,8 +131,20 @@ impl Parser {
 		Ok(left)
 	}
 
+	fn range(&mut self, body: &mut AST) -> Result<Box<AST>, SpruceError> {
+		let left = self.term(body)?;
+
+		if self.current.kind == TokenKind::DotDot {
+			self.consume(TokenKind::DotDot, "Expect '..' in range")?;
+			let right = self.term(body)?;
+			return Ok(Box::new(AST::Range { left, right }));
+		}
+
+		Ok(left)
+	}
+
 	fn expression(&mut self, body: &mut AST) -> Result<Box<AST>, SpruceError> {
-		self.term(body)
+		self.range(body)
 	}
 
 	fn statement(&mut self, body: &mut AST) -> Result<Box<AST>, SpruceError> {
