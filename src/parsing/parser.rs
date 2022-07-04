@@ -161,7 +161,7 @@ impl Parser {
 
 		match self.current.kind {
 			TokenKind::ColonColon => return self.const_declaration(left, body),
-			TokenKind::At => return self.variable(left, body, true),
+			TokenKind::Walrus => return self.variable(left, body, true),
 			TokenKind::Equal => return self.variable(left, body, false),
 
 			_ => {}
@@ -269,7 +269,7 @@ impl Parser {
 
 	fn variable(&mut self, identifier: Box<AST>, body: &mut AST, declare: bool) -> Result<Box<AST>, SpruceError> {
 		if declare {
-			self.consume(TokenKind::At, "Expect '@' after identifier")?;
+			self.consume(TokenKind::Walrus, "Expect ':=' after identifier")?;
 		} else {
 			self.consume(TokenKind::Equal, "Expect '=' after identifier")?;
 		}

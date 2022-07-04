@@ -51,14 +51,18 @@ impl Lexer {
 			',' => return Ok(self.get_char(TokenKind::Comma)),
 			';' => return Ok(self.get_char(TokenKind::Semicolon)),
 			'=' => return Ok(self.get_char(TokenKind::Equal)),
-			'@' => return Ok(self.get_char(TokenKind::At)),
 			
 			'"' => return Ok(self.get_string()),
 
 			// Double Characters
-			':' => return Ok(self.get_char_or_chars(TokenKind::Colon, TokenKind::ColonColon, ':')),
-			'-' => return Ok(self.get_char_or_chars(TokenKind::Minus, TokenKind::Arrow, '>')),
-			'.' => return Ok(self.get_char_or_chars(TokenKind::Dot, TokenKind::DotDot, '.')),
+			':' => return Ok(self.get_char_or_chars(
+				TokenKind::Colon, vec![
+						(TokenKind::ColonColon, ':'),
+						(TokenKind::Walrus, '='),
+					]
+				)),
+			'-' => return Ok(self.get_char_or_chars(TokenKind::Minus, vec![(TokenKind::Arrow, '>')])),
+			'.' => return Ok(self.get_char_or_chars(TokenKind::Dot, vec![(TokenKind::DotDot, '.')])),
 
 			_ => {} // Skip to error
 		}
@@ -125,12 +129,14 @@ impl Lexer {
 		Rc::new(Token::new(self.line, self.column - 1, kind, Lexeme::Char(self.source.as_bytes()[self.ip-1])))
 	}
 
-	fn get_char_or_chars(&mut self, a: TokenKind, b: TokenKind, ch: char) -> Rc<Token> {
+	fn get_char_or_chars(&mut self, a: TokenKind, other: Vec<(TokenKind, char)>) -> Rc<Token> {
 		self.advance();
 
-		if self.peek() == ch {
-			self.advance();
-			return Rc::new(Token::new(self.line, self.column - 2, b, Lexeme::String(self.source[self.ip-2..self.ip].to_string())));
+		for (k, ch) in other.into_iter() {
+			if self.peek() == ch {
+				self.advance();
+				return Rc::new(Token::new(self.line, self.column - 2, k, Lexeme::String(self.source[self.ip-2..self.ip].to_string())));
+			}
 		}
 		
 		Rc::new(Token::new(self.line, self.column - 1, a, Lexeme::Char(self.source.as_bytes()[self.ip-1])))
