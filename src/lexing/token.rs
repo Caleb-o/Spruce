@@ -2,7 +2,7 @@
 pub enum TokenKind {
 	Plus, Minus, Star, Slash,
 
-	Colon, ColonColon, Equal,
+	Colon, ColonColon, Equal, Bang,
 	Dot, Comma, Semicolon, Arrow,
 
 	OpenParen, CloseParen,

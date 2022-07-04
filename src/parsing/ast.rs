@@ -1,4 +1,4 @@
-use std::{rc::Rc, fmt::format};
+use std::rc::Rc;
 use crate::lexing::token::Token;
 
 pub enum AST {
@@ -14,6 +14,7 @@ pub enum AST {
 	String(String),
 
 	BinOp { operator: Rc<Token>, left: Box<AST>, right: Box<AST> },
+	UnaryOp { operator: Rc<Token>, right: Box<AST> },
 }
 
 impl AST {
@@ -72,6 +73,18 @@ impl AST {
 				sexpr
 			}
 
+			AST::UnaryOp { operator, right } => {
+				let mut sexpr = String::with_capacity(32);
+
+				sexpr.push('(');
+				sexpr.push_str(&format!("{}", operator.lexeme));
+				sexpr.push(' ');
+				sexpr.push_str(&right.to_sexpr());
+				sexpr.push(')');
+
+				sexpr
+			}
+
 			AST::Number(n) => {
 				n.to_string()
 			}
@@ -80,7 +93,9 @@ impl AST {
 				s.clone()
 			}
 
-			_ => todo!(),
+			AST::Identifier(i) => {
+				i.clone()
+			}
 		}
 	}
 }

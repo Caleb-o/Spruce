@@ -53,3 +53,12 @@ fn test_constant_basic() {
 		Err(e) => panic!("{e}"),
 	}
 }
+
+#[test]
+fn test_constant_operation() {
+	let mut parser = Parser::new(fs::read_to_string("./testsrc/constant_operation.sp").unwrap());
+	match parser.parse() {
+		Ok(p) => assert_eq!(p.to_sexpr(), "((const foo (+ 200 300))(const bar 120)(const baz (+ bar (* foo (- 1)))))"),
+		Err(e) => panic!("{e}"),
+	}
+}

@@ -34,12 +34,12 @@ impl Lexer {
 			return Ok(self.get_identifier());
 		}
 		
-		
 		// Characters
 		match current {
 			'+' => return Ok(self.get_char(TokenKind::Plus)),
 			'*' => return Ok(self.get_char(TokenKind::Star)),
 			'/' => return Ok(self.get_char(TokenKind::Slash)),
+			'!' => return Ok(self.get_char(TokenKind::Bang)),
 
 			'(' => return Ok(self.get_char(TokenKind::OpenParen)),
 			')' => return Ok(self.get_char(TokenKind::CloseParen)),

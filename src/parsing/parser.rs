@@ -75,8 +75,24 @@ impl Parser {
 		}
 	}
 
+	fn unary(&mut self, body: &mut AST) -> Result<Box<AST>, SpruceError> {
+		match self.current.kind {
+			TokenKind::Minus | TokenKind::Bang => {
+				let operator = self.current.clone();
+				self.consume(self.current.kind, "Expect ! or - in unary operation")?;
+
+				let right = self.primary(body)?;
+				return Ok(Box::new(AST::UnaryOp { operator, right }));
+			}
+
+			_ => {},
+		}
+		
+		self.primary(body)
+	}
+
 	fn factor(&mut self, body: &mut AST) -> Result<Box<AST>, SpruceError> {
-		let mut left = self.primary(body)?;
+		let mut left = self.unary(body)?;
 
 		loop {
 			match self.current.kind {
@@ -84,7 +100,7 @@ impl Parser {
 					let operator = self.current.clone();
 					self.consume(self.current.kind, "Expect * or / in factor binary operation")?;
 
-					let right = self.primary(body)?;
+					let right = self.unary(body)?;
 					left = Box::new(AST::BinOp { operator, left, right });
 				}
 
