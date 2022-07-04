@@ -2,6 +2,7 @@
 pub enum SpruceError {
 	General(String),
 	Lexer(String),
+	Parser(String),
 }
 
 impl std::fmt::Display for SpruceError {
@@ -9,6 +10,7 @@ impl std::fmt::Display for SpruceError {
 		match self {
 			SpruceError::General(msg) => write!(f, "General: {}", *msg),
 			SpruceError::Lexer(msg) => write!(f, "Lexer: {}", *msg),
+			SpruceError::Parser(msg) => write!(f, "Parser: {}", *msg),
 		}
     }
 }

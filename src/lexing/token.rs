@@ -3,7 +3,7 @@ pub enum TokenKind {
 	Plus, Minus, Star, Slash,
 
 	Colon, ColonColon, Equal,
-	Dot, Comma, Semicolon,
+	Dot, Comma, Semicolon, Arrow,
 
 	OpenParen, CloseParen,
 	OpenCurly, CloseCurly,
@@ -11,6 +11,7 @@ pub enum TokenKind {
 	
 	Identifier,
 	Number, String, Bool,
+	Function,
 	Eof,
 }
 

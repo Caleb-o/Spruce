@@ -1,9 +1,10 @@
 pub mod errors;
 pub mod lexing;
+pub mod parsing;
 use std::fs;
 
 use errors::spruce_error::SpruceError;
-use lexing::{lexer::Lexer, token::TokenKind};
+use parsing::parser::Parser;
 
 pub fn run(filename: String) -> Result<(), SpruceError> {
 	let content = fs::read_to_string(filename);
@@ -12,21 +13,22 @@ pub fn run(filename: String) -> Result<(), SpruceError> {
 		return Err(SpruceError::General(e.to_string()));
 	}
 
-	let mut lexer = Lexer::new(content.unwrap());
-    
-	while let Ok(current) = lexer.next() {
-		if current.kind == TokenKind::Eof {
-			break;
-		}
-
-		println!("{:?} '{}' {}:{}", current.kind, current.lexeme, current.line, current.column);
+	let mut parser = Parser::new(content.unwrap());
+	match parser.parse() {
+		Ok(p) => println!("Done!: {}", p.to_sexpr()),
+		Err(e) => println!("{e}"),
 	}
 
 	Ok(())
 }
 
+// -------- TESTS --------
+
+// ---- LEXER
+
 #[test]
 fn valid_tokens() {
+	use lexing::{lexer::Lexer, token::TokenKind};
 	let mut lexer = Lexer::new(fs::read_to_string("./testsrc/valid_tokens.sp").unwrap());
     
 	loop {
@@ -38,5 +40,16 @@ fn valid_tokens() {
 			}
 			Err(e) => panic!("{}", e),
 		}
+	}
+}
+
+// ---- PARSER
+
+#[test]
+fn test_constant_basic() {
+	let mut parser = Parser::new(fs::read_to_string("./testsrc/constant_basic.sp").unwrap());
+	match parser.parse() {
+		Ok(p) => assert_eq!(p.to_sexpr(), "((const foo (fn ()))(const bar 120)(const baz My String)(const number (+ 100 (* 200 3))))"),
+		Err(e) => panic!("{e}"),
 	}
 }

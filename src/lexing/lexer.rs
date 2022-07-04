@@ -1,4 +1,5 @@
 use std::rc::Rc;
+
 use super::token::{Token, TokenKind, Lexeme};
 use crate::errors::spruce_error::SpruceError;
 
@@ -12,6 +13,58 @@ pub struct Lexer {
 impl Lexer {
 	pub fn new(source: String) -> Self {
 		Self { ip: 0, line: 1, column: 1, source }
+	}
+
+	pub fn next(&mut self) -> Result<Rc<Token>, SpruceError> {
+		self.skip_whitespace();
+
+		if self.ip >= self.source.len() {
+			return Ok(Rc::new(Token::new(self.line, self.column, TokenKind::Eof, Lexeme::None)));
+		}
+
+		let current = self.peek();
+
+		// Numbers
+		if char::is_digit(current, 10) {
+			return self.get_number();
+		}
+
+		// Identifiers
+		if self.is_identifier() {
+			return Ok(self.get_identifier());
+		}
+		
+		
+		// Characters
+		match current {
+			'+' => return Ok(self.get_char(TokenKind::Plus)),
+			'*' => return Ok(self.get_char(TokenKind::Star)),
+			'/' => return Ok(self.get_char(TokenKind::Slash)),
+
+			'(' => return Ok(self.get_char(TokenKind::OpenParen)),
+			')' => return Ok(self.get_char(TokenKind::CloseParen)),
+			'{' => return Ok(self.get_char(TokenKind::OpenCurly)),
+			'}' => return Ok(self.get_char(TokenKind::CloseCurly)),
+			'[' => return Ok(self.get_char(TokenKind::OpenSquare)),
+			']' => return Ok(self.get_char(TokenKind::CloseSquare)),
+
+			'.' => return Ok(self.get_char(TokenKind::Dot)),
+			',' => return Ok(self.get_char(TokenKind::Comma)),
+			';' => return Ok(self.get_char(TokenKind::Semicolon)),
+			
+			'"' => return Ok(self.get_string()),
+
+			// Double Characters
+			':' => return Ok(self.get_char_or_chars(TokenKind::Colon, TokenKind::ColonColon, ':')),
+			'-' => return Ok(self.get_char_or_chars(TokenKind::Minus, TokenKind::Arrow, '>')),
+
+			_ => {} // Skip to error
+		}
+
+		// End of the line
+		Err(SpruceError::Lexer(
+			format!("Unknown character found '{}' at {}:{}", current, self.line, self.column)
+		))
 	}
 
 	fn advance(&mut self) {
@@ -52,7 +105,7 @@ impl Lexer {
 		Rc::new(Token::new(self.line, self.column - 1, kind, Lexeme::Char(self.source.as_bytes()[self.ip-1])))
 	}
 
-	fn get_chars(&mut self, a: TokenKind, b: TokenKind, ch: char) -> Rc<Token> {
+	fn get_char_or_chars(&mut self, a: TokenKind, b: TokenKind, ch: char) -> Rc<Token> {
 		self.advance();
 
 		if self.peek() == ch {
@@ -65,6 +118,7 @@ impl Lexer {
 
 	fn find_keyword(&self, lexeme: &String) -> Option<TokenKind> {
 		match lexeme.as_str() {
+			"fn" => Some(TokenKind::Function),
 			"true" | "false" => Some(TokenKind::Bool),
 			_ => None,
 		}
@@ -130,56 +184,5 @@ impl Lexer {
 		}
 
 		Ok(Rc::new(Token::new(self.line, start_col, TokenKind::Number, Lexeme::Number(self.source[start_ip..self.ip].parse::<f32>().unwrap()))))
-	}
-
-	pub fn next(&mut self) -> Result<Rc<Token>, SpruceError> {
-		self.skip_whitespace();
-
-		if self.ip >= self.source.len() {
-			return Ok(Rc::new(Token::new(self.line, self.column, TokenKind::Eof, Lexeme::None)));
-		}
-
-		let current = self.peek();
-
-		// Numbers
-		if char::is_digit(current, 10) {
-			return self.get_number();
-		}
-
-		// Identifiers
-		if self.is_identifier() {
-			return Ok(self.get_identifier());
-		}
-		
-		
-		// Characters
-		match current {
-			'+' => return Ok(self.get_char(TokenKind::Plus)),
-			'-' => return Ok(self.get_char(TokenKind::Minus)),
-			'*' => return Ok(self.get_char(TokenKind::Star)),
-			'/' => return Ok(self.get_char(TokenKind::Slash)),
-
-			'(' => return Ok(self.get_char(TokenKind::OpenParen)),
-			')' => return Ok(self.get_char(TokenKind::CloseParen)),
-			'{' => return Ok(self.get_char(TokenKind::OpenCurly)),
-			'}' => return Ok(self.get_char(TokenKind::CloseCurly)),
-			'[' => return Ok(self.get_char(TokenKind::OpenSquare)),
-			']' => return Ok(self.get_char(TokenKind::CloseSquare)),
-
-			'.' => return Ok(self.get_char(TokenKind::Dot)),
-			',' => return Ok(self.get_char(TokenKind::Comma)),
-			
-			'"' => return Ok(self.get_string()),
-
-			// Double Characaters
-			':' => return Ok(self.get_chars(TokenKind::Colon, TokenKind::ColonColon, ':')),
-
-			_ => {} // Skip to error
-		}
-
-		// End of the line
-		Err(SpruceError::Lexer(
-			format!("Unknown character found '{}' at {}:{}", current, self.line, self.column)
-		))
 	}
 }

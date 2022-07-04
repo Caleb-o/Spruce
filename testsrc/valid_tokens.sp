@@ -1,7 +1,7 @@
 + - * / () {} []
 : . ,
 
-::
+:: ->
 
 hello _foo bar_baz_
 foo2_
