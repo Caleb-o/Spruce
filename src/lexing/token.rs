@@ -26,7 +26,7 @@ pub enum Lexeme {
 impl std::fmt::Display for Lexeme {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			Lexeme::None => write!(f, "None"),
+			Lexeme::None => write!(f, "End of File"),
 			Lexeme::Char(c) => write!(f, "{}", *c as char),
 			Lexeme::String(s) => write!(f, "{}", *s),
 			Lexeme::Number(n) => write!(f, "{}", *n),

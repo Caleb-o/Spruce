@@ -21,13 +21,14 @@ impl Parser {
 		Ok(AST::Program(body))
 	}
 
-	fn consume(&mut self, expect: TokenKind) -> Result<(), SpruceError> {
+	fn consume(&mut self, expect: TokenKind, message: &str) -> Result<(), SpruceError> {
 		if self.current.kind == expect {
 			self.current = self.lexer.next().unwrap();
 			Ok(())
 		} else {
 			Err(SpruceError::Parser(
-				format!("Expected kind '{:?}' but received '{:?}' {}:{}",
+				format!("{}. Expected kind '{:?}' but received '{:?}' {}:{}",
+					message,
 					expect,
 					self.current.kind,
 					self.current.line,
@@ -41,20 +42,27 @@ impl Parser {
 		match self.current.kind {
 			TokenKind::Number => {
 				let inner = if let Lexeme::Number(n) = self.current.lexeme { n } else { unreachable!() };
-				self.consume(TokenKind::Number)?;
+				self.consume(TokenKind::Number, "Expected number in expression")?;
 				
 				Ok(Box::new(AST::Number(inner)))
 			}
 
 			TokenKind::String => {
 				let inner = if let Lexeme::String(s) = self.current.lexeme.clone() { s } else { unreachable!() };
-				self.consume(TokenKind::String)?;
+				self.consume(TokenKind::String, "Expected string in expression")?;
 				
 				Ok(Box::new(AST::String(inner)))
 			}
 
 			TokenKind::Function => {
 				self.function_definition(body)
+			}
+
+			TokenKind::Identifier => {
+				let inner = if let Lexeme::String(s) = self.current.lexeme.clone() { s } else { unreachable!() };
+				self.consume(TokenKind::Identifier, "Expected identifier in expression")?;
+
+				Ok(Box::new(AST::Identifier(inner)))
 			}
 
 			_ => Err(SpruceError::Parser(
@@ -74,7 +82,7 @@ impl Parser {
 			match self.current.kind {
 				TokenKind::Star | TokenKind::Slash => {
 					let operator = self.current.clone();
-					self.consume(self.current.kind)?;
+					self.consume(self.current.kind, "Expect * or / in factor binary operation")?;
 
 					let right = self.primary(body)?;
 					left = Box::new(AST::BinOp { operator, left, right });
@@ -94,7 +102,7 @@ impl Parser {
 			match self.current.kind {
 				TokenKind::Plus | TokenKind::Minus => {
 					let operator = self.current.clone();
-					self.consume(self.current.kind)?;
+					self.consume(self.current.kind, "Expect + or - in term binary operation")?;
 
 					let right = self.factor(body)?;
 					left = Box::new(AST::BinOp { operator, left, right });
@@ -113,19 +121,19 @@ impl Parser {
 
 	fn statement(&mut self, body: &mut AST) -> Result<Box<AST>, SpruceError> {
 		let expr = self.expression(body)?;
-		self.consume(TokenKind::Semicolon)?;
+		self.consume(TokenKind::Semicolon, "Expect ';' after statement")?;
 
 		Ok(expr)
 	}
 
 	fn function_definition(&mut self, mut _body: &AST) -> Result<Box<AST>, SpruceError> {
-		self.consume(TokenKind::Function)?;
+		self.consume(TokenKind::Function, "Expect 'fn' in function definition")?;
 
-		self.consume(TokenKind::OpenParen)?;
-		self.consume(TokenKind::CloseParen)?;
+		self.consume(TokenKind::OpenParen, "Expect '(' after function keyword")?;
+		self.consume(TokenKind::CloseParen, "Expect ')' after function arguments")?;
 		
-		self.consume(TokenKind::OpenCurly)?;
-		self.consume(TokenKind::CloseCurly)?;
+		self.consume(TokenKind::OpenCurly, "Expect '{' after function arguments")?;
+		self.consume(TokenKind::CloseCurly, "Expect '}' after function body")?;
 
 		// FIXME
 		Ok(Box::new(
@@ -138,7 +146,7 @@ impl Parser {
 	}
 
 	fn const_declaration(&mut self, identifier: Rc<Token>, body: &mut AST) -> Result<(), SpruceError> {
-		self.consume(TokenKind::ColonColon)?;
+		self.consume(TokenKind::ColonColon, "Expect '::' after identifier constant")?;
 		let expr = self.statement(body)?;
 
 		match body {
@@ -156,7 +164,7 @@ impl Parser {
 			match self.current.kind {
 				TokenKind::Identifier => {
 					let id = self.current.clone();
-					self.consume(TokenKind::Identifier)?;
+					self.consume(TokenKind::Identifier, "Expected identifier to start top-level statement")?;
 					
 					// TODO: Allow assignments, fn calls etc
 					if self.current.kind == TokenKind::ColonColon {
