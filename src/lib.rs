@@ -27,7 +27,7 @@ pub fn run(filename: String) -> Result<(), SpruceError> {
 // ---- LEXER
 
 #[test]
-fn valid_tokens() {
+fn test_valid_tokens() {
 	use lexing::{lexer::Lexer, token::TokenKind};
 	let mut lexer = Lexer::new(fs::read_to_string("./testsrc/lexer/valid_tokens.sp").unwrap());
     
@@ -77,6 +77,15 @@ fn test_function_def_and_call() {
 	let mut parser = Parser::new(fs::read_to_string("./testsrc/parser/function_def_and_call.sp").unwrap());
 	match parser.parse() {
 		Ok(p) => assert_eq!(p.to_sexpr(), "((const foo (fn (a, b)()))(call foo(10, 20))"),
+		Err(e) => panic!("{e}"),
+	}
+}
+
+#[test]
+fn test_variables() {
+	let mut parser = Parser::new(fs::read_to_string("./testsrc/parser/variable.sp").unwrap());
+	match parser.parse() {
+		Ok(p) => assert_eq!(p.to_sexpr(), "((var bar (+ 20 30))(var = bar 2))"),
 		Err(e) => panic!("{e}"),
 	}
 }

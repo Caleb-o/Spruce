@@ -160,11 +160,9 @@ impl Parser {
 		let left = self.term(body)?;
 
 		match self.current.kind {
-			TokenKind::ColonColon => {
-				if let AST::Identifier(_) = *left {
-					return self.const_declaration(left, body);
-				}
-			}
+			TokenKind::ColonColon => return self.const_declaration(left, body),
+			TokenKind::At => return self.variable(left, body, true),
+			TokenKind::Equal => return self.variable(left, body, false),
 
 			_ => {}
 		}
@@ -262,6 +260,31 @@ impl Parser {
 
 		Err(SpruceError::Parser(
 			format!("Constant declaration requires an identifier, but received '{}' {}:{}",
+				identifier,
+				self.current.line,
+				self.current.column,
+			)
+		))
+	}
+
+	fn variable(&mut self, identifier: Box<AST>, body: &mut AST, declare: bool) -> Result<Box<AST>, SpruceError> {
+		if declare {
+			self.consume(TokenKind::At, "Expect '@' after identifier")?;
+		} else {
+			self.consume(TokenKind::Equal, "Expect '=' after identifier")?;
+		}
+		let expr = self.expression(body)?;
+
+		if let AST::Identifier(id) = *identifier {
+			if declare {
+				return Ok(Box::new(AST::VariableDeclaration { identifier: id.clone(), expression: expr }));
+			} else {
+				return Ok(Box::new(AST::VariableAssign { identifier: id.clone(), expression: expr }));
+			}
+		}
+
+		Err(SpruceError::Parser(
+			format!("Variable declaration requires an identifier, but received '{}' {}:{}",
 				identifier,
 				self.current.line,
 				self.current.column,

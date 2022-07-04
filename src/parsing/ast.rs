@@ -11,6 +11,8 @@ pub enum AST {
 	FunctionCall { caller: Box<AST>, arguments: Vec<Box<AST>> },
 
 	ConstDeclaration { identifier: String, expression: Box<AST> },
+	VariableDeclaration { identifier: String, expression: Box<AST> },
+	VariableAssign { identifier: String, expression: Box<AST> },
 
 	Identifier(String),
 	Number(f32),
@@ -31,6 +33,8 @@ impl std::fmt::Display for AST {
 			AST::FunctionDefinition { parameters: _, returns: _, body: _ } => write!(f, "Function Definition"),
 			AST::FunctionCall { caller: _, arguments: _ } => write!(f, "Function Call"),
 			AST::ConstDeclaration { identifier, expression: _ } => write!(f, "Const Declaration '{}'", identifier),
+			AST::VariableDeclaration { identifier, expression: _ } => write!(f, "Variable Declaration '{}'", identifier),
+			AST::VariableAssign { identifier, expression: _ } => write!(f, "Variable Assignment '{}'", identifier),
 
 			AST::Identifier(id) => write!(f, "Identifier '{}'", id),
 			AST::Number(n) => write!(f, "Number '{}'", n),
@@ -90,7 +94,7 @@ impl AST {
 				}
 				
 				sexpr.push(')');
-				
+
 				sexpr.push_str(&body.to_sexpr());
 				sexpr.push(')');
 				sexpr
@@ -118,6 +122,30 @@ impl AST {
 
 				sexpr.push('(');
 				sexpr.push_str("const ");
+				sexpr.push_str(&format!("{}", identifier));
+				sexpr.push(' ');
+				sexpr.push_str(&expression.to_sexpr());
+				sexpr.push(')');
+				sexpr
+			}
+
+			AST::VariableDeclaration { identifier, expression } => {
+				let mut sexpr = String::with_capacity(64);
+
+				sexpr.push('(');
+				sexpr.push_str("var ");
+				sexpr.push_str(&format!("{}", identifier));
+				sexpr.push(' ');
+				sexpr.push_str(&expression.to_sexpr());
+				sexpr.push(')');
+				sexpr
+			}
+
+			AST::VariableAssign { identifier, expression } => {
+				let mut sexpr = String::with_capacity(64);
+
+				sexpr.push('(');
+				sexpr.push_str("var = ");
 				sexpr.push_str(&format!("{}", identifier));
 				sexpr.push(' ');
 				sexpr.push_str(&expression.to_sexpr());

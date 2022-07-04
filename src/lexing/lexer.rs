@@ -50,6 +50,8 @@ impl Lexer {
 
 			',' => return Ok(self.get_char(TokenKind::Comma)),
 			';' => return Ok(self.get_char(TokenKind::Semicolon)),
+			'=' => return Ok(self.get_char(TokenKind::Equal)),
+			'@' => return Ok(self.get_char(TokenKind::At)),
 			
 			'"' => return Ok(self.get_string()),
 
