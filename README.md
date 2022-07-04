@@ -1,2 +1,2 @@
 # Spruce
-Interpreted Language
+An Interpreted Language written in Rust.

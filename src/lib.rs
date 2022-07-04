@@ -89,3 +89,15 @@ fn test_variables() {
 		Err(e) => panic!("{e}"),
 	}
 }
+
+#[test]
+fn test_function_body() {
+	let mut parser = Parser::new(fs::read_to_string("./testsrc/parser/function_body.sp").unwrap());
+	match parser.parse() {
+		Ok(p) => assert_eq!(
+			p.to_sexpr(),
+			"((const add_three (fn (value)((const add_two (fn (value)((var = value (+ value 2)))))(var = value (+ (call add_two(value) 1)))))(call add_three(bar))"
+		),
+		Err(e) => panic!("{e}"),
+	}
+}

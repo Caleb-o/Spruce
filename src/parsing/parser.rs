@@ -16,7 +16,7 @@ impl Parser {
 
 	pub fn parse(&mut self) -> Result<AST, SpruceError> {
 		let mut body = Box::new(AST::Body { statements: vec![] });
-		self.collect_statements(&mut body)?;
+		self.collect_statements(&mut body, TokenKind::Eof)?;
 
 		Ok(AST::Program(body))
 	}
@@ -222,22 +222,32 @@ impl Parser {
 		Ok(params)
 	}
 
+	fn body(&mut self) -> Result<Box<AST>, SpruceError> {
+		self.consume(TokenKind::OpenCurly, "Expect '{' to start body")?;
+
+		let mut body = Box::new(AST::Body { statements: vec![] });
+		self.collect_statements(&mut body, TokenKind::CloseCurly)?;
+
+		self.consume(TokenKind::CloseCurly, "Expect '}' after body")?;
+
+		Ok(body)
+	}
+
 	fn function_definition(&mut self, mut _body: &AST) -> Result<Box<AST>, SpruceError> {
 		self.consume(TokenKind::Function, "Expect 'fn' in function definition")?;
 
 		self.consume(TokenKind::OpenParen, "Expect '(' after function keyword")?;
 		let parameters = self.get_parameters()?;
 		self.consume(TokenKind::CloseParen, "Expect ')' after function arguments")?;
-		
-		self.consume(TokenKind::OpenCurly, "Expect '{' after function arguments")?;
-		self.consume(TokenKind::CloseCurly, "Expect '}' after function body")?;
+
+		let body = self.body()?;
 
 		// FIXME
 		Ok(Box::new(
 			AST::FunctionDefinition { 
 				parameters,
 				returns: None,
-				body: Box::new(AST::Body { statements: vec![] })
+				body
 			}
 		))
 	}
@@ -292,8 +302,8 @@ impl Parser {
 		))
 	}
 
-	fn collect_statements(&mut self, body: &mut AST) -> Result<(), SpruceError> {
-		while self.current.kind != TokenKind::Eof {
+	fn collect_statements(&mut self, body: &mut AST, end: TokenKind) -> Result<(), SpruceError> {
+		while self.current.kind != end {
 			let stmt = self.statement(body)?;
 			Parser::insert(body, stmt);
 		}
