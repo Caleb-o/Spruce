@@ -5,9 +5,12 @@ pub enum AST {
 	Program(Box<AST>),
 	Body { statements: Vec<Box<AST>> },
 
-	FunctionDefinition { parameters: Vec<Box<AST>>, returns: Option<Box<AST>>, body: Box<AST> },
+	Argument { label: Rc<Token>, expr: Box<AST> },
 
-	ConstDeclaration { identifier: Rc<Token>, expression: Box<AST> },
+	FunctionDefinition { parameters: Vec<Rc<Token>>, returns: Option<Box<AST>>, body: Box<AST> },
+	FunctionCall { caller: Box<AST>, arguments: Vec<Box<AST>> },
+
+	ConstDeclaration { identifier: String, expression: Box<AST> },
 
 	Identifier(String),
 	Number(f32),
@@ -16,6 +19,28 @@ pub enum AST {
 	BinOp { operator: Rc<Token>, left: Box<AST>, right: Box<AST> },
 	UnaryOp { operator: Rc<Token>, right: Box<AST> },
 	Range { left: Box<AST>, right: Box<AST> },
+}
+
+impl std::fmt::Display for AST {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			AST::Program(_) => write!(f, "Program"),
+			AST::Body { statements: _ } => write!(f, "Body"),
+			AST::Argument { label, expr: _ } => write!(f, "Argument '{}'", label.lexeme),
+
+			AST::FunctionDefinition { parameters: _, returns: _, body: _ } => write!(f, "Function Definition"),
+			AST::FunctionCall { caller: _, arguments: _ } => write!(f, "Function Call"),
+			AST::ConstDeclaration { identifier, expression: _ } => write!(f, "Const Declaration '{}'", identifier),
+
+			AST::Identifier(id) => write!(f, "Identifier '{}'", id),
+			AST::Number(n) => write!(f, "Number '{}'", n),
+			AST::String(s) => write!(f, "String '{}'", s),
+			
+			AST::BinOp { operator: _, left: _, right: _ } => write!(f, "Binary Op"),
+			AST::UnaryOp { operator: _, right: _ } => write!(f, "Unary Op"),
+			AST::Range { left: _, right: _ } => write!(f, "Range"),
+		}
+    }
 }
 
 impl AST {
@@ -38,12 +63,52 @@ impl AST {
 				sexpr
 			}
 
-			AST::FunctionDefinition { parameters: _, returns: _, body } => {
+			AST::Argument { label, expr } => {
+				let mut sexpr = String::with_capacity(16);
+				
+				sexpr.push('(');
+				sexpr.push_str(&format!("{}: ", label.lexeme));
+				sexpr.push_str(&expr.to_sexpr());
+				sexpr.push(')');
+
+				sexpr
+			}
+
+			AST::FunctionDefinition { parameters, returns: _, body } => {
 				let mut sexpr = String::with_capacity(64);
 
 				sexpr.push('(');
 				sexpr.push_str("fn ");
+				sexpr.push('(');
+				
+				for (idx, param) in parameters.iter().enumerate() {
+					sexpr.push_str(&format!("{}", param.lexeme));
+					
+					if idx < parameters.len() - 1 {
+						sexpr.push_str(", ");
+					}
+				}
+				
+				sexpr.push(')');
+				
 				sexpr.push_str(&body.to_sexpr());
+				sexpr.push(')');
+				sexpr
+			}
+
+			AST::FunctionCall { caller, arguments } => {
+				let mut sexpr = String::with_capacity(32);
+
+				sexpr.push('(');
+				sexpr.push_str(&format!("call {}(", &caller.to_sexpr()));
+
+				for (idx, arg) in arguments.iter().enumerate() {
+					sexpr.push_str(&arg.to_sexpr());
+
+					if idx < arguments.len() - 1 {
+						sexpr.push_str(", ");
+					}
+				}
 				sexpr.push(')');
 				sexpr
 			}
@@ -53,7 +118,7 @@ impl AST {
 
 				sexpr.push('(');
 				sexpr.push_str("const ");
-				sexpr.push_str(&format!("{}", identifier.lexeme));
+				sexpr.push_str(&format!("{}", identifier));
 				sexpr.push(' ');
 				sexpr.push_str(&expression.to_sexpr());
 				sexpr.push(')');

@@ -49,7 +49,7 @@ fn valid_tokens() {
 fn test_constant_basic() {
 	let mut parser = Parser::new(fs::read_to_string("./testsrc/constant_basic.sp").unwrap());
 	match parser.parse() {
-		Ok(p) => assert_eq!(p.to_sexpr(), "((const foo (fn ()))(const bar 120)(const baz My String)(const number (+ 100 (* 200 3))))"),
+		Ok(p) => assert_eq!(p.to_sexpr(), "((const foo (fn ()()))(const bar 120)(const baz My String)(const number (+ 100 (* 200 3))))"),
 		Err(e) => panic!("{e}"),
 	}
 }
@@ -68,6 +68,15 @@ fn test_constant_range() {
 	let mut parser = Parser::new(fs::read_to_string("./testsrc/constant_range.sp").unwrap());
 	match parser.parse() {
 		Ok(p) => assert_eq!(p.to_sexpr(), "((const foo 10)(const bar 5)(const range foo..(* bar bar)))"),
+		Err(e) => panic!("{e}"),
+	}
+}
+
+#[test]
+fn test_function_def_and_call() {
+	let mut parser = Parser::new(fs::read_to_string("./testsrc/function_def_and_call.sp").unwrap());
+	match parser.parse() {
+		Ok(p) => assert_eq!(p.to_sexpr(), "((const foo (fn (a, b)()))(call foo(10, 20))"),
 		Err(e) => panic!("{e}"),
 	}
 }

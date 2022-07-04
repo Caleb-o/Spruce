@@ -16,7 +16,7 @@ impl Parser {
 
 	pub fn parse(&mut self) -> Result<AST, SpruceError> {
 		let mut body = Box::new(AST::Body { statements: vec![] });
-		self.top_level_statements(&mut body)?;
+		self.collect_statements(&mut body)?;
 
 		Ok(AST::Program(body))
 	}
@@ -35,6 +35,15 @@ impl Parser {
 					self.current.column,
 				)
 			))
+		}
+	}
+
+	fn insert(body: &mut AST, node: Box<AST>) {
+		match body {
+    		AST::Body { statements } => {
+			    statements.push(node);
+		    }
+			_ => {},
 		}
 	}
 
@@ -75,20 +84,36 @@ impl Parser {
 		}
 	}
 
+	fn call(&mut self, body: &mut AST) -> Result<Box<AST>, SpruceError> {
+		let mut left = self.primary(body)?;
+
+		loop {
+			match self.current.kind {
+				TokenKind::OpenParen => {
+					left = self.function_call(body, left)?;
+				}
+				
+				_ => break,
+			}
+		}
+
+		Ok(left)
+	}
+
 	fn unary(&mut self, body: &mut AST) -> Result<Box<AST>, SpruceError> {
 		match self.current.kind {
 			TokenKind::Minus | TokenKind::Bang => {
 				let operator = self.current.clone();
 				self.consume(self.current.kind, "Expect ! or - in unary operation")?;
 
-				let right = self.primary(body)?;
+				let right = self.call(body)?;
 				return Ok(Box::new(AST::UnaryOp { operator, right }));
 			}
 
 			_ => {},
 		}
 		
-		self.primary(body)
+		self.call(body)
 	}
 
 	fn factor(&mut self, body: &mut AST) -> Result<Box<AST>, SpruceError> {
@@ -131,12 +156,28 @@ impl Parser {
 		Ok(left)
 	}
 
-	fn range(&mut self, body: &mut AST) -> Result<Box<AST>, SpruceError> {
+	fn assignment(&mut self, body: &mut AST) -> Result<Box<AST>, SpruceError> {
 		let left = self.term(body)?;
+
+		match self.current.kind {
+			TokenKind::ColonColon => {
+				if let AST::Identifier(_) = *left {
+					return self.const_declaration(left, body);
+				}
+			}
+
+			_ => {}
+		}
+
+		Ok(left)
+	}
+
+	fn range(&mut self, body: &mut AST) -> Result<Box<AST>, SpruceError> {
+		let left = self.assignment(body)?;
 
 		if self.current.kind == TokenKind::DotDot {
 			self.consume(TokenKind::DotDot, "Expect '..' in range")?;
-			let right = self.term(body)?;
+			let right = self.assignment(body)?;
 			return Ok(Box::new(AST::Range { left, right }));
 		}
 
@@ -154,10 +195,40 @@ impl Parser {
 		Ok(expr)
 	}
 
+	fn get_arguments(&mut self, body: &mut AST) -> Result<Vec<Box<AST>>, SpruceError> {
+		let mut args: Vec<Box<AST>> = Vec::new();
+
+		while self.current.kind != TokenKind::CloseParen {
+			args.push(self.expression(body)?);
+
+			if self.current.kind != TokenKind::CloseParen {
+				self.consume(TokenKind::Comma, "Expect ',' after argument")?;
+			}
+		}
+
+		Ok(args)
+	}
+
+	fn get_parameters(&mut self) -> Result<Vec<Rc<Token>>, SpruceError> {
+		let mut params: Vec<Rc<Token>> = Vec::new();
+
+		while self.current.kind != TokenKind::CloseParen {
+			params.push(self.current.clone());
+			self.consume(TokenKind::Identifier, "Expect identifier in parameter list")?;
+
+			if self.current.kind != TokenKind::CloseParen {
+				self.consume(TokenKind::Comma, "Expect ',' after parameter")?;
+			}
+		}
+
+		Ok(params)
+	}
+
 	fn function_definition(&mut self, mut _body: &AST) -> Result<Box<AST>, SpruceError> {
 		self.consume(TokenKind::Function, "Expect 'fn' in function definition")?;
 
 		self.consume(TokenKind::OpenParen, "Expect '(' after function keyword")?;
+		let parameters = self.get_parameters()?;
 		self.consume(TokenKind::CloseParen, "Expect ')' after function arguments")?;
 		
 		self.consume(TokenKind::OpenCurly, "Expect '{' after function arguments")?;
@@ -166,48 +237,42 @@ impl Parser {
 		// FIXME
 		Ok(Box::new(
 			AST::FunctionDefinition { 
-				parameters: vec![],
+				parameters,
 				returns: None,
 				body: Box::new(AST::Body { statements: vec![] })
 			}
 		))
 	}
 
-	fn const_declaration(&mut self, identifier: Rc<Token>, body: &mut AST) -> Result<(), SpruceError> {
-		self.consume(TokenKind::ColonColon, "Expect '::' after identifier constant")?;
-		let expr = self.statement(body)?;
+	fn function_call(&mut self, body: &mut AST, caller: Box<AST>) -> Result<Box<AST>, SpruceError> {
+		self.consume(TokenKind::OpenParen, "Expect '(' to start function call")?;
+		let arguments = self.get_arguments(body)?;
+		self.consume(TokenKind::CloseParen, "Expect ')' after function call arguments")?;
 
-		match body {
-    		AST::Body { statements } => {
-			    statements.push(Box::new(AST::ConstDeclaration { identifier: identifier.clone(), expression: expr }));
-		    }
-			_ => {},
-		}
-
-		Ok(())
+		Ok(Box::new(AST::FunctionCall { caller, arguments }))
 	}
 
-	fn top_level_statements(&mut self, body: &mut AST) -> Result<(), SpruceError> {
-		while self.current.kind != TokenKind::Eof {
-			match self.current.kind {
-				TokenKind::Identifier => {
-					let id = self.current.clone();
-					self.consume(TokenKind::Identifier, "Expected identifier to start top-level statement")?;
-					
-					// TODO: Allow assignments, fn calls etc
-					if self.current.kind == TokenKind::ColonColon {
-						self.const_declaration(id, body)?;
-					}
-				},
+	fn const_declaration(&mut self, identifier: Box<AST>, body: &mut AST) -> Result<Box<AST>, SpruceError> {
+		self.consume(TokenKind::ColonColon, "Expect '::' after identifier constant")?;
+		let expr = self.expression(body)?;
 
-				_ => return Err(SpruceError::Parser(
-					format!("Unexpected item found in top-level '{}' {}:{}",
-						self.current.lexeme,
-						self.current.line,
-						self.current.column
-					)
-				)),
-			}
+		if let AST::Identifier(id) = *identifier {
+			return Ok(Box::new(AST::ConstDeclaration { identifier: id.clone(), expression: expr }));
+		}
+
+		Err(SpruceError::Parser(
+			format!("Constant declaration requires an identifier, but received '{}' {}:{}",
+				identifier,
+				self.current.line,
+				self.current.column,
+			)
+		))
+	}
+
+	fn collect_statements(&mut self, body: &mut AST) -> Result<(), SpruceError> {
+		while self.current.kind != TokenKind::Eof {
+			let stmt = self.statement(body)?;
+			Parser::insert(body, stmt);
 		}
 
 		Ok(())
