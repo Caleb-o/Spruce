@@ -17,6 +17,7 @@ pub enum AST {
 	Identifier(String),
 	Number(f32),
 	String(String),
+	Unset,
 
 	BinOp { operator: Rc<Token>, left: Box<AST>, right: Box<AST> },
 	UnaryOp { operator: Rc<Token>, right: Box<AST> },
@@ -39,6 +40,7 @@ impl std::fmt::Display for AST {
 			AST::Identifier(id) => write!(f, "Identifier '{}'", id),
 			AST::Number(n) => write!(f, "Number '{}'", n),
 			AST::String(s) => write!(f, "String '{}'", s),
+			AST::Unset => write!(f, "Unset"),
 			
 			AST::BinOp { operator: _, left: _, right: _ } => write!(f, "Binary Op"),
 			AST::UnaryOp { operator: _, right: _ } => write!(f, "Unary Op"),
@@ -185,6 +187,10 @@ impl AST {
 
 			AST::String(s) => {
 				s.clone()
+			}
+
+			AST::Unset => {
+				"Unset".into()
 			}
 
 			AST::Identifier(i) => {

@@ -56,13 +56,18 @@ impl Lexer {
 
 			// Double Characters
 			':' => return Ok(self.get_char_or_chars(
-				TokenKind::Colon, vec![
+					TokenKind::Colon, vec![
 						(TokenKind::ColonColon, ':'),
 						(TokenKind::Walrus, '='),
 					]
 				)),
-			'-' => return Ok(self.get_char_or_chars(TokenKind::Minus, vec![(TokenKind::Arrow, '>')])),
-			'.' => return Ok(self.get_char_or_chars(TokenKind::Dot, vec![(TokenKind::DotDot, '.')])),
+			'-' => return Ok(self.get_char_or_chars(
+					TokenKind::Minus, vec![
+						(TokenKind::Arrow, '>'),
+						(TokenKind::Unset, '-'),
+					]
+				)),
+			'.' => return Ok(self.get_char_or_chars(TokenKind::Dot, vec![ (TokenKind::DotDot, '.') ])),
 
 			_ => {} // Skip to error
 		}

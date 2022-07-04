@@ -5,7 +5,7 @@ pub enum TokenKind {
 
 	Colon, ColonColon, Equal, Bang,
 	Dot, DotDot, Comma, Semicolon, Arrow,
-	Walrus,
+	Walrus, Unset,
 
 	OpenParen, CloseParen,
 	OpenCurly, CloseCurly,

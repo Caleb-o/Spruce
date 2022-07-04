@@ -1,6 +1,7 @@
 pub mod errors;
 pub mod lexing;
 pub mod parsing;
+pub mod analysis;
 use std::fs;
 
 use errors::spruce_error::SpruceError;
