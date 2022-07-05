@@ -1,6 +1,6 @@
 use std::rc::Rc;
 use crate::{lexing::{ lexer::Lexer, token::{Token, TokenKind, Lexeme} }, errors::spruce_error::SpruceError};
-use super::ast::AST;
+use super::ast::{AST, Body, FunctionDefinition, FunctionCall, ConstDeclaration, VariableDeclaration, VariableAssign, BinOp, UnaryOp, Range };
 
 pub struct Parser {
 	lexer: Lexer,
@@ -15,7 +15,7 @@ impl Parser {
 	}
 
 	pub fn parse(&mut self) -> Result<AST, SpruceError> {
-		let mut body = Box::new(AST::Body { statements: vec![] });
+		let mut body = Box::new(AST::Body(Body { statements: vec![] }));
 		self.collect_statements(&mut body, TokenKind::Eof)?;
 
 		Ok(AST::Program(body))
@@ -40,8 +40,8 @@ impl Parser {
 
 	fn insert(body: &mut AST, node: Box<AST>) {
 		match body {
-    		AST::Body { statements } => {
-			    statements.push(node);
+    		AST::Body(body) => {
+			    body.statements.push(node);
 		    }
 			_ => {},
 		}
@@ -72,6 +72,11 @@ impl Parser {
 				self.consume(TokenKind::Identifier, "Expected identifier in expression")?;
 
 				Ok(Box::new(AST::Identifier(inner)))
+			}
+
+			TokenKind::Unset => {
+				self.consume(TokenKind::Unset, "Expect unset in expression")?;
+				Ok(Box::new(AST::Unset))
 			}
 
 			_ => Err(SpruceError::Parser(
@@ -107,7 +112,7 @@ impl Parser {
 				self.consume(self.current.kind, "Expect ! or - in unary operation")?;
 
 				let right = self.call(body)?;
-				return Ok(Box::new(AST::UnaryOp { operator, right }));
+				return Ok(Box::new(AST::UnaryOp(UnaryOp { operator, right })));
 			}
 
 			_ => {},
@@ -126,7 +131,7 @@ impl Parser {
 					self.consume(self.current.kind, "Expect * or / in factor binary operation")?;
 
 					let right = self.unary(body)?;
-					left = Box::new(AST::BinOp { operator, left, right });
+					left = Box::new(AST::BinOp(BinOp { operator, left, right }));
 				}
 
 				_ => break,
@@ -146,7 +151,7 @@ impl Parser {
 					self.consume(self.current.kind, "Expect + or - in term binary operation")?;
 
 					let right = self.factor(body)?;
-					left = Box::new(AST::BinOp { operator, left, right });
+					left = Box::new(AST::BinOp(BinOp { operator, left, right }));
 				}
 
 				_ => break,
@@ -176,7 +181,7 @@ impl Parser {
 		if self.current.kind == TokenKind::DotDot {
 			self.consume(TokenKind::DotDot, "Expect '..' in range")?;
 			let right = self.assignment(body)?;
-			return Ok(Box::new(AST::Range { left, right }));
+			return Ok(Box::new(AST::Range(Range { left, right })));
 		}
 
 		Ok(left)
@@ -225,7 +230,7 @@ impl Parser {
 	fn body(&mut self) -> Result<Box<AST>, SpruceError> {
 		self.consume(TokenKind::OpenCurly, "Expect '{' to start body")?;
 
-		let mut body = Box::new(AST::Body { statements: vec![] });
+		let mut body = Box::new(AST::Body(Body { statements: vec![] }));
 		self.collect_statements(&mut body, TokenKind::CloseCurly)?;
 
 		self.consume(TokenKind::CloseCurly, "Expect '}' after body")?;
@@ -244,12 +249,12 @@ impl Parser {
 
 		// FIXME
 		Ok(Box::new(
-			AST::FunctionDefinition { 
+			AST::FunctionDefinition(FunctionDefinition { 
 				parameters,
 				returns: None,
 				body
 			}
-		))
+		)))
 	}
 
 	fn function_call(&mut self, body: &mut AST, caller: Box<AST>) -> Result<Box<AST>, SpruceError> {
@@ -257,7 +262,7 @@ impl Parser {
 		let arguments = self.get_arguments(body)?;
 		self.consume(TokenKind::CloseParen, "Expect ')' after function call arguments")?;
 
-		Ok(Box::new(AST::FunctionCall { caller, arguments }))
+		Ok(Box::new(AST::FunctionCall(FunctionCall { caller, arguments })))
 	}
 
 	fn const_declaration(&mut self, identifier: Box<AST>, body: &mut AST) -> Result<Box<AST>, SpruceError> {
@@ -265,7 +270,7 @@ impl Parser {
 		let expr = self.expression(body)?;
 
 		if let AST::Identifier(id) = *identifier {
-			return Ok(Box::new(AST::ConstDeclaration { identifier: id.clone(), expression: expr }));
+			return Ok(Box::new(AST::ConstDeclaration(ConstDeclaration { identifier: id.clone(), expression: expr })));
 		}
 
 		Err(SpruceError::Parser(
@@ -287,9 +292,9 @@ impl Parser {
 
 		if let AST::Identifier(id) = *identifier {
 			if declare {
-				return Ok(Box::new(AST::VariableDeclaration { identifier: id.clone(), expression: expr }));
+				return Ok(Box::new(AST::VariableDeclaration(VariableDeclaration { identifier: id.clone(), expression: expr })));
 			} else {
-				return Ok(Box::new(AST::VariableAssign { identifier: id.clone(), expression: expr }));
+				return Ok(Box::new(AST::VariableAssign(VariableAssign { identifier: id.clone(), expression: expr })));
 			}
 		}
 

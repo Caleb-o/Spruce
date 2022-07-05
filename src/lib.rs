@@ -6,6 +6,7 @@ use std::fs;
 
 use errors::spruce_error::SpruceError;
 use parsing::parser::Parser;
+use analysis::analyser::Analyser;
 
 pub fn run(filename: String) -> Result<(), SpruceError> {
 	let content = fs::read_to_string(filename);
@@ -16,10 +17,15 @@ pub fn run(filename: String) -> Result<(), SpruceError> {
 
 	let mut parser = Parser::new(content.unwrap());
 	match parser.parse() {
-		Ok(p) => println!("Done!: {}", p.to_sexpr()),
+		Ok(p) => {
+			let mut analyser = Analyser::new();
+			analyser.run(&p);
+		}
+
 		Err(e) => println!("{e}"),
 	}
 
+	println!("Done!");
 	Ok(())
 }
 

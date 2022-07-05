@@ -17,7 +17,7 @@ impl Scope {
 		self.symbols.insert(key, sym);
 	}
 
-	fn lookup(&mut self, key: String) -> Option<&Symbol> {
+	fn lookup(&self, key: String) -> Option<&Symbol> {
 		if let Some(inner) = self.symbols.get(&key) {
 			return inner.as_ref();
 		}
@@ -39,9 +39,8 @@ impl SymbolTable {
 		Self { scope: vec![ Scope::new() ] }
 	}
 
-	pub fn define(&mut self, key: String) {
-		let idx = self.scope.len() - 1;
-		self.scope[idx].insert(key, None);
+	pub fn top(&self) -> usize {
+		self.scope.len() - 1
 	}
 
 	pub fn declare(&mut self, key: String, sym: Symbol) {
@@ -57,5 +56,17 @@ impl SymbolTable {
 	pub fn get(&mut self, key: String) -> Option<&Symbol> {
 		let idx = self.scope.len() - 1;
 		self.scope[idx].lookup(key)
+	}
+
+	pub fn find(&self, key: String) -> Option<&Symbol> {
+		for idx in (0..self.scope.len()).rev() {
+			let sym = self.scope[idx].lookup(key.clone());
+
+			if sym.is_some() {
+				return sym;
+			}
+		}
+
+		None
 	}
 }
