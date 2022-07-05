@@ -19,13 +19,14 @@ pub fn run(filename: String) -> Result<(), SpruceError> {
 	match parser.parse() {
 		Ok(p) => {
 			let mut analyser = Analyser::new();
-			analyser.run(&p);
+			if !analyser.run(&p) {
+				return Err(SpruceError::Analyser("Errors occured".into()));
+			}
 		}
 
 		Err(e) => println!("{e}"),
 	}
 
-	println!("Done!");
 	Ok(())
 }
 

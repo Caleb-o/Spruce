@@ -18,7 +18,7 @@ impl Analyser {
 			self.visit(&p);
 		}
 		
-		self.had_error
+		!self.had_error
 	}
 
 	fn error(&mut self, msg: String) {
