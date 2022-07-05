@@ -43,9 +43,9 @@ impl SymbolTable {
 		self.scope.len() - 1
 	}
 
-	pub fn declare(&mut self, key: String, sym: Symbol) {
+	pub fn declare(&mut self, key: &String, sym: Symbol) {
 		let idx = self.scope.len() - 1;
-		self.scope[idx].insert(key, Some(sym));
+		self.scope[idx].insert(key.clone(), Some(sym));
 	}
 
 	pub fn contains(&mut self, key: &String) -> bool {

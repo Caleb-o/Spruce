@@ -60,7 +60,7 @@ impl Analyser {
 		if let AST::Unset = *decl.expression {
 			self.error(format!("Constant '{}' must be set to a value", &decl.identifier));
 		} else {
-			self.table.declare(decl.identifier.clone(), Symbol::Declaration { 
+			self.table.declare(&decl.identifier, Symbol::Declaration { 
 				identifier: decl.identifier.clone(), 
 				is_const: true,
 				is_set: true,
@@ -77,7 +77,7 @@ impl Analyser {
 				self.table.top(),
 			));
 		} else {
-			self.table.declare(decl.identifier.clone(), Symbol::Declaration { 
+			self.table.declare(&decl.identifier, Symbol::Declaration { 
 				identifier: decl.identifier.clone(),
 				is_const: false,
 				is_set: if let AST::Unset = *decl.expression { false } else { true },
