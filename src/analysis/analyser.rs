@@ -1,6 +1,4 @@
-use crate::{
-	parsing::ast::{AST, Body, ConstDeclaration, VariableDeclaration, BinOp, VariableAssign},
-};
+use crate::parsing::ast::{AST, Body, ConstDeclaration, VariableDeclaration, BinOp, VariableAssign};
 use super::symbols::{Symbol, SymbolTable};
 
 pub struct Analyser {

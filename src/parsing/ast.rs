@@ -35,6 +35,17 @@ pub enum AST {
 	Range(Range),
 }
 
+pub struct Node {
+	pub token: Rc<Token>,
+	pub ast: Box<AST>,
+}
+
+impl Node {
+	pub fn new(token: Rc<Token>, ast: AST) -> Self {
+		Self { token, ast: Box::new(ast) }
+	}
+}
+
 impl std::fmt::Display for AST {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
