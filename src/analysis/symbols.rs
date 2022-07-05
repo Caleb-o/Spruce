@@ -17,16 +17,16 @@ impl Scope {
 		self.symbols.insert(key, sym);
 	}
 
-	fn lookup(&self, key: String) -> Option<&Symbol> {
-		if let Some(inner) = self.symbols.get(&key) {
+	fn lookup(&self, key: &String) -> Option<&Symbol> {
+		if let Some(inner) = self.symbols.get(key) {
 			return inner.as_ref();
 		}
 
 		None
 	}
 
-	fn contains(&mut self, key: String) -> bool {
-		self.symbols.contains_key(&key)
+	fn contains(&mut self, key: &String) -> bool {
+		self.symbols.contains_key(key)
 	}
 }
 
@@ -48,19 +48,19 @@ impl SymbolTable {
 		self.scope[idx].insert(key, Some(sym));
 	}
 
-	pub fn contains(&mut self, key: String) -> bool {
+	pub fn contains(&mut self, key: &String) -> bool {
 		let idx = self.scope.len() - 1;
 		self.scope[idx].contains(key)
 	}
 
-	pub fn get(&mut self, key: String) -> Option<&Symbol> {
+	pub fn get(&mut self, key: &String) -> Option<&Symbol> {
 		let idx = self.scope.len() - 1;
 		self.scope[idx].lookup(key)
 	}
 
-	pub fn find(&self, key: String) -> Option<&Symbol> {
+	pub fn find(&self, key: &String) -> Option<&Symbol> {
 		for idx in (0..self.scope.len()).rev() {
-			let sym = self.scope[idx].lookup(key.clone());
+			let sym = self.scope[idx].lookup(key);
 
 			if sym.is_some() {
 				return sym;
