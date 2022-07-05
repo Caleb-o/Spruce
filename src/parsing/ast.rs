@@ -1,19 +1,29 @@
 use std::rc::Rc;
 use crate::lexing::token::Token;
 
-pub struct Body { pub statements: Vec<Box<AST>> }
-pub struct Argument { pub label: Rc<Token>, pub expr: Box<AST> }
-pub struct FunctionDefinition { pub parameters: Vec<Rc<Token>>, pub returns: Option<Box<AST>>, pub body: Box<AST> }
-pub struct FunctionCall { pub caller: Box<AST>, pub arguments: Vec<Box<AST>> }
-pub struct ConstDeclaration { pub identifier: String, pub expression: Box<AST> }
-pub struct VariableDeclaration { pub identifier: String, pub expression: Box<AST> }
-pub struct VariableAssign { pub identifier: String, pub expression: Box<AST> }
-pub struct BinOp { pub operator: Rc<Token>, pub left: Box<AST>, pub right: Box<AST> }
-pub struct UnaryOp { pub operator: Rc<Token>, pub right: Box<AST> }
-pub struct Range { pub left: Box<AST>, pub right: Box<AST> }
+pub struct Node {
+	pub token: Rc<Token>,
+	pub ast: Box<AST>,
+}
+
+impl Node {
+	pub fn new(token: Rc<Token>,ast: AST) -> Self {
+		Self { token, ast: Box::new(ast) }
+	}
+}
+
+pub struct Body { pub statements: Vec<Node> }
+pub struct Argument { pub label: Rc<Token>, pub expr: Node }
+pub struct FunctionDefinition { pub parameters: Vec<Rc<Token>>, pub returns: Option<Node>, pub body: Node }
+pub struct FunctionCall { pub caller: Node, pub arguments: Vec<Node> }
+pub struct ConstDeclaration { pub identifier: String, pub expression: Node }
+pub struct VariableDeclaration { pub identifier: String, pub expression: Node }
+pub struct VariableAssign { pub identifier: String, pub expression: Node }
+pub struct BinOp { pub operator: Rc<Token>, pub left: Node, pub right: Node }
+pub struct UnaryOp { pub operator: Rc<Token>, pub right: Node }
+pub struct Range { pub left: Node, pub right: Node }
 
 pub enum AST {
-	Program(Box<AST>),
 	Body(Body),
 
 	Argument(Argument),
@@ -35,21 +45,9 @@ pub enum AST {
 	Range(Range),
 }
 
-pub struct Node {
-	pub token: Rc<Token>,
-	pub ast: Box<AST>,
-}
-
-impl Node {
-	pub fn new(token: Rc<Token>, ast: AST) -> Self {
-		Self { token, ast: Box::new(ast) }
-	}
-}
-
 impl std::fmt::Display for AST {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			AST::Program(_) => write!(f, "Program"),
 			AST::Body(_) => write!(f, "Body"),
 			AST::Argument(arg) => write!(f, "Argument '{}'", arg.label.lexeme),
 
@@ -74,17 +72,13 @@ impl std::fmt::Display for AST {
 impl AST {
 	pub fn to_sexpr(&self) -> String {
 		match self {
-			AST::Program(b) => {
-				b.to_sexpr()
-			}
-			
 			AST::Body(body) => {
 				let mut sexpr = String::with_capacity(64);
 
 				sexpr.push('(');
 				
 				for stmt in body.statements.iter() {
-					sexpr.push_str(&stmt.to_sexpr());
+					sexpr.push_str(&stmt.ast.to_sexpr());
 				}
 				
 				sexpr.push(')');
@@ -96,7 +90,7 @@ impl AST {
 				
 				sexpr.push('(');
 				sexpr.push_str(&format!("{}: ", arg.label.lexeme));
-				sexpr.push_str(&arg.expr.to_sexpr());
+				sexpr.push_str(&arg.expr.ast.to_sexpr());
 				sexpr.push(')');
 
 				sexpr
@@ -119,7 +113,7 @@ impl AST {
 				
 				sexpr.push(')');
 
-				sexpr.push_str(&def.body.to_sexpr());
+				sexpr.push_str(&def.body.ast.to_sexpr());
 				sexpr.push(')');
 				sexpr
 			}
@@ -128,10 +122,10 @@ impl AST {
 				let mut sexpr = String::with_capacity(32);
 
 				sexpr.push('(');
-				sexpr.push_str(&format!("call {}(", &call.caller.to_sexpr()));
+				sexpr.push_str(&format!("call {}(", &call.caller.ast.to_sexpr()));
 
 				for (idx, arg) in call.arguments.iter().enumerate() {
-					sexpr.push_str(&arg.to_sexpr());
+					sexpr.push_str(&arg.ast.to_sexpr());
 
 					if idx < call.arguments.len() - 1 {
 						sexpr.push_str(", ");
@@ -148,7 +142,7 @@ impl AST {
 				sexpr.push_str("const ");
 				sexpr.push_str(&format!("{}", decl.identifier));
 				sexpr.push(' ');
-				sexpr.push_str(&decl.expression.to_sexpr());
+				sexpr.push_str(&decl.expression.ast.to_sexpr());
 				sexpr.push(')');
 				sexpr
 			}
@@ -160,7 +154,7 @@ impl AST {
 				sexpr.push_str("var ");
 				sexpr.push_str(&format!("{}", decl.identifier));
 				sexpr.push(' ');
-				sexpr.push_str(&decl.expression.to_sexpr());
+				sexpr.push_str(&decl.expression.ast.to_sexpr());
 				sexpr.push(')');
 				sexpr
 			}
@@ -172,7 +166,7 @@ impl AST {
 				sexpr.push_str("var = ");
 				sexpr.push_str(&format!("{}", assign.identifier));
 				sexpr.push(' ');
-				sexpr.push_str(&assign.expression.to_sexpr());
+				sexpr.push_str(&assign.expression.ast.to_sexpr());
 				sexpr.push(')');
 				sexpr
 			}
@@ -183,9 +177,9 @@ impl AST {
 				sexpr.push('(');
 				sexpr.push_str(&format!("{}", op.operator.lexeme));
 				sexpr.push(' ');
-				sexpr.push_str(&op.left.to_sexpr());
+				sexpr.push_str(&op.left.ast.to_sexpr());
 				sexpr.push(' ');
-				sexpr.push_str(&op.right.to_sexpr());
+				sexpr.push_str(&op.right.ast.to_sexpr());
 				sexpr.push(')');
 
 				sexpr
@@ -197,7 +191,7 @@ impl AST {
 				sexpr.push('(');
 				sexpr.push_str(&format!("{}", op.operator.lexeme));
 				sexpr.push(' ');
-				sexpr.push_str(&op.right.to_sexpr());
+				sexpr.push_str(&op.right.ast.to_sexpr());
 				sexpr.push(')');
 
 				sexpr
@@ -222,9 +216,9 @@ impl AST {
 			AST::Range(range) => {
 				let mut sexpr = String::with_capacity(16);
 
-				sexpr.push_str(&range.left.to_sexpr());
+				sexpr.push_str(&range.left.ast.to_sexpr());
 				sexpr.push_str("..");
-				sexpr.push_str(&range.right.to_sexpr());
+				sexpr.push_str(&range.right.ast.to_sexpr());
 
 				sexpr
 			}

@@ -14,11 +14,11 @@ impl Parser {
 		Self { lexer , current }
 	}
 
-	pub fn parse(&mut self) -> Result<AST, SpruceError> {
+	pub fn parse(&mut self) -> Result<Node, SpruceError> {
 		let mut body = Body { statements: vec![] };
 		self.collect_statements(&mut body, TokenKind::Eof)?;
 
-		Ok(AST::Program(Box::new(AST::Body(body))))
+		Ok(Node::new(Rc::new(Token::new(0, 0, TokenKind::Eof, Lexeme::None)), AST::Body(body)))
 	}
 
 	fn consume(&mut self, expect: TokenKind, message: &str) -> Result<(), SpruceError> {
@@ -38,7 +38,7 @@ impl Parser {
 		}
 	}
 
-	fn insert(body: &mut Body, node: Box<AST>) {
+	fn insert(body: &mut Body, node: Node) {
 		body.statements.push(node);
 	}
 
@@ -109,7 +109,7 @@ impl Parser {
 				self.consume(self.current.kind, "Expect ! or - in unary operation")?;
 
 				let right = self.call(body)?;
-				return Ok(Node::new(self.current.clone(), AST::UnaryOp(UnaryOp { operator, right: right.ast })));
+				return Ok(Node::new(self.current.clone(), AST::UnaryOp(UnaryOp { operator, right })));
 			}
 
 			_ => {},
@@ -128,7 +128,7 @@ impl Parser {
 					self.consume(self.current.kind, "Expect * or / in factor binary operation")?;
 
 					let right = self.unary(body)?;
-					left = Node::new(self.current.clone(), AST::BinOp(BinOp { operator, left: left.ast, right: right.ast }));
+					left = Node::new(self.current.clone(), AST::BinOp(BinOp { operator, left, right }));
 				}
 
 				_ => break,
@@ -148,7 +148,7 @@ impl Parser {
 					self.consume(self.current.kind, "Expect + or - in term binary operation")?;
 
 					let right = self.factor(body)?;
-					left = Node::new(self.current.clone(), AST::BinOp(BinOp { operator, left: left.ast, right: right.ast }));
+					left = Node::new(self.current.clone(), AST::BinOp(BinOp { operator, left, right }));
 				}
 
 				_ => break,
@@ -178,7 +178,7 @@ impl Parser {
 		if self.current.kind == TokenKind::DotDot {
 			self.consume(TokenKind::DotDot, "Expect '..' in range")?;
 			let right = self.assignment(body)?;
-			return Ok(Node::new(self.current.clone(), AST::Range(Range { left: left.ast, right: right.ast })));
+			return Ok(Node::new(self.current.clone(), AST::Range(Range { left, right })));
 		}
 
 		Ok(left)
@@ -195,11 +195,11 @@ impl Parser {
 		Ok(expr)
 	}
 
-	fn get_arguments(&mut self, body: &mut Body) -> Result<Vec<Box<AST>>, SpruceError> {
-		let mut args: Vec<Box<AST>> = Vec::new();
+	fn get_arguments(&mut self, body: &mut Body) -> Result<Vec<Node>, SpruceError> {
+		let mut args: Vec<Node> = Vec::new();
 
 		while self.current.kind != TokenKind::CloseParen {
-			args.push(self.expression(body)?.ast);
+			args.push(self.expression(body)?);
 
 			if self.current.kind != TokenKind::CloseParen {
 				self.consume(TokenKind::Comma, "Expect ',' after argument")?;
@@ -251,7 +251,7 @@ impl Parser {
 			AST::FunctionDefinition(FunctionDefinition { 
 				parameters,
 				returns: None,
-				body: body.ast,
+				body,
 			}
 		)))
 	}
@@ -261,19 +261,19 @@ impl Parser {
 		let arguments = self.get_arguments(body)?;
 		self.consume(TokenKind::CloseParen, "Expect ')' after function call arguments")?;
 
-		Ok(Node::new(self.current.clone(), AST::FunctionCall(FunctionCall { caller: caller.ast, arguments })))
+		Ok(Node::new(self.current.clone(), AST::FunctionCall(FunctionCall { caller, arguments })))
 	}
 
 	fn const_declaration(&mut self, identifier: Node, body: &mut Body) -> Result<Node, SpruceError> {
 		self.consume(TokenKind::ColonColon, "Expect '::' after identifier constant")?;
-		let expr = self.expression(body)?;
+		let expression = self.expression(body)?;
 
 		if let AST::Identifier(id) = *identifier.ast {
 			return Ok(Node::new(
 				self.current.clone(),
 				AST::ConstDeclaration(ConstDeclaration { 
 					identifier: id.clone(),
-					expression: expr.ast,
+					expression,
 				})
 			));
 		}
@@ -294,13 +294,13 @@ impl Parser {
 			self.consume(TokenKind::Equal, "Expect '=' after identifier")?;
 		}
 
-		let expr = self.expression(body)?;
+		let expression = self.expression(body)?;
 
 		if let AST::Identifier(id) = *identifier {
-			if declare {
-				return Ok(Node::new(self.current.clone(), AST::VariableDeclaration(VariableDeclaration { identifier: id.clone(), expression: expr.ast })));
+			return if declare {
+				Ok(Node::new(self.current.clone(), AST::VariableDeclaration(VariableDeclaration { identifier: id.clone(), expression })))
 			} else {
-				return Ok(Node::new(self.current.clone(), AST::VariableAssign(VariableAssign { identifier: id.clone(), expression: expr.ast })));
+				Ok(Node::new(self.current.clone(), AST::VariableAssign(VariableAssign { identifier: id.clone(), expression })))
 			}
 		}
 
@@ -316,7 +316,7 @@ impl Parser {
 	fn collect_statements(&mut self, body: &mut Body, end: TokenKind) -> Result<(), SpruceError> {
 		while self.current.kind != end {
 			let stmt = self.statement(body)?;
-			Parser::insert(body, stmt.ast);
+			Parser::insert(body, stmt);
 		}
 
 		Ok(())
