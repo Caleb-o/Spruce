@@ -63,7 +63,6 @@ impl Analyser {
 				&decl.identifier, 
 				Rc::new(Symbol::Declaration { 
 					identifier: decl.identifier.clone(),
-					is_const: false,
 					ast: node.ast.clone(),
 				}
 			));
@@ -75,38 +74,50 @@ impl Analyser {
 	fn visit_var_assign(&mut self, node: &Node, assign: &VariableAssign) {
 		let sym = self.table.find(&assign.identifier);
 
-		match sym {
-			Some(s) => {
-				let Symbol::Declaration { identifier: _, is_const, ast: _ } = *s;
-
-				if is_const {
-					self.error(&node.token,
-						format!("Identifier '{}' is constant and cannot be re-assigned to",
-							&assign.identifier,
-						)
-					);
-				}
-			}
-			None => {
-				self.error(&node.token,
-					format!("Identifier '{}' does not exist in any scope",
-						&assign.identifier,
-					)
-				);
-			}
+		 if let None = sym {
+			self.error(&node.token,
+				format!("Identifier '{}' does not exist in any scope",
+					&assign.identifier,
+				)
+			);
 		}
 
 		self.visit(&assign.expression);
 	}
 
 	fn visit_func_def(&mut self, def: &FunctionDefinition) {
+		self.table.begin();
+		
+		for param in def.parameters.iter() {
+			self.table.declare(
+				&param.lexeme.to_string(), 
+				Rc::new(Symbol::Identifer { 
+					identifier: param.lexeme.to_string(), 
+				})
+			)
+		}
+		
 		self.visit(&def.body);
+
+		self.table.end();
 	}
 
 	fn visit_func_call(&mut self, _node: &Node, call: &FunctionCall) {
+		self.table.begin();
+		
 		for arg in call.arguments.iter() {
 			self.visit(arg);
+
+			self.table.declare(
+				&arg.token.lexeme.to_string(), 
+				Rc::new(Symbol::Declaration { 
+					identifier: arg.token.lexeme.to_string(), 
+					ast: arg.ast.clone(),
+				})
+			)
 		}
+
+		self.table.end();
 	}
 
 	fn visit_binary_op(&mut self, op: &BinOp) {
@@ -114,11 +125,9 @@ impl Analyser {
 		self.visit(&op.right);
 	}
 
-	fn visit_identifier(&mut self, _node: &Node, id: &String) {
-		if let Some(sym) = self.table.find(&id) {
-			match sym {
-				_ => {}
-			}
+	fn visit_identifier(&mut self, node: &Node, id: &String) {
+		if let None = self.table.find(&id) {
+			self.error(&node.token, format!("Could not find identifier '{}'", id));
 		}
 	}
 

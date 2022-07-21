@@ -3,7 +3,8 @@ use std::{collections::HashMap, rc::Rc};
 use crate::parsing::ast::AST;
 
 pub enum Symbol {
-	Declaration { identifier: String, is_const: bool, ast: Rc<AST> },
+	Declaration { identifier: String, ast: Rc<AST> },
+	Identifer { identifier: String },
 }
 
 struct Scope {
@@ -20,6 +21,10 @@ impl Scope {
 	}
 
 	fn lookup(&self, key: &String) -> Option<Rc<Symbol>> {
+		if !self.symbols.contains_key(key) {
+			return None;
+		}
+
 		(*self.symbols.get(key).unwrap()).clone()
 	}
 
@@ -39,6 +44,14 @@ impl SymbolTable {
 
 	pub fn top(&self) -> usize {
 		self.scope.len() - 1
+	}
+
+	pub fn begin(&mut self) {
+		self.scope.push(Scope::new());
+	}
+
+	pub fn end(&mut self) {
+		let _ = self.scope.pop();
 	}
 
 	pub fn declare(&mut self, key: &String, sym: Rc<Symbol>) {

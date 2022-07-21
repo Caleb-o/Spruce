@@ -1,6 +1,7 @@
 use std::rc::Rc;
 use crate::lexing::token::Token;
 
+#[derive(Clone)]
 pub struct Node {
 	pub token: Rc<Token>,
 	pub ast: Rc<AST>,
@@ -14,6 +15,7 @@ impl Node {
 
 pub struct Body { pub statements: Vec<Node> }
 pub struct Argument { pub label: Rc<Token>, pub expr: Node }
+#[derive(Clone)]
 pub struct FunctionDefinition { pub parameters: Vec<Rc<Token>>, pub returns: Option<Node>, pub body: Node }
 pub struct FunctionCall { pub caller: Node, pub arguments: Vec<Node> }
 pub struct VariableDeclaration { pub identifier: String, pub expression: Node }

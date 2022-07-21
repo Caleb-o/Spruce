@@ -1,8 +1,11 @@
+use crate::parsing::ast::{Node, FunctionDefinition};
+
 pub mod interpreter;
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct FnValue {
-
+	definition: FunctionDefinition,
+	body: Node,
 }
 
 #[derive(Clone)]
