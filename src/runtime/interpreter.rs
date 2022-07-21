@@ -104,6 +104,7 @@ impl Interpreter {
 			let expr_value = self.visit(&expr);
 			print!("{expr_value}");
 		}
+		println!();
 
 		Value::Unit
 	}
