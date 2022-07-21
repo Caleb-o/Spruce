@@ -1,7 +1,7 @@
 # Create a new function
-add_three :: fn(value) {
+let add_three = fn(value) {
 	# Nesting functions
-	add_two :: fn(value) {
+	let add_two = fn(value) {
 		value = value + 2;
 	};
 	value = add_two(value) + 1;

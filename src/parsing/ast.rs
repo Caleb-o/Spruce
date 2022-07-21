@@ -3,12 +3,12 @@ use crate::lexing::token::Token;
 
 pub struct Node {
 	pub token: Rc<Token>,
-	pub ast: Box<AST>,
+	pub ast: Rc<AST>,
 }
 
 impl Node {
-	pub fn new(token: Rc<Token>,ast: AST) -> Self {
-		Self { token, ast: Box::new(ast) }
+	pub fn new(token: Rc<Token>, ast: AST) -> Self {
+		Self { token, ast: Rc::new(ast) }
 	}
 }
 
@@ -16,7 +16,6 @@ pub struct Body { pub statements: Vec<Node> }
 pub struct Argument { pub label: Rc<Token>, pub expr: Node }
 pub struct FunctionDefinition { pub parameters: Vec<Rc<Token>>, pub returns: Option<Node>, pub body: Node }
 pub struct FunctionCall { pub caller: Node, pub arguments: Vec<Node> }
-pub struct ConstDeclaration { pub identifier: String, pub expression: Node }
 pub struct VariableDeclaration { pub identifier: String, pub expression: Node }
 pub struct VariableAssign { pub identifier: String, pub expression: Node }
 pub struct BinOp { pub operator: Rc<Token>, pub left: Node, pub right: Node }
@@ -31,14 +30,12 @@ pub enum AST {
 	FunctionDefinition(FunctionDefinition),
 	FunctionCall(FunctionCall),
 
-	ConstDeclaration(ConstDeclaration),
 	VariableDeclaration(VariableDeclaration),
 	VariableAssign(VariableAssign),
 
 	Identifier(String),
 	Number(f32),
 	String(String),
-	Unset,
 
 	BinOp(BinOp),
 	UnaryOp(UnaryOp),
@@ -53,14 +50,12 @@ impl std::fmt::Display for AST {
 
 			AST::FunctionDefinition(_) => write!(f, "Function Definition"),
 			AST::FunctionCall(_) => write!(f, "Function Call"),
-			AST::ConstDeclaration(decl) => write!(f, "Const Declaration '{}'", decl.identifier),
 			AST::VariableDeclaration(decl) => write!(f, "Variable Declaration '{}'", decl.identifier),
 			AST::VariableAssign(assign) => write!(f, "Variable Assignment '{}'", assign.identifier),
 
 			AST::Identifier(id) => write!(f, "Identifier '{}'", id),
 			AST::Number(n) => write!(f, "Number '{}'", n),
 			AST::String(s) => write!(f, "String '{}'", s),
-			AST::Unset => write!(f, "Unset"),
 			
 			AST::BinOp(_) => write!(f, "Binary Op"),
 			AST::UnaryOp(_) => write!(f, "Unary Op"),
@@ -135,18 +130,6 @@ impl AST {
 				sexpr
 			}
 
-			AST::ConstDeclaration(decl) => {
-				let mut sexpr = String::with_capacity(64);
-
-				sexpr.push('(');
-				sexpr.push_str("const ");
-				sexpr.push_str(&format!("{}", decl.identifier));
-				sexpr.push(' ');
-				sexpr.push_str(&decl.expression.ast.to_sexpr());
-				sexpr.push(')');
-				sexpr
-			}
-
 			AST::VariableDeclaration(decl) => {
 				let mut sexpr = String::with_capacity(64);
 
@@ -203,10 +186,6 @@ impl AST {
 
 			AST::String(s) => {
 				s.clone()
-			}
-
-			AST::Unset => {
-				"Unset".into()
 			}
 
 			AST::Identifier(i) => {

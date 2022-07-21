@@ -1,11 +1,13 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, rc::Rc};
+
+use crate::parsing::ast::AST;
 
 pub enum Symbol {
-	Declaration { identifier: String, is_const: bool, is_set: bool },
+	Declaration { identifier: String, is_const: bool, ast: Rc<AST> },
 }
 
 struct Scope {
-	symbols: HashMap<String, Option<Symbol>>,
+	symbols: HashMap<String, Option<Rc<Symbol>>>,
 }
 
 impl Scope {
@@ -13,16 +15,12 @@ impl Scope {
 		Self { symbols: HashMap::new() }
 	}
 
-	fn insert(&mut self, key: String, sym: Option<Symbol>) {
+	fn insert(&mut self, key: String, sym: Option<Rc<Symbol>>) {
 		self.symbols.insert(key, sym);
 	}
 
-	fn lookup(&self, key: &String) -> Option<&Symbol> {
-		if let Some(inner) = self.symbols.get(key) {
-			return inner.as_ref();
-		}
-
-		None
+	fn lookup(&self, key: &String) -> Option<Rc<Symbol>> {
+		(*self.symbols.get(key).unwrap()).clone()
 	}
 
 	fn contains(&mut self, key: &String) -> bool {
@@ -43,7 +41,7 @@ impl SymbolTable {
 		self.scope.len() - 1
 	}
 
-	pub fn declare(&mut self, key: &String, sym: Symbol) {
+	pub fn declare(&mut self, key: &String, sym: Rc<Symbol>) {
 		let idx = self.scope.len() - 1;
 		self.scope[idx].insert(key.clone(), Some(sym));
 	}
@@ -53,12 +51,12 @@ impl SymbolTable {
 		self.scope[idx].contains(key)
 	}
 
-	pub fn get(&mut self, key: &String) -> Option<&Symbol> {
+	pub fn get(&mut self, key: &String) -> Option<Rc<Symbol>> {
 		let idx = self.scope.len() - 1;
 		self.scope[idx].lookup(key)
 	}
 
-	pub fn find(&self, key: &String) -> Option<&Symbol> {
+	pub fn find(&self, key: &String) -> Option<Rc<Symbol>> {
 		for idx in (0..self.scope.len()).rev() {
 			let sym = self.scope[idx].lookup(key);
 

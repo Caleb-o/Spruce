@@ -5,12 +5,14 @@ pub enum TokenKind {
 
 	Colon, ColonColon, Equal, Bang,
 	Dot, DotDot, Comma, Semicolon, Arrow,
-	Walrus, Unset,
+	EqualEqual, NotEqual, Greater, GreaterEq,
+	Less, LessEq,
 
 	OpenParen, CloseParen,
 	OpenCurly, CloseCurly,
 	OpenSquare, CloseSquare,
 	
+	Let,
 	Identifier,
 	Number, String, Bool,
 	Function,

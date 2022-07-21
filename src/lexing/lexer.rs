@@ -39,8 +39,7 @@ impl Lexer {
 			'+' => return Ok(self.get_char(TokenKind::Plus)),
 			'*' => return Ok(self.get_char(TokenKind::Star)),
 			'/' => return Ok(self.get_char(TokenKind::Slash)),
-			'!' => return Ok(self.get_char(TokenKind::Bang)),
-
+			
 			'(' => return Ok(self.get_char(TokenKind::OpenParen)),
 			')' => return Ok(self.get_char(TokenKind::CloseParen)),
 			'{' => return Ok(self.get_char(TokenKind::OpenCurly)),
@@ -50,21 +49,38 @@ impl Lexer {
 
 			',' => return Ok(self.get_char(TokenKind::Comma)),
 			';' => return Ok(self.get_char(TokenKind::Semicolon)),
-			'=' => return Ok(self.get_char(TokenKind::Equal)),
 			
 			'"' => return Ok(self.get_string()),
-
+			
 			// Double Characters
+			'!' => return Ok(self.get_char_or_chars(
+				TokenKind::Bang, vec![
+					(TokenKind::NotEqual, '='),
+				]
+			)),
+			'=' => return Ok(self.get_char_or_chars(
+				TokenKind::Equal, vec![
+					(TokenKind::EqualEqual, '='),
+				]
+			)),
+			'>' => return Ok(self.get_char_or_chars(
+				TokenKind::Greater, vec![
+					(TokenKind::GreaterEq, '='),
+				]
+			)),
+			'<' => return Ok(self.get_char_or_chars(
+				TokenKind::Less, vec![
+					(TokenKind::LessEq, '='),
+				]
+			)),
 			':' => return Ok(self.get_char_or_chars(
 					TokenKind::Colon, vec![
 						(TokenKind::ColonColon, ':'),
-						(TokenKind::Walrus, '='),
 					]
 				)),
 			'-' => return Ok(self.get_char_or_chars(
 					TokenKind::Minus, vec![
 						(TokenKind::Arrow, '>'),
-						(TokenKind::Unset, '-'),
 					]
 				)),
 			'.' => return Ok(self.get_char_or_chars(TokenKind::Dot, vec![ (TokenKind::DotDot, '.') ])),
@@ -151,6 +167,7 @@ impl Lexer {
 		match lexeme.as_str() {
 			"fn" => Some(TokenKind::Function),
 			"true" | "false" => Some(TokenKind::Bool),
+			"let" => Some(TokenKind::Let),
 			_ => None,
 		}
 	}

@@ -54,28 +54,10 @@ fn test_valid_tokens() {
 // ---- PARSER
 
 #[test]
-fn test_constant_basic() {
-	let mut parser = Parser::new(fs::read_to_string("./testsrc/parser/constant_basic.sp").unwrap());
+fn test_range() {
+	let mut parser = Parser::new(fs::read_to_string("./testsrc/parser/range.sp").unwrap());
 	match parser.parse() {
-		Ok(p) => assert_eq!(p.ast.to_sexpr(), "((const foo (fn ()()))(const bar 120)(const baz My String)(const number (+ 100 (* 200 3))))"),
-		Err(e) => panic!("{e}"),
-	}
-}
-
-#[test]
-fn test_constant_operation() {
-	let mut parser = Parser::new(fs::read_to_string("./testsrc/parser/constant_operation.sp").unwrap());
-	match parser.parse() {
-		Ok(p) => assert_eq!(p.ast.to_sexpr(), "((const foo (+ 200 300))(const bar 120)(const baz (+ bar (* foo (- 1)))))"),
-		Err(e) => panic!("{e}"),
-	}
-}
-
-#[test]
-fn test_constant_range() {
-	let mut parser = Parser::new(fs::read_to_string("./testsrc/parser/constant_range.sp").unwrap());
-	match parser.parse() {
-		Ok(p) => assert_eq!(p.ast.to_sexpr(), "((const foo 10)(const bar 5)(const range foo..(* bar bar)))"),
+		Ok(p) => assert_eq!(p.ast.to_sexpr(), "((var foo 10)(var bar 5)(var range foo..(* bar bar)))"),
 		Err(e) => panic!("{e}"),
 	}
 }
@@ -84,7 +66,7 @@ fn test_constant_range() {
 fn test_function_def_and_call() {
 	let mut parser = Parser::new(fs::read_to_string("./testsrc/parser/function_def_and_call.sp").unwrap());
 	match parser.parse() {
-		Ok(p) => assert_eq!(p.ast.to_sexpr(), "((const foo (fn (a, b)()))(call foo(10, 20))"),
+		Ok(p) => assert_eq!(p.ast.to_sexpr(), "((var foo (fn (a, b)()))(call foo(10, 20))"),
 		Err(e) => panic!("{e}"),
 	}
 }
@@ -104,7 +86,7 @@ fn test_function_body() {
 	match parser.parse() {
 		Ok(p) => assert_eq!(
 			p.ast.to_sexpr(),
-			"((const add_three (fn (value)((const add_two (fn (value)((var = value (+ value 2)))))(var = value (+ (call add_two(value) 1)))))(call add_three(bar))"
+			"((var add_three (fn (value)((var add_two (fn (value)((var = value (+ value 2)))))(var = value (+ (call add_two(value) 1)))))(call add_three(bar))"
 		),
 		Err(e) => panic!("{e}"),
 	}

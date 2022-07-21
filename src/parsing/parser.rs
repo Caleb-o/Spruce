@@ -1,6 +1,6 @@
 use std::rc::Rc;
 use crate::{lexing::{ lexer::Lexer, token::{Token, TokenKind, Lexeme} }, errors::spruce_error::SpruceError};
-use super::ast::{AST, Body, FunctionDefinition, FunctionCall, ConstDeclaration, VariableDeclaration, VariableAssign, BinOp, UnaryOp, Range, Node };
+use super::ast::{AST, Body, FunctionDefinition, FunctionCall, VariableDeclaration, VariableAssign, BinOp, UnaryOp, Range, Node };
 
 pub struct Parser {
 	lexer: Lexer,
@@ -69,11 +69,6 @@ impl Parser {
 				self.consume(TokenKind::Identifier, "Expected identifier in expression")?;
 
 				Ok(Node::new(current, AST::Identifier(inner)))
-			}
-
-			TokenKind::Unset => {
-				self.consume(TokenKind::Unset, "Expect unset in expression")?;
-				Ok(Node::new(current, AST::Unset))
 			}
 
 			_ => Err(SpruceError::Parser(
@@ -161,12 +156,8 @@ impl Parser {
 	fn assignment(&mut self, body: &mut Body) -> Result<Node, SpruceError> {
 		let left = self.term(body)?;
 
-		match self.current.kind {
-			TokenKind::ColonColon => return self.const_declaration(left, body),
-			TokenKind::Walrus => return self.variable(left.ast, body, true),
-			TokenKind::Equal => return self.variable(left.ast, body, false),
-
-			_ => {}
+		if self.current.kind == TokenKind::Equal {
+			return self.variable(left.ast, body, false);
 		}
 
 		Ok(left)
@@ -189,10 +180,35 @@ impl Parser {
 	}
 
 	fn statement(&mut self, body: &mut Body) -> Result<Node, SpruceError> {
-		let expr = self.expression(body)?;
-		self.consume(TokenKind::Semicolon, "Expect ';' after statement")?;
+		match self.current.kind {
+			TokenKind::Let => {
+				self.consume(TokenKind::Let, "Expect let to start variable declaration")?;
 
-		Ok(expr)
+				let identifier = self.current.clone();
+				self.consume(TokenKind::Identifier, "Expect identifier after let")?;
+				self.consume(TokenKind::Equal, "Expect '=' after identifier in let binding")?;
+
+				let expr = self.expression(body)?;
+				self.consume(TokenKind::Semicolon, "Expect ';' after statement")?;
+
+				Ok(
+					Node::new(identifier.clone(), AST::VariableDeclaration(
+						VariableDeclaration {
+							identifier: identifier.lexeme.to_string(),
+							expression: expr,
+						}
+					))
+				)
+			}
+
+			_ => {
+				// Expression statement
+				let expr = self.expression(body)?;
+				self.consume(TokenKind::Semicolon, "Expect ';' after statement")?;
+
+				Ok(expr)
+			}
+		}
 	}
 
 	fn get_arguments(&mut self, body: &mut Body) -> Result<Vec<Node>, SpruceError> {
@@ -264,39 +280,12 @@ impl Parser {
 		Ok(Node::new(self.current.clone(), AST::FunctionCall(FunctionCall { caller, arguments })))
 	}
 
-	fn const_declaration(&mut self, identifier: Node, body: &mut Body) -> Result<Node, SpruceError> {
-		self.consume(TokenKind::ColonColon, "Expect '::' after identifier constant")?;
-		let expression = self.expression(body)?;
-
-		if let AST::Identifier(id) = *identifier.ast {
-			return Ok(Node::new(
-				self.current.clone(),
-				AST::ConstDeclaration(ConstDeclaration { 
-					identifier: id.clone(),
-					expression,
-				})
-			));
-		}
-
-		Err(SpruceError::Parser(
-			format!("Constant declaration requires an identifier, but received '{}' {}:{}",
-				identifier.ast,
-				self.current.line,
-				self.current.column,
-			)
-		))
-	}
-
-	fn variable(&mut self, identifier: Box<AST>, body: &mut Body, declare: bool) -> Result<Node, SpruceError> {
-		if declare {
-			self.consume(TokenKind::Walrus, "Expect ':=' after identifier")?;
-		} else {
-			self.consume(TokenKind::Equal, "Expect '=' after identifier")?;
-		}
+	fn variable(&mut self, identifier: Rc<AST>, body: &mut Body, declare: bool) -> Result<Node, SpruceError> {
+		self.consume(TokenKind::Equal, "Expect '=' after identifier")?;
 
 		let expression = self.expression(body)?;
 
-		if let AST::Identifier(id) = *identifier {
+		if let AST::Identifier(id) = &*identifier {
 			return if declare {
 				Ok(Node::new(self.current.clone(), AST::VariableDeclaration(VariableDeclaration { identifier: id.clone(), expression })))
 			} else {
