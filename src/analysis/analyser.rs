@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use crate::{parsing::ast::{AST, Body, VariableDeclaration, BinOp, VariableAssign, Node, FunctionDefinition, FunctionCall}, lexing::token::Token};
+use crate::{parsing::ast::{AST, Body, VariableDeclaration, BinOp, VariableAssign, Node, FunctionDefinition, FunctionCall, Println}, lexing::token::Token};
 use super::symbols::{Symbol, SymbolTable};
 
 pub struct Analyser {
@@ -34,6 +34,8 @@ impl Analyser {
 
 			AST::BinOp(op) => self.visit_binary_op(&op),
 			AST::Identifier(id) => self.visit_identifier(node, &id),
+
+			AST::Println(print) => self.visit_println(print),
 
 			// Discard - no use in analysis right now
 			AST::String(_) | AST::Number(_) => {},
@@ -117,6 +119,12 @@ impl Analyser {
 			match sym {
 				_ => {}
 			}
+		}
+	}
+
+	fn visit_println(&mut self, print_line: &Println) {
+		for expr in print_line.expressions.iter() {
+			self.visit(expr);
 		}
 	}
 }

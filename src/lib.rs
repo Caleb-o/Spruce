@@ -2,11 +2,13 @@ pub mod errors;
 pub mod lexing;
 pub mod parsing;
 pub mod analysis;
+pub mod runtime;
 use std::fs;
 
 use errors::spruce_error::SpruceError;
 use parsing::parser::Parser;
 use analysis::analyser::Analyser;
+use runtime::interpreter::Interpreter;
 
 pub fn run(filename: String) -> Result<(), SpruceError> {
 	let content = fs::read_to_string(filename);
@@ -22,6 +24,8 @@ pub fn run(filename: String) -> Result<(), SpruceError> {
 			if !analyser.run(&b) {
 				return Err(SpruceError::Analyser("Errors occured".into()));
 			}
+
+			Interpreter::new().run(b);
 		}
 
 		Err(e) => println!("{e}"),

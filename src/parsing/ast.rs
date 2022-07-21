@@ -21,6 +21,7 @@ pub struct VariableAssign { pub identifier: String, pub expression: Node }
 pub struct BinOp { pub operator: Rc<Token>, pub left: Node, pub right: Node }
 pub struct UnaryOp { pub operator: Rc<Token>, pub right: Node }
 pub struct Range { pub left: Node, pub right: Node }
+pub struct Println { pub expressions: Vec<Node> }
 
 pub enum AST {
 	Body(Body),
@@ -40,6 +41,8 @@ pub enum AST {
 	BinOp(BinOp),
 	UnaryOp(UnaryOp),
 	Range(Range),
+
+	Println(Println),
 }
 
 impl std::fmt::Display for AST {
@@ -60,6 +63,8 @@ impl std::fmt::Display for AST {
 			AST::BinOp(_) => write!(f, "Binary Op"),
 			AST::UnaryOp(_) => write!(f, "Unary Op"),
 			AST::Range(_) => write!(f, "Range"),
+
+			AST::Println(_) => write!(f, "Print"),
 		}
     }
 }
@@ -198,6 +203,22 @@ impl AST {
 				sexpr.push_str(&range.left.ast.to_sexpr());
 				sexpr.push_str("..");
 				sexpr.push_str(&range.right.ast.to_sexpr());
+
+				sexpr
+			}
+
+			AST::Println(println) => {
+				let mut sexpr = String::with_capacity(16);
+
+				sexpr.push_str("println (");
+				for (idx, expr) in println.expressions.iter().enumerate() {
+					sexpr.push_str(&expr.ast.to_sexpr());
+					
+					if idx < println.expressions.len() - 1 {
+						sexpr.push_str(", ");
+					}
+				}
+				sexpr.push(')');
 
 				sexpr
 			}

@@ -16,6 +16,7 @@ pub enum TokenKind {
 	Identifier,
 	Number, String, Bool,
 	Function,
+	Println,
 	Eof,
 }
 

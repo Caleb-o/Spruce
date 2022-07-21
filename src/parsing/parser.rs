@@ -1,6 +1,6 @@
 use std::rc::Rc;
 use crate::{lexing::{ lexer::Lexer, token::{Token, TokenKind, Lexeme} }, errors::spruce_error::SpruceError};
-use super::ast::{AST, Body, FunctionDefinition, FunctionCall, VariableDeclaration, VariableAssign, BinOp, UnaryOp, Range, Node };
+use super::ast::{AST, Body, FunctionDefinition, FunctionCall, VariableDeclaration, VariableAssign, BinOp, UnaryOp, Range, Node, Println };
 
 pub struct Parser {
 	lexer: Lexer,
@@ -197,6 +197,23 @@ impl Parser {
 							identifier: identifier.lexeme.to_string(),
 							expression: expr,
 						}
+					))
+				)
+			}
+
+
+			TokenKind::Println => {
+				let token = self.current.clone();
+				self.consume(TokenKind::Println, "Expect println")?;
+
+				self.consume(TokenKind::OpenParen, "Expect '(' after println")?;
+				let expressions = self.get_arguments(body)?;
+				self.consume(TokenKind::CloseParen, "Expect ')' after println arguments")?;
+				self.consume(TokenKind::Semicolon, "Expect ';' after statement")?;
+
+				Ok(
+					Node::new(token, AST::Println(
+						Println { expressions }
 					))
 				)
 			}

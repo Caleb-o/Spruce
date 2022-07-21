@@ -168,6 +168,7 @@ impl Lexer {
 			"fn" => Some(TokenKind::Function),
 			"true" | "false" => Some(TokenKind::Bool),
 			"let" => Some(TokenKind::Let),
+			"println" => Some(TokenKind::Println),
 			_ => None,
 		}
 	}
