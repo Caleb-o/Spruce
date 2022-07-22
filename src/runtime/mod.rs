@@ -53,9 +53,11 @@ impl Callable for Value {
 
 				self.clone()
 			},
-			Value::String(_) => todo!(),
+			
 			Value::Function(ref func) => call_func(interpreter, call, func),
-			Value::Unit => self.clone(),
+
+			Value::String(_)
+			| Value::Unit => self.clone(),
 		}
 	}
 }
@@ -66,10 +68,12 @@ fn call_func(interpreter: &mut Interpreter, call: &FunctionCall, func: &FnValue)
 	for (idx, arg) in call.arguments.iter().enumerate() {
 		let value = interpreter.visit(arg);
 		
-		interpreter.variables.last_mut().unwrap().insert(
-			func.definition.parameters[idx].lexeme.to_string(),
-			value
-		);
+		if idx < func.definition.parameters.len() {
+			interpreter.variables.last_mut().unwrap().insert(
+				func.definition.parameters[idx].lexeme.to_string(),
+				value
+			);
+		}
 	}
 
 	let ret_value = interpreter.visit(&func.body);
