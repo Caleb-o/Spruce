@@ -30,7 +30,7 @@ impl Interpreter {
 	fn visit(&mut self, node: &Node) -> Value {
 		match *node.ast {
 			AST::Body(ref b) => self.visit_body(b),
-			AST::Argument(_) => todo!(),
+			AST::Argument(ref arg) => self.visit(&arg.expr),
 			AST::FunctionDefinition(ref fndef) => self.visit_fn_def(fndef),
 			AST::FunctionCall(ref call) => self.visit_call(call),
 			AST::VariableDeclaration(ref decl) => self.visit_var_decl(decl),

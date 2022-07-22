@@ -4,9 +4,9 @@ pub enum TokenKind {
 	Plus, Minus, Star, Slash,
 
 	Colon, ColonColon, Equal, Bang,
-	Dot, DotDot, Comma, Semicolon, Arrow,
+	Dot, DotDot, Comma, Semicolon, Arrow, FatArrow,
 	EqualEqual, NotEqual, Greater, GreaterEq,
-	Less, LessEq,
+	Less, LessEq, Pipe,
 
 	OpenParen, CloseParen,
 	OpenCurly, CloseCurly,

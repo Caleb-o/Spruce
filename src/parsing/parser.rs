@@ -1,6 +1,6 @@
 use std::rc::Rc;
 use crate::{lexing::{ lexer::Lexer, token::{Token, TokenKind, Lexeme} }, errors::spruce_error::SpruceError};
-use super::ast::{AST, Body, FunctionDefinition, FunctionCall, VariableDeclaration, VariableAssign, BinOp, UnaryOp, Range, Node, Println };
+use super::ast::{AST, Body, FunctionDefinition, FunctionCall, VariableDeclaration, VariableAssign, BinOp, UnaryOp, Range, Node, Println, Argument };
 
 pub struct Parser {
 	lexer: Lexer,
@@ -42,7 +42,7 @@ impl Parser {
 		body.statements.push(node);
 	}
 
-	fn primary(&mut self, body: &mut Body) -> Result<Node, SpruceError> {
+	fn primary(&mut self, _body: &mut Body) -> Result<Node, SpruceError> {
 		let current = self.current.clone();
 
 		match self.current.kind {
@@ -61,7 +61,7 @@ impl Parser {
 			}
 
 			TokenKind::Function => {
-				self.function_definition(body)
+				self.function_definition()
 			}
 
 			TokenKind::Identifier => {
@@ -69,6 +69,10 @@ impl Parser {
 				self.consume(TokenKind::Identifier, "Expected identifier in expression")?;
 
 				Ok(Node::new(current, AST::Identifier(inner)))
+			}
+
+			TokenKind::OpenCurly => {
+				Ok(self.body()?)
 			}
 
 			_ => Err(SpruceError::Parser(
@@ -232,7 +236,15 @@ impl Parser {
 		let mut args: Vec<Node> = Vec::new();
 
 		while self.current.kind != TokenKind::CloseParen {
-			args.push(self.expression(body)?);
+			args.push(Node::new(
+				self.current.clone(),
+				AST::Argument(
+					Argument {
+						label: self.current.clone(),
+						expr: self.expression(body)?
+					}
+				)
+			));
 
 			if self.current.kind != TokenKind::CloseParen {
 				self.consume(TokenKind::Comma, "Expect ',' after argument")?;
@@ -269,24 +281,47 @@ impl Parser {
 		Ok(Node::new(current, AST::Body(body)))
 	}
 
-	fn function_definition(&mut self, mut _body: &Body) -> Result<Node, SpruceError> {
+	fn function_definition(&mut self) -> Result<Node, SpruceError> {
 		self.consume(TokenKind::Function, "Expect 'fn' in function definition")?;
 
 		self.consume(TokenKind::OpenParen, "Expect '(' after function keyword")?;
 		let parameters = self.get_parameters()?;
 		self.consume(TokenKind::CloseParen, "Expect ')' after function arguments")?;
 
-		let body = self.body()?;
+		if self.current.kind == TokenKind::FatArrow {
+			// Single-line, partial bodied functions
+			let arrow = self.current.clone();
+			self.consume(TokenKind::FatArrow, "Expect '=>' for single-line or partial bodied functions")?;
 
-		// FIXME
-		Ok(Node::new(
-			self.current.clone(),
-			AST::FunctionDefinition(FunctionDefinition { 
-				parameters,
-				returns: None,
-				body,
+			let mut body = Body { statements: Vec::new() };
+			let stmt = self.statement(&mut body)?;
+			Parser::insert(&mut body, stmt);
+
+			while self.current.kind == TokenKind::Pipe {
+				self.consume(TokenKind::Pipe, "Expect pipe for partial bodied functions")?;
+				let stmt = self.statement(&mut body)?;
+				Parser::insert(&mut body, stmt);
 			}
-		)))
+
+			Ok(Node::new(
+				arrow.clone(),
+				AST::FunctionDefinition(FunctionDefinition { 
+					parameters,
+					returns: None,
+					body: Node::new(arrow, AST::Body(body)),
+				}
+			)))
+		} else {
+			// Body
+			Ok(Node::new(
+				self.current.clone(),
+				AST::FunctionDefinition(FunctionDefinition { 
+					parameters,
+					returns: None,
+					body: self.body()?,
+				}
+			)))
+		}
 	}
 
 	fn function_call(&mut self, body: &mut Body, caller: Node) -> Result<Node, SpruceError> {

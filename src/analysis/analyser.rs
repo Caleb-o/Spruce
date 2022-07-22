@@ -3,6 +3,7 @@ use std::rc::Rc;
 use crate::{parsing::ast::{AST, Body, VariableDeclaration, BinOp, VariableAssign, Node, FunctionDefinition, FunctionCall, Println}, lexing::token::Token};
 use super::symbols::{Symbol, SymbolTable};
 
+
 pub struct Analyser {
 	table: SymbolTable,
 	had_error: bool,
@@ -30,7 +31,7 @@ impl Analyser {
 			AST::VariableAssign(assign) => self.visit_var_assign(node, &assign),
 
 			AST::FunctionDefinition(def) => self.visit_func_def(&def),
-			AST::FunctionCall(call) => self.visit_func_call(node, &call),
+			AST::FunctionCall(call) => self.visit_func_call(&call),
 
 			AST::BinOp(op) => self.visit_binary_op(&op),
 			AST::Identifier(id) => self.visit_identifier(node, &id),
@@ -40,7 +41,9 @@ impl Analyser {
 			// Discard - no use in analysis right now
 			AST::String(_) | AST::Number(_) => {},
 
-			_ => println!("Unknown node: \"{}\"", node.ast),
+			AST::Argument(ref arg) => self.visit(&arg.expr),
+			AST::UnaryOp(_) => todo!(),
+			AST::Range(_) => todo!(),
 		}
 	}
 
@@ -102,9 +105,11 @@ impl Analyser {
 		self.table.end();
 	}
 
-	fn visit_func_call(&mut self, _node: &Node, call: &FunctionCall) {
-		self.table.begin();
+	fn visit_func_call(&mut self, call: &FunctionCall) {
+		self.visit(&call.caller);
 		
+		self.table.begin();
+
 		for arg in call.arguments.iter() {
 			self.visit(arg);
 

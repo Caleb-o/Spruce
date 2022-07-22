@@ -49,6 +49,7 @@ impl Lexer {
 
 			',' => return Ok(self.get_char(TokenKind::Comma)),
 			';' => return Ok(self.get_char(TokenKind::Semicolon)),
+			'|' => return Ok(self.get_char(TokenKind::Pipe)),
 			
 			'"' => return Ok(self.get_string()),
 			
@@ -61,6 +62,7 @@ impl Lexer {
 			'=' => return Ok(self.get_char_or_chars(
 				TokenKind::Equal, vec![
 					(TokenKind::EqualEqual, '='),
+					(TokenKind::FatArrow, '>'),
 				]
 			)),
 			'>' => return Ok(self.get_char_or_chars(
