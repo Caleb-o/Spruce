@@ -2,10 +2,10 @@ use std::collections::HashMap;
 
 use crate::parsing::ast::{Node, AST, Body, VariableDeclaration, Println, FunctionDefinition, FunctionCall, VariableAssign};
 
-use super::{Value, FnValue};
+use super::{Value, FnValue, Callable};
 
 pub struct Interpreter {
-	variables: Vec<HashMap<String, Value>>,
+	pub(super) variables: Vec<HashMap<String, Value>>,
 }
 
 impl Interpreter {
@@ -15,6 +15,14 @@ impl Interpreter {
 
 	pub fn run(&mut self, root: Node) {
 		let _ = self.visit(&root);
+	}
+
+	pub(super) fn begin(&mut self) {
+		self.variables.push(HashMap::new());
+	}
+
+	pub(super) fn end(&mut self) {
+		self.variables.pop();
 	}
 
 	fn find_value(&self, key: &String) -> Value {
@@ -27,7 +35,7 @@ impl Interpreter {
 		Value::Unit
 	}
 
-	fn visit(&mut self, node: &Node) -> Value {
+	pub(super) fn visit(&mut self, node: &Node) -> Value {
 		match *node.ast {
 			AST::Body(ref b) => self.visit_body(b),
 			AST::Argument(ref arg) => self.visit(&arg.expr),
@@ -46,13 +54,13 @@ impl Interpreter {
 	}
 
 	fn visit_body(&mut self, body: &Body) -> Value {
-		self.variables.push(HashMap::new());
+		self.begin();
 
 		for node in body.statements.iter() {
 			self.visit(node);
 		}
 
-		self.variables.pop();
+		self.end();
 
 		Value::Unit
 	}
@@ -65,27 +73,7 @@ impl Interpreter {
 	}
 
 	fn visit_call(&mut self, call: &FunctionCall) -> Value {
-		let caller = self.visit(&call.caller);
-
-		if let Value::Function(ref func) = caller {
-			self.variables.push(HashMap::new());
-
-			for (idx, arg) in call.arguments.iter().enumerate() {
-				let value = self.visit(arg);
-				
-				self.variables.last_mut().unwrap().insert(
-					func.definition.parameters[idx].lexeme.to_string(),
-					value
-				);
-			}
-
-			let ret_value = self.visit(&func.body);
-			self.variables.pop();
-
-			return ret_value;
-		}
-
-		Value::Unit
+		self.visit(&call.caller).call(self, call)
 	}
 
 	fn visit_var_decl(&mut self, decl: &VariableDeclaration) -> Value {

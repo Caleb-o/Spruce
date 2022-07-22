@@ -1,6 +1,12 @@
-use crate::parsing::ast::{Node, FunctionDefinition};
+use crate::parsing::ast::{Node, FunctionDefinition, FunctionCall};
+
+use self::interpreter::Interpreter;
 
 pub mod interpreter;
+
+trait Callable {
+	fn call(&self, interpreter: &mut Interpreter, call: &FunctionCall) -> Value;
+}
 
 #[derive(Clone)]
 pub struct FnValue {
@@ -26,4 +32,48 @@ impl std::fmt::Display for Value {
 			Value::Unit => write!(f, "None"),
 		}
     }
+}
+
+impl Callable for Value {
+	fn call(&self, interpreter: &mut Interpreter, call: &FunctionCall) -> Value {
+		match self {
+			Value::Number(num) => {
+				for arg in call.arguments.iter() {
+					let result = interpreter.visit(arg);
+					// Call the function num amount of times
+					match result {
+						Value::Function(_) => {
+							for _ in 0..(*num as i32) {
+								_ = result.call(interpreter, call)
+							}
+						},
+						_ => {},
+					}
+				}
+
+				self.clone()
+			},
+			Value::String(_) => todo!(),
+			Value::Function(ref func) => call_func(interpreter, call, func),
+			Value::Unit => self.clone(),
+		}
+	}
+}
+
+fn call_func(interpreter: &mut Interpreter, call: &FunctionCall, func: &FnValue) -> Value {
+	interpreter.begin();
+
+	for (idx, arg) in call.arguments.iter().enumerate() {
+		let value = interpreter.visit(arg);
+		
+		interpreter.variables.last_mut().unwrap().insert(
+			func.definition.parameters[idx].lexeme.to_string(),
+			value
+		);
+	}
+
+	let ret_value = interpreter.visit(&func.body);
+	interpreter.end();
+
+	return ret_value;
 }
