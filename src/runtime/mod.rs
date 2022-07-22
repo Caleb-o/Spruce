@@ -1,20 +1,19 @@
-use crate::parsing::ast::{Node, FunctionDefinition, FunctionCall};
+use std::rc::Rc;
+
+use crate::parsing::ast::{FunctionDefinition, FunctionCall};
 
 use self::interpreter::Interpreter;
 
 pub mod interpreter;
 
 trait Callable {
-	fn call(&self, interpreter: &mut Interpreter, call: &FunctionCall) -> Value;
+	fn call(&self, interpreter: &mut Interpreter, call: &FunctionCall) -> Rc<Value>;
 }
 
-#[derive(Clone)]
 pub struct FnValue {
 	definition: FunctionDefinition,
-	body: Node,
 }
 
-#[derive(Clone)]
 pub enum Value {
 	Number(f32),
 	String(String),
@@ -34,16 +33,16 @@ impl std::fmt::Display for Value {
     }
 }
 
-impl Callable for Value {
-	fn call(&self, interpreter: &mut Interpreter, call: &FunctionCall) -> Value {
-		match self {
+impl Callable for Rc<Value> {
+	fn call(&self, interpreter: &mut Interpreter, call: &FunctionCall) -> Rc<Value> {
+		match **self {
 			Value::Number(num) => {
 				for arg in call.arguments.iter() {
 					let result = interpreter.visit(arg);
 					// Call the function num amount of times
-					match result {
+					match *result {
 						Value::Function(_) => {
-							for _ in 0..(*num as i32) {
+							for _ in 0..(num as i32) {
 								_ = result.call(interpreter, call)
 							}
 						},
@@ -51,18 +50,18 @@ impl Callable for Value {
 					}
 				}
 
-				self.clone()
+				Rc::clone(&self)
 			},
 			
 			Value::Function(ref func) => call_func(interpreter, call, func),
 
 			Value::String(_)
-			| Value::Unit => self.clone(),
+			| Value::Unit => Rc::clone(&self),
 		}
 	}
 }
 
-fn call_func(interpreter: &mut Interpreter, call: &FunctionCall, func: &FnValue) -> Value {
+fn call_func(interpreter: &mut Interpreter, call: &FunctionCall, func: &FnValue) -> Rc<Value> {
 	interpreter.begin();
 
 	for (idx, arg) in call.arguments.iter().enumerate() {
@@ -76,7 +75,7 @@ fn call_func(interpreter: &mut Interpreter, call: &FunctionCall, func: &FnValue)
 		}
 	}
 
-	let ret_value = interpreter.visit(&func.body);
+	let ret_value = interpreter.visit(&func.definition.body);
 	interpreter.end();
 
 	return ret_value;

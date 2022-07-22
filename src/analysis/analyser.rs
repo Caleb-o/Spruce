@@ -66,7 +66,7 @@ impl Analyser {
 				&decl.identifier, 
 				Rc::new(Symbol::Declaration { 
 					identifier: decl.identifier.clone(),
-					ast: node.ast.clone(),
+					ast: Rc::clone(&node.ast),
 				}
 			));
 		}
@@ -117,7 +117,7 @@ impl Analyser {
 				&arg.token.lexeme.to_string(), 
 				Rc::new(Symbol::Declaration { 
 					identifier: arg.token.lexeme.to_string(), 
-					ast: arg.ast.clone(),
+					ast: Rc::clone(&arg.ast),
 				})
 			)
 		}

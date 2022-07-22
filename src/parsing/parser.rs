@@ -43,7 +43,7 @@ impl Parser {
 	}
 
 	fn primary(&mut self, _body: &mut Body) -> Result<Node, SpruceError> {
-		let current = self.current.clone();
+		let current = Rc::clone(&self.current);
 
 		match self.current.kind {
 			TokenKind::Number => {
@@ -104,11 +104,11 @@ impl Parser {
 	fn unary(&mut self, body: &mut Body) -> Result<Node, SpruceError> {
 		match self.current.kind {
 			TokenKind::Minus | TokenKind::Bang => {
-				let operator = self.current.clone();
+				let operator = Rc::clone(&self.current);
 				self.consume(self.current.kind, "Expect ! or - in unary operation")?;
 
 				let right = self.call(body)?;
-				return Ok(Node::new(self.current.clone(), AST::UnaryOp(UnaryOp { operator, right })));
+				return Ok(Node::new(Rc::clone(&self.current), AST::UnaryOp(UnaryOp { operator, right })));
 			}
 
 			_ => {},
@@ -123,11 +123,11 @@ impl Parser {
 		loop {
 			match self.current.kind {
 				TokenKind::Star | TokenKind::Slash => {
-					let operator = self.current.clone();
+					let operator = Rc::clone(&self.current);
 					self.consume(self.current.kind, "Expect * or / in factor binary operation")?;
 
 					let right = self.unary(body)?;
-					left = Node::new(self.current.clone(), AST::BinOp(BinOp { operator, left, right }));
+					left = Node::new(Rc::clone(&self.current), AST::BinOp(BinOp { operator, left, right }));
 				}
 
 				_ => break,
@@ -143,11 +143,11 @@ impl Parser {
 		loop {
 			match self.current.kind {
 				TokenKind::Plus | TokenKind::Minus => {
-					let operator = self.current.clone();
+					let operator = Rc::clone(&self.current);
 					self.consume(self.current.kind, "Expect + or - in term binary operation")?;
 
 					let right = self.factor(body)?;
-					left = Node::new(self.current.clone(), AST::BinOp(BinOp { operator, left, right }));
+					left = Node::new(Rc::clone(&self.current), AST::BinOp(BinOp { operator, left, right }));
 				}
 
 				_ => break,
@@ -161,7 +161,7 @@ impl Parser {
 		let left = self.term(body)?;
 
 		if self.current.kind == TokenKind::Equal {
-			return self.variable(left.ast, body, false);
+			return self.variable(Rc::clone(&left.ast), body, false);
 		}
 
 		Ok(left)
@@ -173,7 +173,7 @@ impl Parser {
 		if self.current.kind == TokenKind::DotDot {
 			self.consume(TokenKind::DotDot, "Expect '..' in range")?;
 			let right = self.assignment(body)?;
-			return Ok(Node::new(self.current.clone(), AST::Range(Range { left, right })));
+			return Ok(Node::new(Rc::clone(&self.current), AST::Range(Range { left, right })));
 		}
 
 		Ok(left)
@@ -188,7 +188,7 @@ impl Parser {
 			TokenKind::Let => {
 				self.consume(TokenKind::Let, "Expect let to start variable declaration")?;
 
-				let identifier = self.current.clone();
+				let identifier = Rc::clone(&self.current);
 				self.consume(TokenKind::Identifier, "Expect identifier after let")?;
 				self.consume(TokenKind::Equal, "Expect '=' after identifier in let binding")?;
 
@@ -196,7 +196,7 @@ impl Parser {
 				self.consume(TokenKind::Semicolon, "Expect ';' after statement")?;
 
 				Ok(
-					Node::new(identifier.clone(), AST::VariableDeclaration(
+					Node::new(Rc::clone(&identifier), AST::VariableDeclaration(
 						VariableDeclaration {
 							identifier: identifier.lexeme.to_string(),
 							expression: expr,
@@ -207,7 +207,7 @@ impl Parser {
 
 
 			TokenKind::Println => {
-				let token = self.current.clone();
+				let token = Rc::clone(&self.current);
 				self.consume(TokenKind::Println, "Expect println")?;
 
 				self.consume(TokenKind::OpenParen, "Expect '(' after println")?;
@@ -237,10 +237,10 @@ impl Parser {
 
 		while self.current.kind != TokenKind::CloseParen {
 			args.push(Node::new(
-				self.current.clone(),
+				Rc::clone(&self.current),
 				AST::Argument(
 					Argument {
-						label: self.current.clone(),
+						label: Rc::clone(&self.current),
 						expr: self.expression(body)?
 					}
 				)
@@ -258,7 +258,7 @@ impl Parser {
 		let mut params: Vec<Rc<Token>> = Vec::new();
 
 		while self.current.kind != TokenKind::CloseParen {
-			params.push(self.current.clone());
+			params.push(Rc::clone(&self.current));
 			self.consume(TokenKind::Identifier, "Expect identifier in parameter list")?;
 
 			if self.current.kind != TokenKind::CloseParen {
@@ -270,7 +270,7 @@ impl Parser {
 	}
 
 	fn body(&mut self) -> Result<Node, SpruceError> {
-		let current = self.current.clone();
+		let current = Rc::clone(&self.current);
 		self.consume(TokenKind::OpenCurly, "Expect '{' to start body")?;
 
 		let mut body = Body { statements: vec![] };
@@ -290,7 +290,7 @@ impl Parser {
 
 		if self.current.kind == TokenKind::FatArrow {
 			// Single-line, partial bodied functions
-			let arrow = self.current.clone();
+			let arrow = Rc::clone(&self.current);
 			self.consume(TokenKind::FatArrow, "Expect '=>' for single-line or partial bodied functions")?;
 
 			let mut body = Body { statements: Vec::new() };
@@ -304,17 +304,17 @@ impl Parser {
 			}
 
 			Ok(Node::new(
-				arrow.clone(),
+				Rc::clone(&arrow),
 				AST::FunctionDefinition(FunctionDefinition { 
 					parameters,
 					returns: None,
-					body: Node::new(arrow, AST::Body(body)),
+					body: Node::new(Rc::clone(&arrow), AST::Body(body)),
 				}
 			)))
 		} else {
 			// Body
 			Ok(Node::new(
-				self.current.clone(),
+				Rc::clone(&self.current),
 				AST::FunctionDefinition(FunctionDefinition { 
 					parameters,
 					returns: None,
@@ -329,7 +329,7 @@ impl Parser {
 		let arguments = self.get_arguments(body)?;
 		self.consume(TokenKind::CloseParen, "Expect ')' after function call arguments")?;
 
-		Ok(Node::new(self.current.clone(), AST::FunctionCall(FunctionCall { caller, arguments })))
+		Ok(Node::new(Rc::clone(&self.current), AST::FunctionCall(FunctionCall { caller, arguments })))
 	}
 
 	fn variable(&mut self, identifier: Rc<AST>, body: &mut Body, declare: bool) -> Result<Node, SpruceError> {
@@ -339,9 +339,9 @@ impl Parser {
 
 		if let AST::Identifier(id) = &*identifier {
 			return if declare {
-				Ok(Node::new(self.current.clone(), AST::VariableDeclaration(VariableDeclaration { identifier: id.clone(), expression })))
+				Ok(Node::new(Rc::clone(&self.current), AST::VariableDeclaration(VariableDeclaration { identifier: id.clone(), expression })))
 			} else {
-				Ok(Node::new(self.current.clone(), AST::VariableAssign(VariableAssign { identifier: id.clone(), expression })))
+				Ok(Node::new(Rc::clone(&self.current), AST::VariableAssign(VariableAssign { identifier: id.clone(), expression })))
 			}
 		}
 
