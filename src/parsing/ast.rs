@@ -88,14 +88,7 @@ impl AST {
 			}
 
 			AST::Argument(arg) => {
-				let mut sexpr = String::with_capacity(16);
-				
-				sexpr.push('(');
-				sexpr.push_str(&format!("{}: ", arg.label.lexeme));
-				sexpr.push_str(&arg.expr.ast.to_sexpr());
-				sexpr.push(')');
-
-				sexpr
+				arg.expr.ast.to_sexpr()
 			}
 
 			AST::FunctionDefinition(def) => {
