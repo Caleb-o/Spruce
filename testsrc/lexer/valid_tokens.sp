@@ -1,8 +1,6 @@
 + - * / () {} []
-: . , = == ! !=
+; : . , = == ! !=
 > >= < <=
-
-:: -> ..
 
 hello _foo bar_baz_
 foo2_
@@ -16,4 +14,7 @@ strings
 
 100 2.3567
 true false
-let
+fn return
+struct
+var let
+is

@@ -1,16 +1,18 @@
-use std::env;
+mod token;
+mod lexer;
+mod environment;
+mod instructions;
+mod object;
+mod compiler;
+mod vm;
 
-mod errors;
+use std::env;
 
 fn main() {
     let args = env::args().collect::<Vec<_>>();
 
-    if args.len() < 2 || args.len() > 2 {
-        println!("Usage: spruce [script]");
+    if args.len() != 2 {
+        println!("Usage: spruce script");
         return;
-    }
-
-    if let Err(e) = spruce::run(args[1].clone()) {
-        println!("{}", e);
     }
 }
