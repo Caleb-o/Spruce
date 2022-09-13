@@ -33,7 +33,7 @@ pub enum Function {
 		empty: bool,
 	},
 	Native {
-		identifier: String,
+		identifier: &'static str,
 		param_count: ParamKind,
 		function: NativeFunction,
 		has_return: bool,
@@ -125,7 +125,7 @@ impl Compiler {
 		function: NativeFunction,
 	) {
 		let function = Function::Native { 
-			identifier: identifier.to_string(),
+			identifier,
 			param_count,
 			function,
 			has_return,
@@ -341,7 +341,7 @@ impl Compiler {
 					}
 				}
 				Function::Native { identifier, .. } => {
-					if id == identifier.as_str() {
+					if id == *identifier {
 						return Some(func);
 					}
 				}
@@ -481,7 +481,7 @@ impl Compiler {
 						Function::Native { identifier, param_count, .. } => {
 							if let ParamKind::Count(c) = param_count {
 								if *c as usize != arg_count {
-									fnerr = Some((identifier.clone(), *c));
+									fnerr = Some((identifier.to_string(), *c));
 								}
 
 								env.add_op(Instruction::CallNative(

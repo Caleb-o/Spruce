@@ -56,7 +56,7 @@ impl Environment {
 		for (index, constant) in self.constants.iter().enumerate() {
 			if let ConstantValue::Func(ref func) = constant {
 				if let Function::Native { identifier, .. } = func {
-					if id == identifier.as_str() {
+					if id == *identifier {
 						return index as u8;
 					}
 				}
