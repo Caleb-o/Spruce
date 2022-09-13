@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use crate::{environment::{Environment, ConstantValue}, object::Object, instructions::Instruction, compiler::Function};
+use crate::{environment::{Environment, ConstantValue}, object::Object, instructions::{Instruction, ParamKind}, compiler::Function};
 
 struct CallFrame {
 	return_to: usize,
@@ -216,7 +216,7 @@ impl VM {
 				}
 				
 				Instruction::Call(loc, args) => {
-					self.check_function_args_count(args as usize)?;
+					self.check_function_args_count(ParamKind::Count(args))?;
 
 					self.frames.push(CallFrame { 
 						return_to: self.ip,
@@ -228,7 +228,7 @@ impl VM {
 				},
 
 				Instruction::CallNative(loc, args) => {
-					self.check_function_args_count(args as usize)?;
+					self.check_function_args_count(args)?;
 
 					let func = self.env.constants[loc as usize].clone();
 					match func {
@@ -244,7 +244,7 @@ impl VM {
 					}
 				},
 
-				Instruction::Return => {
+				Instruction::Return(_) => {
 					let frame = self.frames.pop().unwrap();
 					self.ip = frame.return_to;
 				},
@@ -265,15 +265,21 @@ impl VM {
 		Ok(())
 	}
 
-	fn check_function_args_count(&self, args: usize) -> Result<(), RuntimeErr> {
-		if args > self.stack.len() - self.frames.last().unwrap().stack_start {
-			return Err(RuntimeErr(format!(
-				"Native Function requires {} arguments, but the stack only contains {}",
-				args,
-				self.stack.len(),
-			)));
+	fn check_function_args_count(&self, args: ParamKind) -> Result<(), RuntimeErr> {
+		match args {
+			ParamKind::Count(c) => {
+				if c as usize > self.stack.len() - self.frames.last().unwrap().stack_start {
+					return Err(RuntimeErr(format!(
+						"Native Function requires {} arguments, but the stack only contains {}",
+						args,
+						self.stack.len(),
+					)));
+				}
+			}
+			// We don't check for args on any
+			_ => {}
 		}
-
+		
 		Ok(())
 	}
 

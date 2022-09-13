@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use crate::{instructions::Instruction, object::Object, compiler::Function};
+use crate::{instructions::{Instruction, ParamKind}, object::Object, compiler::Function};
 
 
 #[derive(Clone)]
@@ -13,7 +13,16 @@ impl Display for ConstantValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", match self {
 			ConstantValue::Obj(o) => o.to_string(),
-			_ => "<Function>".into(),
+			ConstantValue::Func(ref func) => {
+				if let Function::Native { identifier, param_count, .. } = func {
+					format!("<Function {identifier}({})>", match param_count {
+						ParamKind::Any => "any".into(),
+						ParamKind::Count(c) => c.to_string(),
+					})
+				} else {
+					"<Function>".into()
+				}
+			},
 		})
     }
 }
@@ -86,6 +95,12 @@ impl Environment {
 
 	// Print out the environment
 	pub fn dump(&self) {
+		println!("=== {} Constants ===", self.constants.len());
+		for (index, constant) in self.constants.iter().enumerate() {
+			println!("{:0>3}  {}", index, constant);
+		}
+		println!();
+
 		println!("=== {} Instructions ===", self.code.len());
 		println!("Entry location: {}\n", self.entry);
 
@@ -122,7 +137,7 @@ impl Environment {
 
 				Instruction::Call(loc, args) => println!("Call<{loc}, {args}>"),
 				Instruction::CallNative(_, args) => println!("NativeCall<{args}>"),
-				Instruction::Return => println!("Return"),
+				Instruction::Return(count) => println!("Return<{count}>"),
 				Instruction::Halt => println!("Halt"),
 
 				Instruction::NoOp => println!("NoOp"),

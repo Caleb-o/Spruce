@@ -1,6 +1,6 @@
 use std::{io::Error, fmt::Display, rc::Rc, fs};
 
-use crate::{lexer::Lexer, token::{Span, Token, TokenKind}, environment::{Environment, ConstantValue}, object::Object, instructions::Instruction, vm::{VM, RuntimeErr}};
+use crate::{lexer::Lexer, token::{Span, Token, TokenKind}, environment::{Environment, ConstantValue}, object::Object, instructions::{Instruction, ParamKind}, vm::{VM, RuntimeErr}};
 
 #[derive(Debug, Clone, Copy)]
 struct Local {
@@ -10,6 +10,8 @@ struct Local {
 	// Cannot shadow/overwrite parameters
 	is_param: bool,
 }
+
+type NativeFunction = Rc<dyn Fn(&mut VM) -> Result<(), RuntimeErr>>;
 
 #[derive(Debug, Clone)]
 struct LookAhead {
@@ -30,8 +32,8 @@ pub enum Function {
 	},
 	Native {
 		identifier: String,
-		param_count: u8,
-		function: Rc<dyn Fn(&mut VM) -> Result<(), RuntimeErr>>,
+		param_count: ParamKind,
+		function: NativeFunction,
 	},
 }
 
@@ -115,8 +117,8 @@ impl Compiler {
 		&mut self,
 		env: &mut Box<Environment>,
 		identifier: &'static str,
-		param_count: u8,
-		function: Rc<dyn Fn(&mut VM) -> Result<(), RuntimeErr>>,
+		param_count: ParamKind,
+		function: NativeFunction,
 	) {
 		let function = Function::Native { 
 			identifier: identifier.to_string(),
@@ -131,21 +133,21 @@ impl Compiler {
 	}
 
 	fn register_native_functions(&mut self, env: &mut Box<Environment>) {
-		self.add_fn(env, "print", 1, Rc::new(|vm| {
+		self.add_fn(env, "print", ParamKind::Any, Rc::new(|vm| {
 			let obj = vm.drop()?;
 			print!("{obj}");
 
 			Ok(())
 		}));
 
-		self.add_fn(env, "println", 1, Rc::new(|vm| {
+		self.add_fn(env, "println", ParamKind::Any, Rc::new(|vm| {
 			let obj = vm.drop()?;
 			println!("{obj}");
 
 			Ok(())
 		}));
 
-		self.add_fn(env, "read_file", 1, Rc::new(|vm| {
+		self.add_fn(env, "read_file", ParamKind::Count(1), Rc::new(|vm| {
 			let file_name = vm.drop()?;
 			
 			if !matches!(file_name, Object::String(_)) {
@@ -168,7 +170,7 @@ impl Compiler {
 			Ok(())
 		}));
 
-		self.add_fn(env, "strlen", 1, Rc::new(|vm| {
+		self.add_fn(env, "strlen", ParamKind::Count(1), Rc::new(|vm| {
 			let string = vm.peek();
 			
 			if !matches!(string, Object::String(_)) {
@@ -177,105 +179,9 @@ impl Compiler {
 				return Ok(());
 			}
 
-			vm.push(Object::Int(match string { Object::String(s) => s, _ => unreachable!() }.len() as i32));
-			Ok(())
-		}));
-
-		self.add_fn(env, "make_array", 1, Rc::new(|vm| {
-			let integer = vm.drop()?;
-			
-			if !matches!(integer, Object::Int(_)) {
-				vm.warning(format!("make_array expected an integer but received {}", integer));
-				vm.push(Object::None);
-				return Ok(());
+			if let Object::String(s) = string {
+				vm.push(Object::Int(s.len() as i32));
 			}
-
-			let capacity = match integer { Object::Int(v) => v, _ => unreachable!() } as usize;
-			let mut arr = Vec::with_capacity(capacity);
-
-			for _ in 0..capacity {
-				arr.push(Box::new(vm.drop()?));
-			}
-
-			vm.push(Object::Array(arr));
-			Ok(())
-		}));
-
-		self.add_fn(env, "new_array", 1, Rc::new(|vm| {
-			let integer = vm.drop()?;
-			
-			if !matches!(integer, Object::Int(_)) {
-				vm.warning(format!("new_array expected an integer but received {}", integer));
-				vm.push(Object::None);
-				return Ok(());
-			}
-
-			let capacity = match integer { Object::Int(v) => v, _ => unreachable!() } as usize;
-			vm.push(Object::Array(Vec::with_capacity(capacity)));
-			Ok(())
-		}));
-
-		self.add_fn(env, "array_get", 2, Rc::new(|vm| {
-			let index = vm.drop()?;
-			let array = vm.peek();
-			
-			if !matches!(index, Object::Int(_)) || !matches!(array, Object::Array(_)) {
-				vm.warning(format!(
-					"new_array expected an integer and array but received {} and {}",
-					index, array,
-				));
-				vm.push(Object::None);
-				return Ok(());
-			}
-
-			let index = match index { Object::Int(v) => v, _ => unreachable!() } as usize;
-			let array = match array { Object::Array(ref v) => v, _ => unreachable!() };
-
-			if index > array.len() {
-				vm.push(Object::Int(0));
-				return Ok(());
-			}
-
-			vm.push(*array[index].clone());
-			Ok(())
-		}));
-
-		self.add_fn(env, "array_set", 3, Rc::new(|vm| {
-			let item = vm.drop()?;
-			let index = vm.drop()?;
-			let array = vm.peek_mut();
-
-			if let Object::Int(index) = index {
-				if let Object::Array(ref mut array) = array {
-					if index as usize > array.len() {
-						return Ok(());
-					}
-		
-					array[index as usize] = Box::new(item);
-				}
-			}
-
-			Ok(())
-		}));
-
-		self.add_fn(env, "array_push", 2, Rc::new(|vm| {
-			let item = vm.drop()?;
-			let array = vm.peek_mut();
-
-			if let Object::Array(ref mut array) = array {
-				array.push(Box::new(item));
-			}
-
-			Ok(())
-		}));
-
-		self.add_fn(env, "array_len", 1, Rc::new(|vm| {
-			if let Object::Array(array) = vm.peek() {
-				vm.push(Object::Int(array.len() as i32));
-			} else {
-				vm.push(Object::Int(0));
-			}
-
 			Ok(())
 		}));
 	}
@@ -382,7 +288,7 @@ impl Compiler {
 		None
 	}
 
-	fn register_local(&mut self, span: Span, overwrite: bool) -> Option<usize> {
+	fn register_local(&mut self, span: Span, is_param: bool, overwrite: bool) -> Option<usize> {
 		let local = self.find_local(span);
 
 		match local {
@@ -403,6 +309,7 @@ impl Compiler {
 				self.locals.push(Local {
 					identifier: span,
 					position: self.locals.len(),
+					is_param,
 				});
 				Some(self.locals.len() - 1)
 			}
@@ -434,7 +341,7 @@ impl Compiler {
 				break;
 			}
 
-			let slot = self.register_local(*param, true).unwrap();
+			let slot = self.register_local(*param, true, true).unwrap();
 			env.add_op(Instruction::SetLocal(slot as u8));
 		}
 
@@ -462,48 +369,48 @@ impl Compiler {
 		}
 	}
 
-	fn function_call(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
-		self.consume_any();
+	// fn function_call(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
+	// 	self.consume_any();
 
-		let identifier = self.current;
-		self.consume(TokenKind::Identifier, "Expected identifier after '$'")?;
+	// 	let identifier = self.current;
+	// 	self.consume(TokenKind::Identifier, "Expected identifier after '$'")?;
 
-		let id = identifier.span.slice_from(&self.lexer.source);
+	// 	let id = identifier.span.slice_from(&self.lexer.source);
 
-		match self.find_function(identifier.span) {
-			Some(func) => {
-				if !func.is_empty() {
-					// Only generate the call if the function is not empty
-					match func {
-						Function::User { identifier: _, position, parameters, empty: _ } => {
-							env.add_op(Instruction::Call(*position, parameters.len() as u8));
-						}
-						Function::Native { identifier: _, param_count, function: _ } => {
-							env.add_op(Instruction::CallNative(
-								env.find_constant_func_loc(id),
-								*param_count,
-							));
-						}
-					}
-				}
-			}
+	// 	match self.find_function(identifier.span) {
+	// 		Some(func) => {
+	// 			if !func.is_empty() {
+	// 				// Only generate the call if the function is not empty
+	// 				match func {
+	// 					Function::User { identifier: _, position, parameters, empty: _ } => {
+	// 						env.add_op(Instruction::Call(*position, parameters.len() as u8));
+	// 					}
+	// 					Function::Native { identifier: _, param_count, function: _ } => {
+	// 						env.add_op(Instruction::CallNative(
+	// 							env.find_constant_func_loc(id),
+	// 							*param_count,
+	// 						));
+	// 					}
+	// 				}
+	// 			}
+	// 		}
 
-			None => {
-				// Push the call to a stack of unresolved calls
-				// They will be filled in at the end, if they exist
-				env.add_op(Instruction::Call(0, 0));
+	// 		None => {
+	// 			// Push the call to a stack of unresolved calls
+	// 			// They will be filled in at the end, if they exist
+	// 			env.add_op(Instruction::Call(0, 0));
 
-				let string = identifier.span.slice_from(&self.lexer.source).to_string();
-				self.unresolved.push(LookAhead {
-					span: identifier.span,
-					identifier: string,
-					position: env.op_here() - 1,
-				});
-			}
-		}
+	// 			let string = identifier.span.slice_from(&self.lexer.source).to_string();
+	// 			self.unresolved.push(LookAhead {
+	// 				span: identifier.span,
+	// 				identifier: string,
+	// 				position: env.op_here() - 1,
+	// 			});
+	// 		}
+	// 	}
 		
-		Ok(())
-	}
+	// 	Ok(())
+	// }
 
 	fn if_block(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
 		self.consume_any();
@@ -516,66 +423,16 @@ impl Compiler {
 			self.consume_any();
 			env.patch_jump_op(before_block);
 
-			if self.current.kind == TokenKind::LCurly {
-				self.body(env)?;
-			} else {
-				// Compile instructions prior to if
-				while self.current.kind != TokenKind::EndOfFile || self.current.kind != TokenKind::If {
-					self.instruction(env)?;
-				}
-
+			if self.current.kind == TokenKind::If {
 				self.if_block(env)?;
+			} else {
+				self.body(env)?;
 			}
 		} else {
 			env.patch_jump_op(before_block);
 		}
 		
 		env.patch_jump_op(true_block);
-		Ok(())
-	}
-
-	fn bind_identifiers(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
-		self.consume_any();
-
-		self.consume(TokenKind::Pipe, "Expect '|' after bind")?;
-
-		let mut identifiers = Vec::new();
-
-		if self.current.kind != TokenKind::Pipe {
-			identifiers.push(self.current);
-			self.consume(TokenKind::Identifier, "Expect identifier in bind list")?;
-
-			while self.current.kind == TokenKind::Comma {
-				self.consume_any();
-
-				identifiers.push(self.current);
-				self.consume(TokenKind::Identifier, "Expect identifier in bind list")?;
-			}
-		}
-
-		self.consume(TokenKind::Pipe, "Expect '|' after ")?;
-
-		for identifier in identifiers {
-			if let Some(slot) = self.register_local(identifier.span, false) {
-				env.add_op(Instruction::SetLocal(slot as u8));
-			}
-		}
-
-		Ok(())
-	}
-
-	fn loop_block(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
-		self.consume_any();
-
-		let pre_condition = env.add_jump_op(Instruction::Jump(0));
-		let start = env.op_here();
-		let condition = env.add_jump_op(Instruction::JumpNot(0));
-
-		env.patch_jump_op(pre_condition);
-		self.body(env)?;
-		env.add_jump_op(Instruction::Jump(start));
-		env.patch_jump_op(condition);
-
 		Ok(())
 	}
 
@@ -594,7 +451,7 @@ impl Compiler {
 		self.consume_any();
 	}
 
-	fn instruction(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
+	fn primary(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
 		match self.current.kind {
 			TokenKind::Int => {
 				let span = self.current.span;
@@ -634,75 +491,10 @@ impl Compiler {
 				Ok(())
 			}
 
-			TokenKind::Dollar => self.function_call(env),
-			TokenKind::If => self.if_block(env),
-			TokenKind::Bind => self.bind_identifiers(env),
-			TokenKind::Loop => self.loop_block(env),
-
 			TokenKind::Identifier => { 
 				self.identifier(env);
 				Ok(())
 			},
-
-			TokenKind::Drop => {
-				self.consume_any();
-				Ok(env.add_op(Instruction::Drop))
-			}
-
-			TokenKind::Dup => {
-				self.consume_any();
-				Ok(env.add_op(Instruction::Dup))
-			}
-
-			TokenKind::Swap => {
-				self.consume_any();
-				Ok(env.add_op(Instruction::Swap))
-			}
-
-			TokenKind::Equal => {
-				self.consume_any();
-				Ok(env.add_op(Instruction::Equal))
-			}
-
-			TokenKind::GreaterEqual => {
-				self.consume_any();
-				Ok(env.add_op(Instruction::GreaterEqual))
-			}
-
-			TokenKind::LessEqual => {
-				self.consume_any();
-				Ok(env.add_op(Instruction::LessEqual))
-			}
-
-			TokenKind::Plus => {
-				self.consume_any();
-				Ok(env.add_op(Instruction::Add))
-			}
-			
-			TokenKind::Minus => {
-				self.consume_any();
-				Ok(env.add_op(Instruction::Sub))
-			}
-
-			TokenKind::Star => {
-				self.consume_any();
-				Ok(env.add_op(Instruction::Mul))
-			}
-
-			TokenKind::Slash => {
-				self.consume_any();
-				Ok(env.add_op(Instruction::Div))
-			}
-
-			TokenKind::Greater => {
-				self.consume_any();
-				Ok(env.add_op(Instruction::Greater))
-			}
-
-			TokenKind::Less => {
-				self.consume_any();
-				Ok(env.add_op(Instruction::Less))
-			}
 
 			_ => Err(self.error(format!(
 				"Unexpected instruction found {:?} '{}'",
@@ -712,11 +504,155 @@ impl Compiler {
 		}
 	}
 
+	fn call(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
+		self.primary(env)
+	}
+
+	fn unary(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
+		self.call(env)
+	}
+
+	fn factor(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
+		self.unary(env)?;
+		
+		loop {
+			match self.current.kind {
+				TokenKind::Star => {
+					self.consume_any();
+					self.unary(env)?;
+					env.add_op(Instruction::Mul);
+				}
+	
+				TokenKind::Slash => {
+					self.consume_any();
+					self.unary(env)?;
+					env.add_op(Instruction::Div);
+				}
+	
+				_ => break,
+			}
+		}
+
+		Ok(())
+	}
+
+	fn term(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
+		self.factor(env)?;
+		
+		loop {
+			match self.current.kind {
+				TokenKind::Plus => {
+					self.consume_any();
+					self.factor(env)?;
+					env.add_op(Instruction::Add);
+				}
+				
+				TokenKind::Minus => {
+					self.consume_any();
+					self.factor(env)?;
+					env.add_op(Instruction::Sub);
+				}
+	
+				_ => break,
+			}
+		}
+
+		Ok(())
+	}
+
+	fn comparison(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
+		self.term(env)?;
+		
+		loop {
+			match self.current.kind {
+				TokenKind::Greater => {
+					self.consume_any();
+					self.term(env)?;
+					env.add_op(Instruction::Greater);
+				}
+	
+				TokenKind::Less => {
+					self.consume_any();
+					self.term(env)?;
+					env.add_op(Instruction::Less);
+				}
+	
+				TokenKind::GreaterEqual => {
+					self.consume_any();
+					self.term(env)?;
+					env.add_op(Instruction::GreaterEqual);
+				}
+	
+				TokenKind::LessEqual => {
+					self.consume_any();
+					self.term(env)?;
+					env.add_op(Instruction::LessEqual);
+				}
+	
+				_ => break,
+			}
+		}
+
+		Ok(())
+	}
+
+	fn equality(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
+		self.comparison(env)?;
+
+		loop {
+			match self.current.kind {
+				TokenKind::Equal => {
+					self.consume_any();
+					self.comparison(env)?;
+					env.add_op(Instruction::Equal);
+				}
+	
+				TokenKind::NotEqual => {
+					self.consume_any();
+					self.comparison(env)?;
+					env.add_op(Instruction::Equal);
+				}
+	
+				_ => break,
+			}
+		}
+
+		Ok(())
+	}
+
+	fn assignment(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
+		self.equality(env)?;
+
+		loop {
+			match self.current.kind {
+				TokenKind::Equal => todo!("Var assignment"),
+				_ => break,
+			}
+		}
+
+		Ok(())
+	}
+
+	fn expression(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
+		self.assignment(env)
+	}
+
+	fn statement(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
+		match self.current.kind {
+			TokenKind::If => self.if_block(env)?,
+			// Default as expression statement
+			// TODO: Check that this is only assignment or function call
+			_ => self.expression(env)?,
+		}
+		
+		self.consume(TokenKind::SemiColon, "Expect ';' after statement")
+	}
+
 	fn body(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
 		self.consume(TokenKind::LCurly, "Expect '{' to start block body")?;
 
 		while self.current.kind != TokenKind::RCurly {
-			self.instruction(env)?;
+			self.statement(env)?;
 		}
 
 		self.consume(TokenKind::RCurly, "Expect '}' to end block body")?;
@@ -733,9 +669,11 @@ impl Compiler {
 		let mut parameters = Vec::new();
 		let mut has_underscore = false;
 
+		self.consume(TokenKind::LParen, "Expect '(' at the start of parameter list")?;
+
 		// Consume paarameter list
 		// TODO: Underscore to add unnamed parameter
-		if self.current.kind != TokenKind::Colon {
+		if self.current.kind != TokenKind::RParen {
 			let param = self.current.span;
 			self.consume(TokenKind::Identifier, "Expected identifier in parameter list")?;
 			parameters.push(param);
@@ -766,7 +704,7 @@ impl Compiler {
 			}
 		}
 
-		self.consume(TokenKind::Colon, "Expect ':' after function identifier or parameter list")?;
+		self.consume(TokenKind::RParen, "Expect ')' after function parameter list")?;
 
 		self.register_function(identifier, parameters, env)?;
 		let is_main = identifier.compare_str("main", &self.lexer.source);
@@ -780,7 +718,7 @@ impl Compiler {
 			if is_main {
 				env.add_op(Instruction::Halt);
 			} else {
-				env.add_op(Instruction::Return);
+				env.add_op(Instruction::Return(0));
 			}
 		} else {
 			self.mark_function_empty(identifier);

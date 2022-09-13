@@ -6,7 +6,7 @@ pub enum Object {
 	Int(i32),
 	String(String),
 	Boolean(bool),
-	Array(Vec<Box<Object>>),
+	List(Vec<Box<Object>>),
 	// Bytecode location, Parameter Count
 	Function(usize, u8),
 	// TODO: "Pointer" type, which holds its location in the stack
@@ -21,13 +21,13 @@ impl Display for Object {
 			Object::Int(v) => v.to_string(),
 			Object::Boolean(v) => v.to_string(),
 			Object::String(v) => v.clone(),
-			Object::Array(ref arr) => {
+			Object::List(ref list) => {
 				let mut string = String::from("[");
 				
-				for i in 0..arr.len() {
-					string.push_str(&format!("{}", arr[i]));
+				for i in 0..list.len() {
+					string.push_str(&format!("{}", list[i]));
 
-					if i < arr.len() - 1 {
+					if i < list.len() - 1 {
 						string.push_str(", ");
 					}
 				}

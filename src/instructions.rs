@@ -1,3 +1,20 @@
+use std::fmt::Display;
+
+#[derive(Debug, Clone, Copy)]
+pub enum ParamKind {
+	Any,
+	Count(u8),
+}
+
+impl Display for ParamKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", match *self {
+			ParamKind::Any => "any".into(),
+			ParamKind::Count(c) => format!("{c}"),
+		})
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 #[repr(u8)]
 pub enum Instruction {
@@ -25,9 +42,10 @@ pub enum Instruction {
 	// Bytecode Location, ArgCount
 	Call(usize, u8),
 	// Native index, ArgCount
-	CallNative(u8, u8),
+	CallNative(u8, ParamKind),
 
-	Return,
+	// Return ValueCount
+	Return(u8),
 	Halt,
 
 	NoOp,
