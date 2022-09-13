@@ -592,6 +592,8 @@ impl Compiler {
 				Ok(())
 			}
 
+			TokenKind::LSquare => self.list_literal(env),
+
 			TokenKind::Identifier => {
 				match self.lexer.peek_type() {
 					TokenKind::LParen => self.function_call(env)?,
@@ -724,6 +726,30 @@ impl Compiler {
 
 	fn expression(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
 		self.equality(env)
+	}
+
+	fn list_literal(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
+		self.consume_here();
+
+		let mut count = 0;
+
+		if self.current.kind != TokenKind::RSquare {
+			self.expression(env)?;
+			count += 1;
+
+			while self.current.kind == TokenKind::Comma {
+				self.consume_here();
+
+				self.expression(env)?;
+				count += 1;
+			}
+		}
+
+		self.consume(TokenKind::RSquare, "Expect ']' after list literal arguments")?;
+
+		env.add_op(Instruction::BuildList(count));
+
+		Ok(())
 	}
 
 	fn var_declaration(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {

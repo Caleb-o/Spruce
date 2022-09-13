@@ -30,6 +30,9 @@ pub enum Instruction {
 	GetGlobal(u8),
 	SetGlobal(u8),
 
+	// BuildList Size
+	BuildList(u8),
+
 	Jump(usize),
 	JumpNot(usize),
 

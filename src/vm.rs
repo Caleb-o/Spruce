@@ -103,6 +103,17 @@ impl VM {
 					self.stack.push(Object::Int(match last { Object::Int(v) => -v, _ => unreachable!()}));
 				},
 
+				Instruction::BuildList(count) => {
+					let mut list = Vec::with_capacity(count as usize);
+
+					for _ in 0..count {
+						list.push(Box::new(self.drop()?));
+					}
+					list.reverse();
+
+					self.push(Object::List(list));
+				}
+
 				Instruction::Greater => {
 					let (lhs, rhs) = self.pop_2_check()?;
 
