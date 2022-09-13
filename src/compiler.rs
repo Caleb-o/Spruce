@@ -9,6 +9,7 @@ struct Local {
 	position: usize,
 	// Cannot shadow/overwrite parameters
 	is_param: bool,
+	mutable: bool,
 }
 
 type NativeFunction = Rc<dyn Fn(&mut VM, usize) -> Result<(), RuntimeErr>>;
@@ -274,7 +275,7 @@ impl Compiler {
 		Err(self.error(String::from(msg)))
 	}
 
-	fn consume_any(&mut self) {
+	fn consume_here(&mut self) {
 		self.current = self.lexer.next();
 	}
 
@@ -311,15 +312,11 @@ impl Compiler {
 		None
 	}
 
-	fn register_local(&mut self, span: Span, is_param: bool, overwrite: bool) -> Option<usize> {
+	fn register_local(&mut self, span: Span, is_param: bool, mutable: bool) -> Option<usize> {
 		let local = self.find_local(span);
 
 		match local {
 			Some(local) => {
-				if !overwrite {
-					return Some(local.position);
-				}
-
 				// We aren't allowed to overwrite, it is an error
 				self.error_no_exit(format!(
 					"Local with identifier '{}' already exists in scope",
@@ -333,6 +330,7 @@ impl Compiler {
 					identifier: span,
 					position: self.locals.len(),
 					is_param,
+					mutable,
 				});
 				Some(self.locals.len() - 1)
 			}
@@ -364,7 +362,7 @@ impl Compiler {
 				break;
 			}
 
-			let slot = self.register_local(*param, true, true).unwrap();
+			let slot = self.register_local(*param, true, false).unwrap();
 			env.add_op(Instruction::SetLocal(slot as u8));
 		}
 
@@ -482,19 +480,21 @@ impl Compiler {
 		Ok(())
 	}
 
-	fn if_block(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
-		self.consume_any();
+	fn if_statement(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
+		self.consume_here();
+
+		self.expression(env)?;
 
 		let before_block = env.add_jump_op(Instruction::JumpNot(0));
 		self.body(env)?;
 		let true_block = env.add_jump_op(Instruction::Jump(0));
 
 		if self.current.kind == TokenKind::Else {
-			self.consume_any();
+			self.consume_here();
 			env.patch_jump_op(before_block);
 
 			if self.current.kind == TokenKind::If {
-				self.if_block(env)?;
+				self.if_statement(env)?;
 			} else {
 				self.body(env)?;
 			}
@@ -518,7 +518,7 @@ impl Compiler {
 			)),
 		}
 
-		self.consume_any();
+		self.consume_here();
 	}
 
 	fn primary(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
@@ -531,7 +531,7 @@ impl Compiler {
 						.unwrap()
 				));
 				env.add_op(Instruction::Push(index));
-				self.consume_any();
+				self.consume_here();
 				Ok(())
 			}
 			
@@ -543,19 +543,19 @@ impl Compiler {
 					)
 				));
 				env.add_op(Instruction::Push(index));
-				self.consume_any();
+				self.consume_here();
 				Ok(())
 			}
 
 			TokenKind::True => {
-				self.consume_any();
+				self.consume_here();
 				let index = env.add_constant(Object::Boolean(true));
 				env.add_op(Instruction::Push(index));
 				Ok(())
 			}
 
 			TokenKind::False => {
-				self.consume_any();
+				self.consume_here();
 				let index = env.add_constant(Object::Boolean(false));
 				env.add_op(Instruction::Push(index));
 				Ok(())
@@ -589,13 +589,13 @@ impl Compiler {
 		loop {
 			match self.current.kind {
 				TokenKind::Star => {
-					self.consume_any();
+					self.consume_here();
 					self.unary(env)?;
 					env.add_op(Instruction::Mul);
 				}
 	
 				TokenKind::Slash => {
-					self.consume_any();
+					self.consume_here();
 					self.unary(env)?;
 					env.add_op(Instruction::Div);
 				}
@@ -613,13 +613,13 @@ impl Compiler {
 		loop {
 			match self.current.kind {
 				TokenKind::Plus => {
-					self.consume_any();
+					self.consume_here();
 					self.factor(env)?;
 					env.add_op(Instruction::Add);
 				}
 				
 				TokenKind::Minus => {
-					self.consume_any();
+					self.consume_here();
 					self.factor(env)?;
 					env.add_op(Instruction::Sub);
 				}
@@ -637,25 +637,25 @@ impl Compiler {
 		loop {
 			match self.current.kind {
 				TokenKind::Greater => {
-					self.consume_any();
+					self.consume_here();
 					self.term(env)?;
 					env.add_op(Instruction::Greater);
 				}
 	
 				TokenKind::Less => {
-					self.consume_any();
+					self.consume_here();
 					self.term(env)?;
 					env.add_op(Instruction::Less);
 				}
 	
 				TokenKind::GreaterEqual => {
-					self.consume_any();
+					self.consume_here();
 					self.term(env)?;
 					env.add_op(Instruction::GreaterEqual);
 				}
 	
 				TokenKind::LessEqual => {
-					self.consume_any();
+					self.consume_here();
 					self.term(env)?;
 					env.add_op(Instruction::LessEqual);
 				}
@@ -673,13 +673,13 @@ impl Compiler {
 		loop {
 			match self.current.kind {
 				TokenKind::Equal => {
-					self.consume_any();
+					self.consume_here();
 					self.comparison(env)?;
 					env.add_op(Instruction::Equal);
 				}
 	
 				TokenKind::NotEqual => {
-					self.consume_any();
+					self.consume_here();
 					self.comparison(env)?;
 					env.add_op(Instruction::Equal);
 				}
@@ -696,7 +696,9 @@ impl Compiler {
 
 		loop {
 			match self.current.kind {
-				TokenKind::Equal => todo!("Var assignment"),
+				TokenKind::Equal => {
+					todo!("Var assignment");
+				},
 				_ => break,
 			}
 		}
@@ -708,12 +710,39 @@ impl Compiler {
 		self.assignment(env)
 	}
 
+	fn var_declaration(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
+		let mutable = self.current.kind == TokenKind::Var;
+		self.consume_here();
+
+		let identifier = self.current;
+		self.consume(TokenKind::Identifier, "Expected identifier after 'var'/'let'")?;
+
+		_ = self.register_local(identifier.span, false, mutable);
+
+		// Produce the expression
+		if self.current.kind == TokenKind::Equal {
+			self.consume_here();
+			self.expression(env)?;
+		}
+
+		Ok(())
+	}
+
 	fn statement(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
 		match self.current.kind {
-			TokenKind::If => self.if_block(env)?,
+			TokenKind::If => {
+				self.if_statement(env)?;
+				return Ok(());
+			},
 			// Default as expression statement
 			// TODO: Check that this is only assignment or function call
-			_ => self.expression(env)?,
+			TokenKind::Var | TokenKind::Let => self.var_declaration(env)?,
+			_ => {
+				// Since expressions yield a value, it makes no sense to keep them
+				// on the stack, but we still want their effect (like a function call)
+				self.expression(env)?;
+				env.add_op(Instruction::Pop);
+			},
 		}
 		
 		self.consume(TokenKind::SemiColon, "Expect ';' after statement")
@@ -732,7 +761,7 @@ impl Compiler {
 	}
 
 	fn function(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
-		self.consume_any();
+		self.consume_here();
 
 		let identifier = self.current.span;
 		self.consume(TokenKind::Identifier, "Expected identifier after 'func'")?;
@@ -754,7 +783,7 @@ impl Compiler {
 			}
 
 			while self.current.kind == TokenKind::Comma {
-				self.consume_any();
+				self.consume_here();
 
 				let param = self.current.span;
 				self.consume(TokenKind::Identifier, "Expected identifier in parameter list after comma")?;

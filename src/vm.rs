@@ -13,7 +13,6 @@ pub struct VM {
 	ip: usize,
 	len: usize,
 	stack: Vec<Object>,
-	bindings: Vec<Object>,
 	frames: Vec<CallFrame>,
 }
 
@@ -36,7 +35,6 @@ impl VM {
 			ip: entry,
 			len,
 			stack: Vec::new(),
-			bindings: Vec::new(),
 			frames: Vec::new(),
 		}
 	}
@@ -207,14 +205,11 @@ impl VM {
 				}
 
 				Instruction::GetLocal(slot) => {
-					self.stack.push(self.bindings[slot as usize].clone());
+					self.stack.push(self.stack[slot as usize].clone());
 				}
 
 				Instruction::SetLocal(slot) => {
-					while self.bindings.len() <= slot as usize {
-						self.bindings.push(Object::None);
-					}
-					self.bindings[slot as usize] = self.stack.pop().unwrap();
+					self.stack[slot as usize] = self.peek().clone();
 				}
 
 				Instruction::Jump(loc) => {
@@ -266,9 +261,16 @@ impl VM {
 						},
 						_ => {}
 					}
+
+					self.push(Object::None);
 				},
 
-				Instruction::Return(_) => {
+				Instruction::Return(count) => {
+					// None value is pushed by default
+					if count == 0 {
+						self.push(Object::None);
+					}
+
 					let frame = self.frames.pop().unwrap();
 					self.ip = frame.return_to;
 				},
