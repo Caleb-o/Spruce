@@ -60,6 +60,10 @@ impl VM {
 		self.stack.last().unwrap()
 	}
 
+	pub fn peek_mut(&mut self) -> &mut Object {
+		self.stack.last_mut().unwrap()
+	}
+
 	pub fn push(&mut self, object: Object) {
 		self.stack.push(object);
 	}

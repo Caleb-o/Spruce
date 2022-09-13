@@ -169,40 +169,73 @@ impl Compiler {
 		}));
 
 		self.add_fn(env, "read_file", ParamKind::Count(1), true, Rc::new(|vm, _args| {
-			let file_name = vm.drop()?;
-			
-			if !matches!(file_name, Object::String(_)) {
-				vm.warning(format!("read_file expected a string but received {}", file_name));
+			if let Object::String(s) = vm.drop()? {
+				match fs::read_to_string(s) {
+					Ok(content) => {
+						vm.push(Object::String(content));
+						vm.push(Object::Boolean(true));
+					},
+					Err(_) => {
+						vm.push(Object::None);
+						vm.push(Object::Boolean(false));
+					},
+				}
+			} else {
+				vm.warning(format!("read_file expected a string but received {}", vm.peek()));
 				vm.push(Object::None);
-				return Ok(());
-			}
-
-			match fs::read_to_string(match file_name { Object::String(s) => s, _ => unreachable!() }) {
-				Ok(content) => {
-					vm.push(Object::String(content));
-					vm.push(Object::Boolean(true));
-				},
-				Err(_) => {
-					vm.push(Object::None);
-					vm.push(Object::Boolean(false));
-				},
 			}
 
 			Ok(())
 		}));
 
 		self.add_fn(env, "strlen", ParamKind::Count(1), true, Rc::new(|vm, _args| {
-			let string = vm.drop()?;
-			
-			if !matches!(string, Object::String(_)) {
-				vm.warning(format!("strlen expected a string but received {}", string));
+			if let Object::String(s) = vm.drop()? {
+				vm.push(Object::Int(s.len() as i32));
+			} else {
+				vm.warning(format!("strlen expected a string but received {}", vm.peek()));
 				vm.push(Object::None);
-				return Ok(());
 			}
 
-			if let Object::String(s) = string {
-				vm.push(Object::Int(s.len() as i32));
+			Ok(())
+		}));
+
+		self.add_fn(env, "list_push", ParamKind::Count(2), true, Rc::new(|vm, _args| {
+			let item = vm.drop()?;
+
+			if let Object::List(ref list) = vm.drop()? {
+				let mut inner = list.clone();
+				inner.push(Box::new(item));
+				vm.push(Object::List(inner));
+			} else {
+				vm.warning(format!("list_push expected a list but received {}", vm.peek()));
+				vm.push(Object::None);
 			}
+			
+			Ok(())
+		}));
+
+		self.add_fn(env, "list_pop", ParamKind::Count(1), true, Rc::new(|vm, _args| {
+			// FIXME: Use pointer object type for it to effect items
+			if let Object::List(ref list) = vm.drop()? {
+				let mut inner = list.clone();
+				let item = *inner.pop().unwrap();
+				vm.push(item);
+			} else {
+				vm.warning(format!("list_push expected a list but received {}", vm.peek()));
+				vm.push(Object::None);
+			}
+			
+			Ok(())
+		}));
+
+		self.add_fn(env, "list_len", ParamKind::Count(1), true, Rc::new(|vm, _args| {
+			if let Object::List(ref list) = vm.drop()? {
+				vm.push(Object::Int(list.len() as i32));
+			} else {
+				vm.warning(format!("list_push expected a list but received {}", vm.peek()));
+				vm.push(Object::None);
+			}
+			
 			Ok(())
 		}));
 
@@ -588,6 +621,13 @@ impl Compiler {
 			TokenKind::False => {
 				self.consume_here();
 				let index = env.add_constant(Object::Boolean(false));
+				env.add_op(Instruction::Push(index));
+				Ok(())
+			}
+
+			TokenKind::None => {
+				self.consume_here();
+				let index = env.add_constant(Object::None);
 				env.add_op(Instruction::Push(index));
 				Ok(())
 			}
