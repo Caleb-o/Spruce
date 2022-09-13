@@ -17,6 +17,7 @@ type NativeFunction = Rc<dyn Fn(&mut VM, usize) -> Result<(), RuntimeErr>>;
 struct LookAhead {
 	span: Span,
 	identifier: String,
+	args: usize,
 	// Position in bytecode
 	position: usize,
 }
@@ -198,15 +199,22 @@ impl Compiler {
 	}
 
 	fn resolve_function_calls(&mut self, env: &mut Box<Environment>) {
-		let mut unresolved: Vec<String> = Vec::new();
+		let mut unresolved: Vec<(String, usize, usize)> = Vec::new();
 
 		for lookahead in self.unresolved.iter() {
 			match self.find_function(lookahead.span) {
 				Some(ref mut func) => {
 					match func {
-						Function::User { identifier: _, position, parameters, empty } => {
+						Function::User { identifier, position, parameters, empty } => {
 							// Generate the function if it is not empty
 							if !empty {
+								let id = identifier.slice_from(&self.lexer.source).to_string();
+								
+								if parameters.len() != lookahead.args {
+									unresolved.push((id.clone(), parameters.len(), lookahead.args));
+									continue;
+								}
+
 								env.code[lookahead.position] = Instruction::Call(*position, parameters.len()); 
 							} else {
 								// We cannot remove without it breaking, so we replace with a NoOp
@@ -214,22 +222,26 @@ impl Compiler {
 							}
 						}
 
+						// Cannot resolve native calls, since they're part of the compiler
 						_ => {}
 					}
 				}
 
-				None => {
-					unresolved.push(lookahead.identifier.clone());
-				}
+				None => unresolved.push((lookahead.identifier.clone(), 0, lookahead.args)),
 			}
 		}
 
 		// Identifiers that were still not found
-		for identifier in unresolved {
-			self.error_no_exit(format!(
-				"Function '{}' does not exist",
-				identifier,
-			));
+		for (identifier, params, args) in unresolved {
+			if params != args {
+				self.error_no_exit(format!(
+					"Function '{identifier}' expected {params} argument(s), but received {args}",
+				));
+			} else {
+				self.error_no_exit(format!(
+					"Function '{identifier}' does not exist",
+				));
+			}
 		}
 	}
 
@@ -446,13 +458,13 @@ impl Compiler {
 			None => {
 				// Push the call to a stack of unresolved calls
 				// They will be filled in at the end, if they exist
-				// FIXME: Replace with CallNative if necessary
 				env.add_op(Instruction::Call(0, 0));
 
 				let string = identifier.span.slice_from(&self.lexer.source).to_string();
 				self.unresolved.push(LookAhead {
 					span: identifier.span,
 					identifier: string,
+					args: arg_count,
 					position: env.op_here() - 1,
 				});
 			}
@@ -462,7 +474,7 @@ impl Compiler {
 		if fnerr.is_some() {
 			let fnerr = fnerr.unwrap();
 			self.error_no_exit(format!(
-				"Function '{}' expected {} arguments, but received {arg_count}",
+				"Function '{}' expected {} argument(s), but received {arg_count}",
 				fnerr.0, fnerr.1,
 			));
 		}
