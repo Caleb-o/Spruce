@@ -187,7 +187,7 @@ impl VM {
 					}
 				}
 
-				Instruction::Equal => {
+				Instruction::EqualEqual => {
 					let (lhs, rhs) = self.pop_2_check()?;
 
 					if let Object::Int(l) = lhs {
@@ -226,7 +226,7 @@ impl VM {
 				}
 
 				Instruction::JumpNot(loc) => {
-					let top = self.stack.pop().unwrap();
+					let top = self.drop()?;
 
 					if !matches!(top, Object::Boolean(_)) {
 						return Err(RuntimeErr(

@@ -112,7 +112,7 @@ impl Environment {
 				Instruction::Sub => println!("Sub"),
 				Instruction::Mul => println!("Mul"),
 				Instruction::Div => println!("Div"),
-				Instruction::Equal => println!("Equal"),
+				Instruction::EqualEqual => println!("EqualEqual"),
 				Instruction::NotEqual => println!("NotEqual"),
 
 				Instruction::Negate => println!("Negate"),

@@ -520,6 +520,23 @@ impl Compiler {
 		Ok(())
 	}
 
+	fn while_statement(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
+		self.consume_here();
+
+		// Evaluate condition
+		let start = env.op_here();
+		self.expression(env)?;
+		let before_block = env.add_jump_op(Instruction::JumpNot(0));
+
+		self.body(env)?;
+		// Return back before the condition to re-evaluate
+		env.add_op(Instruction::Jump(start));
+
+		env.patch_jump_op(before_block);
+
+		Ok(())
+	}
+
 	fn identifier(&mut self, env: &mut Box<Environment>) {
 		match self.find_local(self.current.span) {
 			Some(ref local) => {
@@ -576,10 +593,10 @@ impl Compiler {
 			}
 
 			TokenKind::Identifier => {
-				if self.lexer.peek_type() == TokenKind::LParen {
-					self.function_call(env)?;
-				} else {
-					self.identifier(env);
+				match self.lexer.peek_type() {
+					TokenKind::LParen => self.function_call(env)?,
+					TokenKind::Equal => self.var_assign(env)?,
+					_ => self.identifier(env),
 				}
 				Ok(())
 			},
@@ -686,33 +703,18 @@ impl Compiler {
 
 		loop {
 			match self.current.kind {
-				TokenKind::Equal => {
+				TokenKind::EqualEqual => {
 					self.consume_here();
 					self.comparison(env)?;
-					env.add_op(Instruction::Equal);
+					env.add_op(Instruction::EqualEqual);
 				}
 	
 				TokenKind::NotEqual => {
 					self.consume_here();
 					self.comparison(env)?;
-					env.add_op(Instruction::Equal);
+					env.add_op(Instruction::NotEqual);
 				}
 	
-				_ => break,
-			}
-		}
-
-		Ok(())
-	}
-
-	fn assignment(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
-		self.equality(env)?;
-
-		loop {
-			match self.current.kind {
-				TokenKind::Equal => {
-					todo!("Var assignment");
-				},
 				_ => break,
 			}
 		}
@@ -721,7 +723,7 @@ impl Compiler {
 	}
 
 	fn expression(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
-		self.assignment(env)
+		self.equality(env)
 	}
 
 	fn var_declaration(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
@@ -737,6 +739,36 @@ impl Compiler {
 		if self.current.kind == TokenKind::Equal {
 			self.consume_here();
 			self.expression(env)?;
+		}
+
+		Ok(())
+	}
+
+	fn var_assign(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
+		let identifier = self.current;
+		self.consume(TokenKind::Identifier, "Expected identifier in assignment")?;
+
+		self.consume(TokenKind::Equal, "Expect '=' after identifier in assignment")?;
+
+		self.expression(env)?;
+
+		match self.find_local(identifier.span) {
+			Some(local) => {
+				if !local.mutable {
+					self.error_no_exit(format!(
+						"Cannot re-assign to immutable value '{}'",
+						identifier.span.slice_from(&self.lexer.source),
+					));
+				} else {
+					env.add_op(Instruction::SetLocal(local.position as u8));
+				}
+			}
+			None => {
+				self.error_no_exit(format!(
+					"Cannot assign to variable '{}' as it does not exist",
+					identifier.span.slice_from(&self.lexer.source),
+				));
+			}
 		}
 
 		Ok(())
@@ -759,6 +791,10 @@ impl Compiler {
 		match self.current.kind {
 			TokenKind::If => {
 				self.if_statement(env)?;
+				return Ok(());
+			},
+			TokenKind::While => {
+				self.while_statement(env)?;
 				return Ok(());
 			},
 			// Default as expression statement

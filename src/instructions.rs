@@ -33,7 +33,7 @@ pub enum Instruction {
 	Jump(usize),
 	JumpNot(usize),
 
-	Equal, NotEqual,
+	EqualEqual, NotEqual,
 	Less, LessEqual,
 	Greater, GreaterEqual,
 

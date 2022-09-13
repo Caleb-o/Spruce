@@ -50,7 +50,7 @@ impl Lexer {
 			'*' => self.make_char_token(TokenKind::Star),
 			'/' => self.make_char_token(TokenKind::Slash),
 
-			'=' => self.make_char_token(TokenKind::Equal),
+			'=' => self.make_char_token_matches(TokenKind::Equal, '=', TokenKind::EqualEqual),
 			'>' => self.make_char_token_matches(TokenKind::Greater, '=', TokenKind::GreaterEqual),
 			'<' => self.make_char_token_matches(TokenKind::Less, '=', TokenKind::LessEqual),
 			'!' => self.make_char_token_matches(TokenKind::Not, '=', TokenKind::NotEqual),
