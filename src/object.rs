@@ -3,7 +3,7 @@ use std::fmt::Display;
 #[derive(Debug, Clone, PartialEq)]
 pub enum Object {
 	None,
-	Int(i32),
+	Int(i64),
 	String(String),
 	Boolean(bool),
 	List(Vec<Box<Object>>),

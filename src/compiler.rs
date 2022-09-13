@@ -190,7 +190,7 @@ impl Compiler {
 
 		self.add_fn(env, "strlen", ParamKind::Count(1), true, Rc::new(|vm, _args| {
 			if let Object::String(s) = vm.drop()? {
-				vm.push(Object::Int(s.len() as i32));
+				vm.push(Object::Int(s.len() as i64));
 			} else {
 				vm.warning(format!("strlen expected a string but received {}", vm.peek()));
 				vm.push(Object::None);
@@ -230,7 +230,7 @@ impl Compiler {
 
 		self.add_fn(env, "list_len", ParamKind::Count(1), true, Rc::new(|vm, _args| {
 			if let Object::List(ref list) = vm.drop()? {
-				vm.push(Object::Int(list.len() as i32));
+				vm.push(Object::Int(list.len() as i64));
 			} else {
 				vm.warning(format!("list_push expected a list but received {}", vm.peek()));
 				vm.push(Object::None);
@@ -591,7 +591,7 @@ impl Compiler {
 				let span = self.current.span;
 				let index = env.add_constant(Object::Int(
 					self.lexer.source[span.start..span.start + span.len]
-						.parse::<i32>()
+						.parse::<i64>()
 						.unwrap()
 				));
 				env.add_op(Instruction::Push(index));
