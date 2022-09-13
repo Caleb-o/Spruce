@@ -1,7 +1,7 @@
 # Spruce
 An Interpreted Language written in Rust.
 
-## Sample
+## Sample (This is the goal, not what exists currently)
 ```
 # Comment
 

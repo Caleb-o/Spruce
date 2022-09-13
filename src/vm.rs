@@ -232,7 +232,7 @@ impl VM {
 				Instruction::SetLocal(slot) => {
 					self.stack[
 						self.frames.last().unwrap().stack_start + slot as usize
-					] = self.peek().clone();
+					] = self.drop()?;
 				}
 
 				Instruction::Jump(loc) => {
