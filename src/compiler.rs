@@ -110,7 +110,7 @@ impl Compiler {
 		self.resolve_function_calls(&mut env);
 
 		if self.had_error {
-			return Err(self.error("Error(s) occured".into()));
+			return Err(CompilerErr("Error(s) occured".into()));
 		}
 
 		Ok(env)
