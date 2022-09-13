@@ -36,6 +36,7 @@ pub enum Function {
 		identifier: String,
 		param_count: ParamKind,
 		function: NativeFunction,
+		has_return: bool,
 	},
 }
 
@@ -120,12 +121,14 @@ impl Compiler {
 		env: &mut Box<Environment>,
 		identifier: &'static str,
 		param_count: ParamKind,
+		has_return: bool,
 		function: NativeFunction,
 	) {
 		let function = Function::Native { 
 			identifier: identifier.to_string(),
 			param_count,
 			function,
+			has_return,
 		};
 		// Add to function table
 		self.functable.push(function.clone());
@@ -136,31 +139,36 @@ impl Compiler {
 
 	// TODO: Move to different file
 	fn register_native_functions(&mut self, env: &mut Box<Environment>) {
-		self.add_fn(env, "print", ParamKind::Any, Rc::new(|vm, args| {
-			let mut values = Vec::new();
-
-			for _ in 0..args {
-				values.push(vm.drop()?);
+		self.add_fn(env, "print", ParamKind::Any, false, Rc::new(|vm, args| {
+			if args > 0 {
+				let mut values = Vec::new();
+	
+				for _ in 0..args {
+					values.push(vm.drop()?);
+				}
+	
+				values.into_iter().rev().for_each(|v| print!("{v}"));
 			}
-
-			values.into_iter().rev().for_each(|v| print!("{v}"));
 
 			Ok(())
 		}));
 
-		self.add_fn(env, "println", ParamKind::Any, Rc::new(|vm, args| {
-			let mut values = Vec::new();
-
-			for _ in 0..args {
-				values.push(vm.drop()?);
+		self.add_fn(env, "println", ParamKind::Any, false, Rc::new(|vm, args| {
+			if args > 0 {
+				let mut values = Vec::new();
+	
+				for _ in 0..args {
+					values.push(vm.drop()?);
+				}
+	
+				values.into_iter().rev().for_each(|v| print!("{v}"));
 			}
 
-			values.into_iter().rev().for_each(|v| println!("{v}"));
-
+			println!();
 			Ok(())
 		}));
 
-		self.add_fn(env, "read_file", ParamKind::Count(1), Rc::new(|vm, args| {
+		self.add_fn(env, "read_file", ParamKind::Count(1), true, Rc::new(|vm, _args| {
 			let file_name = vm.drop()?;
 			
 			if !matches!(file_name, Object::String(_)) {
@@ -183,8 +191,8 @@ impl Compiler {
 			Ok(())
 		}));
 
-		self.add_fn(env, "strlen", ParamKind::Count(1), Rc::new(|vm, args| {
-			let string = vm.peek();
+		self.add_fn(env, "strlen", ParamKind::Count(1), true, Rc::new(|vm, _args| {
+			let string = vm.drop()?;
 			
 			if !matches!(string, Object::String(_)) {
 				vm.warning(format!("strlen expected a string but received {}", string));
@@ -194,6 +202,18 @@ impl Compiler {
 
 			if let Object::String(s) = string {
 				vm.push(Object::Int(s.len() as i32));
+			}
+			Ok(())
+		}));
+
+		self.add_fn(env, "dbg_stack_size", ParamKind::Count(0), false, Rc::new(|vm, _args| {
+			println!("Stack size {}", vm.stack_size());
+			Ok(())
+		}));
+
+		self.add_fn(env, "dbg_print", ParamKind::Count(0), false, Rc::new(|vm, _args| {
+			for (index, item) in vm.get_stack().iter().enumerate() {
+				println!("{index:0>4} {item}");
 			}
 			Ok(())
 		}));
@@ -287,7 +307,7 @@ impl Compiler {
 						return Some(func);
 					}
 				}
-				Function::Native { identifier, param_count: _, function: _ } => {
+				Function::Native { identifier, .. } => {
 					if id == identifier.as_str() {
 						return Some(func);
 					}
@@ -362,8 +382,7 @@ impl Compiler {
 				break;
 			}
 
-			let slot = self.register_local(*param, true, false).unwrap();
-			env.add_op(Instruction::SetLocal(slot as u8));
+			_ = self.register_local(*param, true, false).unwrap();
 		}
 
 		self.functable.push(Function::User {
@@ -385,7 +404,7 @@ impl Compiler {
 					}
 				}
 				// Cannot mark native functions as empty
-				Function::Native { identifier: _, param_count: _, function: _ } => {}
+				_ => {}
 			}
 		}
 	}
@@ -423,15 +442,10 @@ impl Compiler {
 							if parameters.len() != arg_count {
 								fnerr = Some((id.clone(), parameters.len() as u8));
 							}
-
-							env.add_op(Instruction::CallNative(
-								env.find_constant_func_loc(&id),
-								parameters.len(),
-							));
 							
 							env.add_op(Instruction::Call(*position, parameters.len()));
 						}
-						Function::Native { identifier, param_count, function: _ } => {
+						Function::Native { identifier, param_count, .. } => {
 							if let ParamKind::Count(c) = param_count {
 								if *c as usize != arg_count {
 									fnerr = Some((identifier.clone(), *c));
@@ -728,6 +742,19 @@ impl Compiler {
 		Ok(())
 	}
 
+	fn return_statement(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
+		self.consume_here();
+		let mut has_expr = false;
+
+		if self.current.kind != TokenKind::SemiColon {
+			self.expression(env)?;
+			has_expr = true;
+		}
+
+		env.add_op(Instruction::Return(if has_expr { 1 } else { 0 }));
+		Ok(())
+	}
+
 	fn statement(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
 		match self.current.kind {
 			TokenKind::If => {
@@ -737,11 +764,12 @@ impl Compiler {
 			// Default as expression statement
 			// TODO: Check that this is only assignment or function call
 			TokenKind::Var | TokenKind::Let => self.var_declaration(env)?,
+			TokenKind::Return => self.return_statement(env)?,
 			_ => {
 				// Since expressions yield a value, it makes no sense to keep them
 				// on the stack, but we still want their effect (like a function call)
 				self.expression(env)?;
-				env.add_op(Instruction::Pop);
+				// env.add_op(Instruction::Pop);
 			},
 		}
 		

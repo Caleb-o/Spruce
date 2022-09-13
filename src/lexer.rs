@@ -150,14 +150,19 @@ impl Lexer {
 		// Fixme: chars.nth seems dumb here
 		match lexeme.chars().nth(0).unwrap() {
 			'e' => self.check_if_matches(start, vec![("lse", TokenKind::Else)]),
-			'f' => self.check_if_matches(start, vec![("n", TokenKind::Function)]),
+			'f' => self.check_if_matches(start, vec![
+				("alse", TokenKind::False),
+				("n", TokenKind::Function),
+			]),
 			'i' => self.check_if_matches(start, vec![
 					("f", TokenKind::If),
 					("s", TokenKind::Is),
 				]),
 			'l' => self.check_if_matches(start, vec![("et", TokenKind::Let)]),
+			'n' => self.check_if_matches(start, vec![("one", TokenKind::None)]),
 			'r' => self.check_if_matches(start, vec![("eturn", TokenKind::Return)]),
 			's' => self.check_if_matches(start, vec![("ruct", TokenKind::Struct)]),
+			't' => self.check_if_matches(start, vec![("true", TokenKind::True)]),
 			'v' => self.check_if_matches(start, vec![("ar", TokenKind::Var)]),
 			'w' => self.check_if_matches(start, vec![("hile", TokenKind::While)]),
 			_ => TokenKind::Identifier,

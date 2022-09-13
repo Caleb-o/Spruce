@@ -1,6 +1,6 @@
-use std::fmt::Display;
+use std::{fmt::Display, io::stdin};
 
-use crate::{environment::{Environment, ConstantValue}, object::Object, instructions::{Instruction, ParamKind}, compiler::{Function, CompilerErr}};
+use crate::{environment::{Environment, ConstantValue}, object::Object, instructions::Instruction, compiler::Function};
 
 struct CallFrame {
 	return_to: usize,
@@ -39,6 +39,14 @@ impl VM {
 		}
 	}
 
+	pub fn stack_size(&self) -> usize {
+		self.stack.len()
+	}
+
+	pub fn get_stack(&self) -> &Vec<Object> {
+		&self.stack
+	}
+
 	pub fn drop(&mut self) -> Result<Object, RuntimeErr> {
 		match self.stack.pop() {
 			Some(o) => Ok(o),
@@ -50,10 +58,6 @@ impl VM {
 
 	pub fn peek(&self) -> &Object {
 		self.stack.last().unwrap()
-	}
-
-	pub fn peek_mut(&mut self) -> &mut Object {
-		self.stack.last_mut().unwrap()
 	}
 
 	pub fn push(&mut self, object: Object) {
@@ -92,8 +96,7 @@ impl VM {
 					
 					if !matches!(last, Object::Int(_)) {
 						return Err(RuntimeErr(format!(
-							"Value type does not match or is not an integer '{}'",
-							last
+							"Value type does not match or is not an integer '{last}'"
 						)));
 					}
 
@@ -205,11 +208,16 @@ impl VM {
 				}
 
 				Instruction::GetLocal(slot) => {
-					self.stack.push(self.stack[slot as usize].clone());
+					self.stack.push(self.stack[
+							self.frames.last().unwrap().stack_start + slot as usize
+						].clone()
+					);
 				}
 
 				Instruction::SetLocal(slot) => {
-					self.stack[slot as usize] = self.peek().clone();
+					self.stack[
+						self.frames.last().unwrap().stack_start + slot as usize
+					] = self.peek().clone();
 				}
 
 				Instruction::Jump(loc) => {
@@ -249,30 +257,28 @@ impl VM {
 				Instruction::CallNative(loc, args) => {
 					self.check_function_args_count(args)?;
 
-					let func = self.env.constants[loc as usize].clone();
-					match func {
-						ConstantValue::Func(ref f) => {
-							match f {
-								Function::Native { identifier: _, param_count: _, function } => {
-									function(self, args)?;
-								},
-								_ => {}
-							}
-						},
-						_ => {}
+					if let ConstantValue::Func(ref f) = self.env.constants[loc as usize].clone() {
+						match f {
+							Function::Native { identifier: _, param_count: _, function, .. } => {
+								function(self, args)?;
+							},
+							_ => {}
+						}
 					}
-
-					self.push(Object::None);
 				},
 
 				Instruction::Return(count) => {
-					// None value is pushed by default
-					if count == 0 {
-						self.push(Object::None);
-					}
-
 					let frame = self.frames.pop().unwrap();
 					self.ip = frame.return_to;
+
+					if count > 0 {
+						let value = self.drop()?;
+						while self.stack.len() > frame.stack_start {
+							self.drop()?;
+						}
+
+						self.push(value);
+					}
 				},
 
 				Instruction::NoOp => {},
