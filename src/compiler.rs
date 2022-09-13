@@ -11,7 +11,7 @@ struct Local {
 	is_param: bool,
 }
 
-type NativeFunction = Rc<dyn Fn(&mut VM) -> Result<(), RuntimeErr>>;
+type NativeFunction = Rc<dyn Fn(&mut VM, usize) -> Result<(), RuntimeErr>>;
 
 #[derive(Debug, Clone)]
 struct LookAhead {
@@ -132,22 +132,33 @@ impl Compiler {
 		env.add_constant_function(ConstantValue::Func(function));
 	}
 
+	// TODO: Move to different file
 	fn register_native_functions(&mut self, env: &mut Box<Environment>) {
-		self.add_fn(env, "print", ParamKind::Any, Rc::new(|vm| {
-			let obj = vm.drop()?;
-			print!("{obj}");
+		self.add_fn(env, "print", ParamKind::Any, Rc::new(|vm, args| {
+			let mut values = Vec::new();
+
+			for _ in 0..args {
+				values.push(vm.drop()?);
+			}
+
+			values.into_iter().rev().for_each(|v| print!("{v}"));
 
 			Ok(())
 		}));
 
-		self.add_fn(env, "println", ParamKind::Any, Rc::new(|vm| {
-			let obj = vm.drop()?;
-			println!("{obj}");
+		self.add_fn(env, "println", ParamKind::Any, Rc::new(|vm, args| {
+			let mut values = Vec::new();
+
+			for _ in 0..args {
+				values.push(vm.drop()?);
+			}
+
+			values.into_iter().rev().for_each(|v| println!("{v}"));
 
 			Ok(())
 		}));
 
-		self.add_fn(env, "read_file", ParamKind::Count(1), Rc::new(|vm| {
+		self.add_fn(env, "read_file", ParamKind::Count(1), Rc::new(|vm, args| {
 			let file_name = vm.drop()?;
 			
 			if !matches!(file_name, Object::String(_)) {
@@ -170,7 +181,7 @@ impl Compiler {
 			Ok(())
 		}));
 
-		self.add_fn(env, "strlen", ParamKind::Count(1), Rc::new(|vm| {
+		self.add_fn(env, "strlen", ParamKind::Count(1), Rc::new(|vm, args| {
 			let string = vm.peek();
 			
 			if !matches!(string, Object::String(_)) {
@@ -196,7 +207,7 @@ impl Compiler {
 						Function::User { identifier: _, position, parameters, empty } => {
 							// Generate the function if it is not empty
 							if !empty {
-								env.code[lookahead.position] = Instruction::Call(*position - 1, parameters.len() as u8); 
+								env.code[lookahead.position] = Instruction::Call(*position, parameters.len()); 
 							} else {
 								// We cannot remove without it breaking, so we replace with a NoOp
 								env.code[lookahead.position] = Instruction::NoOp;
@@ -369,48 +380,95 @@ impl Compiler {
 		}
 	}
 
-	// fn function_call(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
-	// 	self.consume_any();
+	fn function_call(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
+		let identifier = self.current;
+		self.consume(TokenKind::Identifier, "Expected identifier in function call")?;
 
-	// 	let identifier = self.current;
-	// 	self.consume(TokenKind::Identifier, "Expected identifier after '$'")?;
-
-	// 	let id = identifier.span.slice_from(&self.lexer.source);
-
-	// 	match self.find_function(identifier.span) {
-	// 		Some(func) => {
-	// 			if !func.is_empty() {
-	// 				// Only generate the call if the function is not empty
-	// 				match func {
-	// 					Function::User { identifier: _, position, parameters, empty: _ } => {
-	// 						env.add_op(Instruction::Call(*position, parameters.len() as u8));
-	// 					}
-	// 					Function::Native { identifier: _, param_count, function: _ } => {
-	// 						env.add_op(Instruction::CallNative(
-	// 							env.find_constant_func_loc(id),
-	// 							*param_count,
-	// 						));
-	// 					}
-	// 				}
-	// 			}
-	// 		}
-
-	// 		None => {
-	// 			// Push the call to a stack of unresolved calls
-	// 			// They will be filled in at the end, if they exist
-	// 			env.add_op(Instruction::Call(0, 0));
-
-	// 			let string = identifier.span.slice_from(&self.lexer.source).to_string();
-	// 			self.unresolved.push(LookAhead {
-	// 				span: identifier.span,
-	// 				identifier: string,
-	// 				position: env.op_here() - 1,
-	// 			});
-	// 		}
-	// 	}
+		self.consume(TokenKind::LParen, "Expect '(' after function identifier")?;
 		
-	// 	Ok(())
-	// }
+		// We track arguments, since native functions can have N..Any parameters
+		let mut arg_count: usize = 0;
+		if self.current.kind != TokenKind::RParen {
+			self.expression(env)?;
+			arg_count += 1;
+			
+			while self.current.kind == TokenKind::Comma {
+				self.consume(TokenKind::Comma, "Expect ',' after function argument")?;
+				self.expression(env)?;
+				arg_count += 1;
+			}
+		}
+		
+		self.consume(TokenKind::RParen, "Expect ')' after argument list")?;
+		let mut fnerr: Option<(String, u8)> = None;
+
+		match self.find_function(identifier.span) {
+			Some(func) => {
+				if !func.is_empty() {
+					// Only generate the call if the function is not empty
+					match func {
+						Function::User { identifier, position, parameters, empty: _ } => {
+							let id = identifier.slice_from(&self.lexer.source).to_string();
+							
+							if parameters.len() != arg_count {
+								fnerr = Some((id.clone(), parameters.len() as u8));
+							}
+
+							env.add_op(Instruction::CallNative(
+								env.find_constant_func_loc(&id),
+								parameters.len(),
+							));
+							
+							env.add_op(Instruction::Call(*position, parameters.len()));
+						}
+						Function::Native { identifier, param_count, function: _ } => {
+							if let ParamKind::Count(c) = param_count {
+								if *c as usize != arg_count {
+									fnerr = Some((identifier.clone(), *c));
+								}
+
+								env.add_op(Instruction::CallNative(
+									env.find_constant_func_loc(&identifier),
+									*c as usize,
+								));
+							} else {
+								// Add call with N arguments
+								env.add_op(Instruction::CallNative(
+									env.find_constant_func_loc(&identifier),
+									arg_count,
+								));
+							}
+						}
+					}
+				}
+			}
+
+			None => {
+				// Push the call to a stack of unresolved calls
+				// They will be filled in at the end, if they exist
+				// FIXME: Replace with CallNative if necessary
+				env.add_op(Instruction::Call(0, 0));
+
+				let string = identifier.span.slice_from(&self.lexer.source).to_string();
+				self.unresolved.push(LookAhead {
+					span: identifier.span,
+					identifier: string,
+					position: env.op_here() - 1,
+				});
+			}
+		}
+
+		// Display error if it occured
+		if fnerr.is_some() {
+			let fnerr = fnerr.unwrap();
+			self.error_no_exit(format!(
+				"Function '{}' expected {} arguments, but received {arg_count}",
+				fnerr.0, fnerr.1,
+			));
+		}
+		
+		Ok(())
+	}
 
 	fn if_block(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
 		self.consume_any();
@@ -491,8 +549,12 @@ impl Compiler {
 				Ok(())
 			}
 
-			TokenKind::Identifier => { 
-				self.identifier(env);
+			TokenKind::Identifier => {
+				if self.lexer.peek_type() == TokenKind::LParen {
+					self.function_call(env)?;
+				} else {
+					self.identifier(env);
+				}
 				Ok(())
 			},
 
@@ -504,12 +566,9 @@ impl Compiler {
 		}
 	}
 
-	fn call(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
-		self.primary(env)
-	}
-
 	fn unary(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
-		self.call(env)
+		// TODO
+		self.primary(env)
 	}
 
 	fn factor(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {

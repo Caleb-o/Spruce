@@ -40,9 +40,9 @@ pub enum Instruction {
 	Negate, Add, Sub, Mul, Div,
 
 	// Bytecode Location, ArgCount
-	Call(usize, u8),
+	Call(usize, usize),
 	// Native index, ArgCount
-	CallNative(u8, ParamKind),
+	CallNative(u8, usize),
 
 	// Return ValueCount
 	Return(u8),

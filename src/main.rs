@@ -34,10 +34,10 @@ fn main() {
         },
     };
 
-    env.dump();
+    // env.dump();
     
-    // match VM::new(env).run() {
-    //     Err(e) => println!("Runtime: {}", e.0),
-    //     _ => {},
-    // };
+    match VM::new(env).run() {
+        Err(e) => println!("Runtime: {}", e.0),
+        _ => {},
+    };
 }

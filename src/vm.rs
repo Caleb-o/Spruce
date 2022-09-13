@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use crate::{environment::{Environment, ConstantValue}, object::Object, instructions::{Instruction, ParamKind}, compiler::Function};
+use crate::{environment::{Environment, ConstantValue}, object::Object, instructions::{Instruction, ParamKind}, compiler::{Function, CompilerErr}};
 
 struct CallFrame {
 	return_to: usize,
@@ -162,6 +162,30 @@ impl VM {
 					}
 				}
 
+				Instruction::Mul => {
+					let (lhs, rhs) = self.pop_2_check()?;
+
+					if let Object::Int(l) = lhs {
+						if let Object::Int(r) = rhs {
+							self.stack.push(Object::Int(l * r));
+						}
+					}
+				}
+
+				Instruction::Div => {
+					let (lhs, rhs) = self.pop_2_check()?;
+
+					if let Object::Int(l) = lhs {
+						if let Object::Int(r) = rhs {
+							if r == 0 {
+								return Err(RuntimeErr("Trying to divide by 0".into()));
+							}
+
+							self.stack.push(Object::Int(l / r));
+						}
+					}
+				}
+
 				Instruction::Equal => {
 					let (lhs, rhs) = self.pop_2_check()?;
 
@@ -216,11 +240,11 @@ impl VM {
 				}
 				
 				Instruction::Call(loc, args) => {
-					self.check_function_args_count(ParamKind::Count(args))?;
+					self.check_function_args_count(args)?;
 
 					self.frames.push(CallFrame { 
 						return_to: self.ip,
-						stack_start: self.stack.len() - args as usize,
+						stack_start: self.stack.len() - args,
 					});
 
 					self.ip = loc;
@@ -235,7 +259,7 @@ impl VM {
 						ConstantValue::Func(ref f) => {
 							match f {
 								Function::Native { identifier: _, param_count: _, function } => {
-									function(self)?;
+									function(self, args)?;
 								},
 								_ => {}
 							}
@@ -265,19 +289,13 @@ impl VM {
 		Ok(())
 	}
 
-	fn check_function_args_count(&self, args: ParamKind) -> Result<(), RuntimeErr> {
-		match args {
-			ParamKind::Count(c) => {
-				if c as usize > self.stack.len() - self.frames.last().unwrap().stack_start {
-					return Err(RuntimeErr(format!(
-						"Native Function requires {} arguments, but the stack only contains {}",
-						args,
-						self.stack.len(),
-					)));
-				}
-			}
-			// We don't check for args on any
-			_ => {}
+	fn check_function_args_count(&self, args: usize) -> Result<(), RuntimeErr> {
+		if args > self.stack.len() - self.frames.last().unwrap().stack_start {
+			return Err(RuntimeErr(format!(
+				"Native Function requires {} arguments, but the stack only contains {}",
+				args,
+				self.stack.len(),
+			)));
 		}
 		
 		Ok(())

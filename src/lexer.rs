@@ -74,6 +74,31 @@ impl Lexer {
 		}
 	}
 
+	pub fn peek(&self) -> char {
+		match self.is_at_end() {
+			true => '\0',
+			false => self.source
+				.chars()
+				.nth(self.pos)
+				.unwrap(),
+		}
+	}
+
+	// Hack to get the next token, then reset state
+	pub fn peek_type(&mut self) -> TokenKind {
+		let col = self.column;
+		let line = self.line;
+		let pos = self.pos;
+
+		let token = self.next();
+
+		self.column = col;
+		self.line = line;
+		self.pos = pos;
+
+		token.kind
+	}
+
 	fn make_token(
 		&self,
 		kind: TokenKind,
@@ -197,16 +222,6 @@ impl Lexer {
 
 	fn is_at_end(&self) -> bool {
 		self.pos >= self.source.len()
-	}
-
-	fn peek(&self) -> char {
-		match self.is_at_end() {
-			true => '\0',
-			false => self.source
-				.chars()
-				.nth(self.pos)
-				.unwrap(),
-		}
 	}
 
 	fn advance(&mut self) {
