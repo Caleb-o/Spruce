@@ -271,8 +271,13 @@ impl Compiler {
 
 								env.code[lookahead.position] = Instruction::Call(*position, parameters.len()); 
 							} else {
-								// We cannot remove without it breaking, so we replace with a NoOp
-								env.code[lookahead.position] = Instruction::NoOp;
+								// We cannot remove without it breaking, so we replace with a PopN or NoOp
+								// Since arguments will be on the stack, they need to be removed
+								if parameters.len() > 0 {
+									env.code[lookahead.position] = Instruction::PopN(parameters.len() as u8);
+								} else {
+									env.code[lookahead.position] = Instruction::NoOp;
+								}
 							}
 						}
 

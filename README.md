@@ -22,7 +22,6 @@ fn main() {
 	# Call our function (It can be called before definition)
 	let r = add(10, 20);
 
-	# We all rebinding, even when using 'let' (It will not create a new binding, but reuse it)
 	# To use a function as a value, it requires 'fn'. This tells the compiler you want to use
 	# a function and not a variable.
 	# Note: Cannot use native functions here, as it doesn't really make sense. This could also
