@@ -1,5 +1,7 @@
 use std::fmt::Display;
 
+use num_derive::FromPrimitive;
+
 #[derive(Debug, Clone, Copy)]
 pub enum ParamKind {
 	Any,
@@ -15,25 +17,28 @@ impl Display for ParamKind {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, FromPrimitive)]
 #[repr(u8)]
 pub enum Instruction {
-	Push(u8),
-	Pop, 
+	Constant,
+	ConstantLong,
 
-	GetLocal(u8),
-	SetLocal(u8),
+	GetLocal, // u16
+	SetLocal, // u16
 	
 	// Globals are just top-level
 	// They are not stored in a special location
-	GetGlobal(u8),
-	SetGlobal(u8),
+	GetGlobal, // u16
+	SetGlobal, // u16
 
 	// BuildList Size
-	BuildList(u8),
+	BuildList, // u8
 
-	Jump(usize),
-	JumpNot(usize),
+	Jump,		// u16
+	JumpNot,	// u16
+
+	JumpLong,		// u32
+	JumpLongNot,	// u32	
 
 	EqualEqual, NotEqual,
 	Less, LessEqual,
@@ -43,10 +48,8 @@ pub enum Instruction {
 
 	None,
 
-	// Bytecode Location, ArgCount
-	Call(usize, usize),
-	// Native index, ArgCount
-	CallNative(u8, usize),
+	Call, 		// ArgCount u8, Location u32
+	CallNative, // ArgCount u8, index u32
 
 	// Return
 	Return,

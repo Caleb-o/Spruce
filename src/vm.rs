@@ -72,9 +72,14 @@ impl VM {
 		// Initial frame
 		self.frames.push(CallFrame { return_to: 0, stack_start: 0 });
 
+		
 		while !self.had_error && self.ip < self.len {
-			match self.env.code[self.ip] {
-				Instruction::Push(idx) => {
+			let code = num::FromPrimitive::from_u8(self.env.code[self.ip]).unwrap();
+			// println!("Current ip: {}-{:?}", self.ip, code);
+
+			match code {
+				Instruction::Constant => {
+					let idx = self.get_byte_location();
 					let constant = match self.env.constants[idx as usize] {
 						ConstantValue::Obj(ref o) => o,
 						_ => return Err(RuntimeErr(
@@ -84,7 +89,17 @@ impl VM {
 					self.stack.push(constant.clone());
 				}
 
-				Instruction::Pop => _ = self.drop()?,
+				Instruction::ConstantLong => {
+					let idx = self.get_short_location();
+					let constant = match self.env.constants[idx as usize] {
+						ConstantValue::Obj(ref o) => o,
+						_ => return Err(RuntimeErr(
+							"Trying to push a non-object to the stack".into()	
+						))
+					};
+					self.stack.push(constant.clone());
+				}
+
 				Instruction::Halt => self.ip = self.len,
 				Instruction::Negate => {
 					let last = self.drop()?;
@@ -98,7 +113,8 @@ impl VM {
 					self.stack.push(Object::Int(match last { Object::Int(v) => -v, _ => unreachable!()}));
 				},
 
-				Instruction::BuildList(count) => {
+				Instruction::BuildList => {
+					let count = self.get_byte_location();
 					let mut list = Vec::with_capacity(count as usize);
 
 					for _ in 0..count {
@@ -213,34 +229,39 @@ impl VM {
 					}
 				}
 
-				Instruction::GetGlobal(slot) => {
+				Instruction::GetGlobal => {
+					let slot = self.get_short_location();
 					self.stack.push(self.stack[slot as usize].clone());
 				}
-
-				Instruction::SetGlobal(slot) => {
+				
+				Instruction::SetGlobal => {
+					let slot = self.get_short_location();
 					self.stack[slot as usize] = (*self.peek()).clone();
 				}
-
-				Instruction::GetLocal(slot) => {
+				
+				Instruction::GetLocal => {
+					let slot = self.get_short_location();
 					self.stack.push(self.stack[
-							self.frames.last().unwrap().stack_start + slot as usize
+						self.frames.last().unwrap().stack_start + slot as usize
 						].clone()
 					);
 				}
-
-				Instruction::SetLocal(slot) => {
+				
+				Instruction::SetLocal => {
+					let slot = self.get_short_location();
 					self.stack[
 						self.frames.last().unwrap().stack_start + slot as usize
 					] = (*self.peek()).clone();
 				}
 
-				Instruction::Jump(loc) => {
-					self.ip = loc;
+				Instruction::Jump => {
+					self.ip = self.get_short_location() as usize;
 					continue;
 				}
 
-				Instruction::JumpNot(loc) => {
+				Instruction::JumpNot => {
 					let top = self.drop()?;
+					let loc = self.get_short_location();
 
 					if !matches!(top, Object::Boolean(_)) {
 						return Err(RuntimeErr(
@@ -250,25 +271,29 @@ impl VM {
 
 					if let Object::Boolean(v) = top {
 						if !v {
-							self.ip = loc;
+							self.ip = loc as usize;
 							continue;
 						}
 					}
 				}
 				
-				Instruction::Call(loc, args) => {
+				Instruction::Call => {
+					let args = self.get_byte_location();
+					let loc = self.get_long_location();
 					self.check_function_args_count(args)?;
 
 					self.frames.push(CallFrame { 
 						return_to: self.ip,
-						stack_start: self.stack.len() - args,
+						stack_start: self.stack.len() - args as usize,
 					});
 
-					self.ip = loc;
+					self.ip = loc as usize;
 					continue;
 				},
 
-				Instruction::CallNative(loc, args) => {
+				Instruction::CallNative => {
+					let args = self.get_byte_location();
+					let loc = self.get_long_location();
 					self.check_function_args_count(args)?;
 
 					if let ConstantValue::Func(ref f) = self.env.constants[loc as usize].clone() {
@@ -308,8 +333,8 @@ impl VM {
 		Ok(())
 	}
 
-	fn check_function_args_count(&self, args: usize) -> Result<(), RuntimeErr> {
-		if args > self.stack.len() - self.frames.last().unwrap().stack_start {
+	fn check_function_args_count(&self, args: u8) -> Result<(), RuntimeErr> {
+		if args as usize > self.stack.len() - self.frames.last().unwrap().stack_start {
 			return Err(RuntimeErr(format!(
 				"Native Function requires {} arguments, but received {}",
 				args,
@@ -337,5 +362,28 @@ impl VM {
 		}
 
 		Ok(())
+	}
+
+	fn get_byte_location(&mut self) -> u8 {
+		self.ip += 1;
+		self.env.code[self.ip]
+	}
+
+	fn get_short_location(&mut self) -> u16 {
+		let a = self.env.code[self.ip + 1];
+		let b = self.env.code[self.ip + 2];
+		self.ip += 2;
+
+		u16::from_be_bytes([a, b])
+	}
+
+	fn get_long_location(&mut self) -> u32 {
+		let a = self.env.code[self.ip + 1];
+		let b = self.env.code[self.ip + 2];
+		let c = self.env.code[self.ip + 3];
+		let d = self.env.code[self.ip + 4];
+		self.ip += 4;
+
+		u32::from_be_bytes([a, b, c, d])
 	}
 }

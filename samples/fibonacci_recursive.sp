@@ -1,6 +1,6 @@
 # Recursive fibonacci
 fn main() {
-	println(fib(32)); # 2178309
+	println(fib(40)); # 2178309
 }
 
 fn fib(n) {

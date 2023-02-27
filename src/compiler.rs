@@ -6,22 +6,22 @@ use crate::{lexer::Lexer, token::{Span, Token, TokenKind}, environment::{Environ
 struct Local {
 	identifier: Span,
 	// Position in bytecode
-	position: usize,
+	position: u16,
 	// Cannot shadow/overwrite parameters
 	is_param: bool,
 	is_global: bool,
 	mutable: bool,
 }
 
-type NativeFunction = Rc<dyn Fn(&mut VM, usize) -> Result<(), RuntimeErr>>;
+type NativeFunction = Rc<dyn Fn(&mut VM, u8) -> Result<(), RuntimeErr>>;
 
 #[derive(Debug, Clone)]
 struct LookAhead {
 	span: Span,
 	identifier: String,
-	args: usize,
+	args: u8,
 	// Position in bytecode
-	position: usize,
+	position: u32,
 }
 
 #[derive(Clone)]
@@ -29,7 +29,7 @@ struct LookAhead {
 pub enum Function {
 	User { 
 		identifier: Span,
-		position: usize,
+		position: u32,
 		parameters: Vec<Span>,
 		empty: bool,
 	},
@@ -105,7 +105,7 @@ impl Compiler {
 		match self.find_function_str("main") {
 			Some(func) => {
 				if let Function::User { identifier: _, position, parameters, .. } = func {
-					env.add_op(Instruction::Call(*position, parameters.len()))
+					env.add_call(parameters.len() as u8, *position);
 				}
 			}
 			None => return Err(self.error("Cannot find function 'main'".into())),
@@ -270,15 +270,27 @@ impl Compiler {
 							let id = identifier.slice_from(&self.lexer.source).to_string();
 							
 							// Correct function ID, but arity does not match
-							if parameters.len() != lookahead.args {
+							if parameters.len() != lookahead.args as usize {
 								unresolved.push((id.clone(), parameters.len(), lookahead.args));
 								continue;
 							}
 
-							env.code[lookahead.position] = Instruction::Call(*position, parameters.len()); 
+							env.code[lookahead.position as usize] = parameters.len() as u8;
+							u32::to_be_bytes(*position)
+								.into_iter()
+								.enumerate()
+								.for_each(
+									|(i, b)| 
+									env.code[lookahead.position as usize + 1 + i] = b
+								);
 						} else {
 							// Patch call to no-op as it is empty
-							env.code[lookahead.position] = Instruction::NoOp;
+							env.code[lookahead.position as usize] = Instruction::NoOp as u8;
+							(0..4)
+								.for_each(
+									|i|
+									env.code[lookahead.position as usize + 1 + i] = Instruction::NoOp as u8
+							);
 						}
 					}
 				}
@@ -289,7 +301,7 @@ impl Compiler {
 
 		// Identifiers that were still not found
 		for (identifier, params, args) in unresolved {
-			if params != args {
+			if params != args as usize {
 				self.error_no_exit(format!(
 					"Function '{identifier}' expected {params} argument(s), but received {args}",
 				));
@@ -390,7 +402,7 @@ impl Compiler {
 
 			None => {
 				let len = self.locals.len();
-				let position = self.locals.last().unwrap().len();
+				let position = self.locals.last().unwrap().len() as u16;
 				self.locals.last_mut().unwrap().push(Local {
 					identifier: span,
 					position,
@@ -431,9 +443,15 @@ impl Compiler {
 			_ = self.register_local(*param, true, false);
 		}
 
+		let position = (env.op_here() + if env.code.len() >= u16::MAX as usize {
+			5
+		} else {
+			3
+		}) as u32;
+
 		self.functable.push(Function::User {
 			identifier,
-			position: env.op_here()+1,
+			position,
 			parameters,
 			empty: false
 		});
@@ -459,7 +477,7 @@ impl Compiler {
 		self.consume(TokenKind::LParen, "Expect '(' after function identifier")?;
 		
 		// We track arguments, since native functions can have N..Any parameters
-		let mut arg_count: usize = 0;
+		let mut arg_count: u8 = 0;
 		if self.current.kind != TokenKind::RParen {
 			self.expression(env)?;
 			arg_count += 1;
@@ -482,28 +500,28 @@ impl Compiler {
 						Function::User { identifier, position, parameters, empty: _ } => {
 							let id = identifier.slice_from(&self.lexer.source).to_string();
 							
-							if parameters.len() != arg_count {
+							if parameters.len() as u8 != arg_count {
 								fnerr = Some((id.clone(), parameters.len() as u8));
 							}
-							
-							env.add_op(Instruction::Call(*position, parameters.len()));
+
+							env.add_call(parameters.len() as u8, *position);
 						}
 						Function::Native { identifier, param_count, .. } => {
 							if let ParamKind::Count(c) = param_count {
-								if *c as usize != arg_count {
+								if *c != arg_count {
 									fnerr = Some((identifier.to_string(), *c));
 								}
 
-								env.add_op(Instruction::CallNative(
-									env.find_constant_func_loc(&identifier),
-									*c as usize,
-								));
+								env.add_call_native(
+									*c,
+									env.find_constant_func_loc(&identifier) as u32,
+								);
 							} else {
 								// Add call with N arguments
-								env.add_op(Instruction::CallNative(
-									env.find_constant_func_loc(&identifier),
+								env.add_call_native(
 									arg_count,
-								));
+									env.find_constant_func_loc(&identifier) as u32,
+								);
 							}
 						}
 					}
@@ -513,14 +531,15 @@ impl Compiler {
 			None => {
 				// Push the call to a stack of unresolved calls
 				// They will be filled in at the end, if they exist
-				env.add_op(Instruction::Call(0, 0));
+				let position = env.op_here() as u32 + 1;
+				env.add_call(0, 0);
 
 				let string = identifier.span.slice_from(&self.lexer.source).to_string();
 				self.unresolved.push(LookAhead {
 					span: identifier.span,
 					identifier: string,
 					args: arg_count,
-					position: env.op_here() - 1,
+					position,
 				});
 			}
 		}
@@ -542,9 +561,9 @@ impl Compiler {
 
 		self.expression(env)?;
 
-		let before_block = env.add_jump_op(Instruction::JumpNot(0));
+		let before_block = env.add_jump_op(Instruction::JumpNot);
 		self.body(env)?;
-		let true_block = env.add_jump_op(Instruction::Jump(0));
+		let true_block = env.add_jump_op(Instruction::Jump);
 
 		if self.current.kind == TokenKind::Else {
 			self.consume_here();
@@ -569,11 +588,12 @@ impl Compiler {
 		// Evaluate condition
 		let start = env.op_here();
 		self.expression(env)?;
-		let before_block = env.add_jump_op(Instruction::JumpNot(0));
+		let before_block = env.add_jump_op(Instruction::JumpNot);
 
 		self.body(env)?;
 		// Return back before the condition to re-evaluate
-		env.add_op(Instruction::Jump(start));
+		let jmp = env.add_jump_op(Instruction::Jump);
+		env.patch_jump_op_to(jmp, start);
 
 		env.patch_jump_op(before_block);
 
@@ -584,9 +604,9 @@ impl Compiler {
 		match self.find_local(self.current.span, false) {
 			Some(ref local) => {
 				if local.is_global {
-					env.add_op(Instruction::GetGlobal(local.position as u8));
+					env.add_local(Instruction::GetGlobal, local.position);
 				} else {
-					env.add_op(Instruction::GetLocal(local.position as u8));
+					env.add_local(Instruction::GetLocal, local.position);
 				}
 			},
 
@@ -603,46 +623,41 @@ impl Compiler {
 		match self.current.kind {
 			TokenKind::Int => {
 				let span = self.current.span;
-				let index = env.add_constant(Object::Int(
+				env.add_constant(Object::Int(
 					self.lexer.source[span.start..span.start + span.len]
 						.parse::<i64>()
 						.unwrap()
 				));
-				env.add_op(Instruction::Push(index));
 				self.consume_here();
 				Ok(())
 			}
 			
 			TokenKind::String => {
 				let span = self.current.span;
-				let index = env.add_constant(Object::String(
+				env.add_constant(Object::String(
 					String::from(
 						&self.lexer.source[span.start..span.start + span.len]
 					)
 				));
-				env.add_op(Instruction::Push(index));
 				self.consume_here();
 				Ok(())
 			}
 
 			TokenKind::True => {
 				self.consume_here();
-				let index = env.add_constant(Object::Boolean(true));
-				env.add_op(Instruction::Push(index));
+				env.add_constant(Object::Boolean(true));
 				Ok(())
 			}
 
 			TokenKind::False => {
 				self.consume_here();
-				let index = env.add_constant(Object::Boolean(false));
-				env.add_op(Instruction::Push(index));
+				env.add_constant(Object::Boolean(false));
 				Ok(())
 			}
 
 			TokenKind::None => {
 				self.consume_here();
-				let index = env.add_constant(Object::None);
-				env.add_op(Instruction::Push(index));
+				env.add_constant(Object::None);
 				Ok(())
 			}
 
@@ -801,7 +816,8 @@ impl Compiler {
 
 		self.consume(TokenKind::RSquare, "Expect ']' after list literal arguments")?;
 
-		env.add_op(Instruction::BuildList(count));
+		env.add_op(Instruction::BuildList);
+		env.add_opb(count as u8);
 
 		Ok(())
 	}
@@ -843,9 +859,9 @@ impl Compiler {
 					));
 				} else {
 					if local.is_global {
-						env.add_op(Instruction::SetGlobal(local.position as u8));
+						env.add_local(Instruction::SetGlobal, local.position);
 					} else {
-						env.add_op(Instruction::SetLocal(local.position as u8));
+						env.add_local(Instruction::SetLocal, local.position);
 					}
 				}
 			}
@@ -967,14 +983,14 @@ impl Compiler {
 
 		self.register_function(identifier, parameters, env)?;
 
-		let jmp = env.add_jump_op(Instruction::Jump(0));
+		let jmp = env.add_jump_op(Instruction::Jump);
 		let start_loc = env.op_here();
 
 		self.body(env)?;
 		
 		// Don't generate pointless returns for empty functions
 		if start_loc != env.op_here() {
-			if !matches!(env.code.last().unwrap(), Instruction::Return) {
+			if *env.code.last().unwrap() != Instruction::Return as u8 {
 				// Only add return if the last instruction wasn't a return
 				env.add_op(Instruction::None);
 				env.add_op(Instruction::Return);

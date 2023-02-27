@@ -34,7 +34,7 @@ fn main() {
         },
     };
 
-    env.dump();
+    // env.dump();
     
     match VM::new(env).run() {
         Err(e) => println!("Runtime: {}", e.0),
