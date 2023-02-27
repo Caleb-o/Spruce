@@ -1,13 +1,13 @@
 # Spruce
-An Interpreted Language written in Zig.
+An Interpreted Language written in Rust.
 
 ## Sample (This is the goal, not what exists currently)
 ```
 # Comment
 
-# Main (void is the assumed return type)
+# Main
 fn main() {
-	# println is a native Zig function, so it
+	# println is a native Rust function, so it
 	# uses '!' to distinguish it from user functions.
 	println!("Hello, World!");
 
@@ -22,18 +22,18 @@ fn main() {
 	# Call our function (It can be called before definition)
 	let r = add(10, 20);
 
-	# Note: Can use native functions here.
-	let r = math(30, 20, sub);
+	# To use a function as a value, it requires 'fn'. This tells the compiler you want to use
+	# a function and not a variable.
+	# Note: Cannot use native functions here, as it doesn't really make sense. This could also
+	# 		cause issues. So you can only pass user functions.
+	let r = math(30, 20, fn sub);
 
 	# Illegal expression
 	# This does not have any effect, since it is just a bare expression.
 	# Only assignments and function calls can be used.
 	1 + 1;
 
-	# Casting
-	let v = 3.1 as i32;
-
-	# Compile-time type evaluation
+	# Runtime type evaluation
 	if r is int {
 		println!("r is an integer!");
 	}
@@ -44,7 +44,7 @@ fn main() {
 	empty();
 
 	# Lists can be constructed using a literal syntax
-	# Inferred as [i32]
+	# (They do not need 1 type, they can contain anything valid)
 	let list = [1, 2, 3, 4];
 
 	# We can construct our type with a C-like initialiser
@@ -52,15 +52,15 @@ fn main() {
 }
 
 # A function to add two values
-fn add(x, y: i32) i32 {
+fn add(x, y) {
 	return x + y;
 }
 
-fn sub(x, y: i32) i32 {
+fn sub(x, y) {
 	return x - y;
 }
 
-fn math(x, y: i32, f: fn(i32, i32) i32) i32 {
+fn math(x, y, f) {
 	# Use f as a function, with x and y as arguments
 	return f(x, y);
 }
@@ -102,6 +102,6 @@ fn foo() {
 	bar();
 	
 	# They can be used like normal
-	baz(bar);
+	baz(fn bar);
 }
 ```

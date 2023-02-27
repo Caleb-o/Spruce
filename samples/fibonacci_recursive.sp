@@ -1,9 +1,9 @@
 # Recursive fibonacci
 fn main() {
-	println!(fib(32)); # 2178309
+	println(fib(32)); # 2178309
 }
 
-fn fib(n: i32) i32 {
+fn fib(n) {
 	if n > 1 {
 		return fib(n-1) + fib(n-2); 
 	}
