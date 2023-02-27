@@ -48,6 +48,7 @@ impl Span {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(u8)]
+#[allow(unused)]
 pub enum TokenKind {
 	Plus, Minus, Star, Slash,
 	Equal, EqualEqual, Bang, Not, NotEqual,
@@ -74,6 +75,6 @@ pub enum TokenKind {
 pub struct Token {
 	pub span: Span,
 	pub kind: TokenKind,
-	pub line: usize,
-	pub column: usize,
+	pub line: u64,
+	pub column: u32,
 }

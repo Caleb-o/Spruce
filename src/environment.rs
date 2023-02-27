@@ -28,7 +28,6 @@ impl Display for ConstantValue {
 }
 
 pub struct Environment {
-	pub entry: usize,
 	pub code: Vec<Instruction>,
 	pub constants: Vec<ConstantValue>,
 }
@@ -36,7 +35,6 @@ pub struct Environment {
 impl Environment {
 	pub fn new() -> Self {
 		Self {
-			entry: 0,
 			code: Vec::new(),
 			constants: Vec::new()
 		}
@@ -102,7 +100,6 @@ impl Environment {
 		println!();
 
 		println!("=== {} Instructions ===", self.code.len());
-		println!("Entry location: {}\n", self.entry);
 
 		for (index, instruction) in self.code.iter().enumerate() {
 			print!("{:0>4}  ", index);
@@ -130,16 +127,16 @@ impl Environment {
 
 				Instruction::Push(loc) => println!("Push<{loc} :: '{}'>", self.constants[*loc as usize]),
 				Instruction::Pop => println!("Pop"),
-				Instruction::PopN(count) => println!("PopN<{count}>"),
 
 				Instruction::Jump(loc) => println!("Jump<{loc}>"),
 				Instruction::JumpNot(loc) => println!("JumpNot<{loc}>"),
 
 				Instruction::Call(loc, args) => println!("Call<{loc}, {args}>"),
 				Instruction::CallNative(_, args) => println!("NativeCall<{args}>"),
-				Instruction::Return(count) => println!("Return<{count}>"),
+				Instruction::Return => println!("Return"),
 				Instruction::Halt => println!("Halt"),
 
+				Instruction::None => println!("None"),
 				Instruction::NoOp => println!("NoOp"),
 
 				_ => todo!("Unimplemented Debug Instruction '{:?}'", *instruction),

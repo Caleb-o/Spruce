@@ -5,8 +5,8 @@ use crate::token::{Token, TokenKind, Span};
 #[derive(Debug)]
 pub struct Lexer {
 	pub source: String,
-	line: usize,
-	column: usize,
+	line: u64,
+	column: u32,
 	pos: usize,
 }
 
@@ -103,7 +103,7 @@ impl Lexer {
 		&self,
 		kind: TokenKind,
 		span: Span,
-		column: usize,
+		column: u32,
 	) -> Token {
 		Token { span, kind, line: self.line, column }
 	}

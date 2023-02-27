@@ -20,7 +20,6 @@ impl Display for ParamKind {
 pub enum Instruction {
 	Push(u8),
 	Pop, 
-	PopN(u8),
 
 	GetLocal(u8),
 	SetLocal(u8),
@@ -42,13 +41,15 @@ pub enum Instruction {
 
 	Negate, Add, Sub, Mul, Div,
 
+	None,
+
 	// Bytecode Location, ArgCount
 	Call(usize, usize),
 	// Native index, ArgCount
 	CallNative(u8, usize),
 
-	// Return ValueCount
-	Return(u8),
+	// Return
+	Return,
 	Halt,
 
 	NoOp,

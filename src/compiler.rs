@@ -9,6 +9,7 @@ struct Local {
 	position: usize,
 	// Cannot shadow/overwrite parameters
 	is_param: bool,
+	is_global: bool,
 	mutable: bool,
 }
 
@@ -60,12 +61,14 @@ impl Function {
 	}
 }
 
+type LocalTable = Vec<Vec<Local>>;
+
 pub struct Compiler {
 	had_error: bool,
 	current: Token,
 	lexer: Lexer,
 	unresolved: Vec<LookAhead>,
-	locals: Vec<Local>,
+	locals: LocalTable,
 	functable: Vec<Function>,
 }
 
@@ -94,17 +97,21 @@ impl Compiler {
 	pub fn run(&mut self) -> Result<Box<Environment>, CompilerErr> {
 		let mut env = Box::new(Environment::new());
 		self.register_native_functions(&mut env);
+
+		self.push_scope();
 		self.outer_statements(&mut env)?;
+		self.pop_scope();
 
 		match self.find_function_str("main") {
-			Some(ref func) => {
-				if let Function::User { identifier: _, position, .. } = func {
-					// Set the main entry point
-					env.entry = *position;
+			Some(func) => {
+				if let Function::User { identifier: _, position, parameters, .. } = func {
+					env.add_op(Instruction::Call(*position, parameters.len()))
 				}
 			}
 			None => return Err(self.error("Cannot find function 'main'".into())),
 		}
+
+		env.add_op(Instruction::Halt);
 
 		// Try to resolve calls that were not during compilation
 		self.resolve_function_calls(&mut env);
@@ -140,29 +147,19 @@ impl Compiler {
 	// TODO: Move to different file
 	fn register_native_functions(&mut self, env: &mut Box<Environment>) {
 		self.add_fn(env, "print", ParamKind::Any, false, Rc::new(|vm, args| {
-			if args > 0 {
-				let mut values = Vec::new();
-	
-				for _ in 0..args {
-					values.push(vm.drop()?);
-				}
-	
-				values.into_iter().rev().for_each(|v| print!("{v}"));
-			}
+			(0..args).into_iter()
+				.map(|_| vm.drop().unwrap())
+				.rev()
+				.for_each(|o| print!("{o}"));
 
 			Ok(())
 		}));
 
 		self.add_fn(env, "println", ParamKind::Any, false, Rc::new(|vm, args| {
-			if args > 0 {
-				let mut values = Vec::new();
-	
-				for _ in 0..args {
-					values.push(vm.drop()?);
-				}
-	
-				values.into_iter().rev().for_each(|v| print!("{v}"));
-			}
+			(0..args).into_iter()
+				.map(|_| vm.drop().unwrap())
+				.rev()
+				.for_each(|o| print!("{o}"));
 
 			println!();
 			Ok(())
@@ -252,37 +249,37 @@ impl Compiler {
 		}));
 	}
 
+	fn push_scope(&mut self) {
+		self.locals.push(Vec::new());
+	}
+
+	fn pop_scope(&mut self) {
+		_= self.locals.pop();
+	}
+
 	fn resolve_function_calls(&mut self, env: &mut Box<Environment>) {
-		let mut unresolved: Vec<(String, usize, usize)> = Vec::new();
+		let mut unresolved = Vec::new();
 
 		for lookahead in self.unresolved.iter() {
 			match self.find_function(lookahead.span) {
 				Some(ref mut func) => {
-					match func {
-						Function::User { identifier, position, parameters, empty } => {
-							// Generate the function if it is not empty
-							if !empty {
-								let id = identifier.slice_from(&self.lexer.source).to_string();
-								
-								if parameters.len() != lookahead.args {
-									unresolved.push((id.clone(), parameters.len(), lookahead.args));
-									continue;
-								}
-
-								env.code[lookahead.position] = Instruction::Call(*position, parameters.len()); 
-							} else {
-								// We cannot remove without it breaking, so we replace with a PopN or NoOp
-								// Since arguments will be on the stack, they need to be removed
-								if parameters.len() > 0 {
-									env.code[lookahead.position] = Instruction::PopN(parameters.len() as u8);
-								} else {
-									env.code[lookahead.position] = Instruction::NoOp;
-								}
+					// Cannot resolve native calls, since they're part of the compiler
+					if let Function::User { identifier, position, parameters, empty } = func {
+						// Generate the function if it is not empty
+						if !empty {
+							let id = identifier.slice_from(&self.lexer.source).to_string();
+							
+							// Correct function ID, but arity does not match
+							if parameters.len() != lookahead.args {
+								unresolved.push((id.clone(), parameters.len(), lookahead.args));
+								continue;
 							}
-						}
 
-						// Cannot resolve native calls, since they're part of the compiler
-						_ => {}
+							env.code[lookahead.position] = Instruction::Call(*position, parameters.len()); 
+						} else {
+							// Patch call to no-op as it is empty
+							env.code[lookahead.position] = Instruction::NoOp;
+						}
 					}
 				}
 
@@ -360,18 +357,26 @@ impl Compiler {
 		self.find_function_str(span.slice_from(&self.lexer.source))
 	}
 
-	fn find_local(&self, span: Span) -> Option<Local> {
-		for local in self.locals.iter() {
+	fn find_local_in(&self, span: Span, topmost: bool, index: usize) -> Option<Local> {
+		for local in self.locals[index].iter() {
 			if local.identifier.compare(&span, &self.lexer.source) {
 				return Some(*local);
 			}
 		}
 
-		None
+		if topmost || index == 0 {
+			return None;
+		}
+
+		return self.find_local_in(span, false, index - 1);
+	}
+
+	fn find_local(&self, span: Span, topmost: bool) -> Option<Local> {
+		self.find_local_in(span, topmost, self.locals.len() - 1)
 	}
 
 	fn register_local(&mut self, span: Span, is_param: bool, mutable: bool) -> Option<usize> {
-		let local = self.find_local(span);
+		let local = self.find_local(span, true);
 
 		match local {
 			Some(local) => {
@@ -384,13 +389,16 @@ impl Compiler {
 			}
 
 			None => {
-				self.locals.push(Local {
+				let len = self.locals.len();
+				let position = self.locals.last().unwrap().len();
+				self.locals.last_mut().unwrap().push(Local {
 					identifier: span,
-					position: self.locals.len(),
+					position,
 					is_param,
+					is_global: len == 1,
 					mutable,
 				});
-				Some(self.locals.len() - 1)
+				Some(self.locals.last().unwrap().len() - 1)
 			}
 		}
 	}
@@ -420,12 +428,12 @@ impl Compiler {
 				break;
 			}
 
-			_ = self.register_local(*param, true, false).unwrap();
+			_ = self.register_local(*param, true, false);
 		}
 
 		self.functable.push(Function::User {
 			identifier,
-			position: env.op_here(),
+			position: env.op_here()+1,
 			parameters,
 			empty: false
 		});
@@ -435,14 +443,11 @@ impl Compiler {
 
 	fn mark_function_empty(&mut self, id: Span) {
 		for func in &mut self.functable {
-			match func {
-				Function::User { identifier, .. } => {
-					if identifier.compare(&id, &self.lexer.source) {
-						func.mark_empty();
-					}
+			// Cannot mark native functions as empty
+			if let Function::User { identifier, .. } = func {
+				if identifier.compare(&id, &self.lexer.source) {
+					func.mark_empty();
 				}
-				// Cannot mark native functions as empty
-				_ => {}
 			}
 		}
 	}
@@ -576,9 +581,13 @@ impl Compiler {
 	}
 
 	fn identifier(&mut self, env: &mut Box<Environment>) {
-		match self.find_local(self.current.span) {
+		match self.find_local(self.current.span, false) {
 			Some(ref local) => {
-				env.add_op(Instruction::GetLocal(local.position as u8));
+				if local.is_global {
+					env.add_op(Instruction::GetGlobal(local.position as u8));
+				} else {
+					env.add_op(Instruction::GetLocal(local.position as u8));
+				}
 			},
 
 			None => self.error_no_exit(format!(
@@ -810,6 +819,8 @@ impl Compiler {
 		if self.current.kind == TokenKind::Equal {
 			self.consume_here();
 			self.expression(env)?;
+		} else {
+			env.add_op(Instruction::None);
 		}
 
 		Ok(())
@@ -823,15 +834,19 @@ impl Compiler {
 
 		self.expression(env)?;
 
-		match self.find_local(identifier.span) {
+		match self.find_local(identifier.span, false) {
 			Some(local) => {
 				if !local.mutable {
 					self.error_no_exit(format!(
-						"Cannot re-assign to immutable value '{}'",
+						"Cannot re-assign an immutable value '{}'",
 						identifier.span.slice_from(&self.lexer.source),
 					));
 				} else {
-					env.add_op(Instruction::SetLocal(local.position as u8));
+					if local.is_global {
+						env.add_op(Instruction::SetGlobal(local.position as u8));
+					} else {
+						env.add_op(Instruction::SetLocal(local.position as u8));
+					}
 				}
 			}
 			None => {
@@ -854,7 +869,11 @@ impl Compiler {
 			has_expr = true;
 		}
 
-		env.add_op(Instruction::Return(if has_expr { 1 } else { 0 }));
+		if !has_expr {
+			env.add_op(Instruction::None);
+		}
+
+		env.add_op(Instruction::Return);
 		Ok(())
 	}
 
@@ -886,9 +905,13 @@ impl Compiler {
 	fn body(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
 		self.consume(TokenKind::LCurly, "Expect '{' to start block body")?;
 
+		self.push_scope();
+
 		while self.current.kind != TokenKind::RCurly {
 			self.statement(env)?;
 		}
+
+		self.pop_scope();
 
 		self.consume(TokenKind::RCurly, "Expect '}' to end block body")?;
 
@@ -897,6 +920,7 @@ impl Compiler {
 
 	fn function(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
 		self.consume_here();
+		self.push_scope();
 
 		let identifier = self.current.span;
 		self.consume(TokenKind::Identifier, "Expected identifier after 'func'")?;
@@ -942,25 +966,25 @@ impl Compiler {
 		self.consume(TokenKind::RParen, "Expect ')' after function parameter list")?;
 
 		self.register_function(identifier, parameters, env)?;
-		let is_main = identifier.compare_str("main", &self.lexer.source);
 
+		let jmp = env.add_jump_op(Instruction::Jump(0));
 		let start_loc = env.op_here();
 
 		self.body(env)?;
-
+		
 		// Don't generate pointless returns for empty functions
 		if start_loc != env.op_here() {
-			if is_main {
-				env.add_op(Instruction::Halt);
-			} else {
-				env.add_op(Instruction::Return(0));
+			if !matches!(env.code.last().unwrap(), Instruction::Return) {
+				// Only add return if the last instruction wasn't a return
+				env.add_op(Instruction::None);
+				env.add_op(Instruction::Return);
 			}
 		} else {
 			self.mark_function_empty(identifier);
 		}
-
-		// Remove locals after function body
-		self.locals.clear();
+		
+		env.patch_jump_op(jmp);
+		self.pop_scope();
 
 		Ok(())
 	}
@@ -969,6 +993,10 @@ impl Compiler {
 		while self.current.kind != TokenKind::EndOfFile {
 			match self.current.kind {
 				TokenKind::Function => self.function(env)?,
+				TokenKind::Let | TokenKind::Var => {
+					self.var_declaration(env)?;
+					self.consume(TokenKind::SemiColon, "Expect ';' after statement")?;
+				},
 				_ => {
 					return Err(self.error(format!(
 						"Unknown item in outer scope {:?}",

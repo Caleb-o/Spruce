@@ -1,4 +1,4 @@
-use std::{fmt::Display, io::stdin};
+use std::fmt::Display;
 
 use crate::{environment::{Environment, ConstantValue}, object::Object, instructions::Instruction, compiler::Function};
 
@@ -16,6 +16,7 @@ pub struct VM {
 	frames: Vec<CallFrame>,
 }
 
+#[derive(Debug)]
 pub struct RuntimeErr(pub String);
 
 impl Display for RuntimeErr {
@@ -26,13 +27,12 @@ impl Display for RuntimeErr {
 
 impl VM {
 	pub fn new(env: Box<Environment>) -> Self {
-		let entry = env.entry;
 		let len = env.op_here();
 		
 		Self {
 			had_error: false,
 			env,
-			ip: entry,
+			ip: 0,
 			len,
 			stack: Vec::new(),
 			frames: Vec::new(),
@@ -60,10 +60,6 @@ impl VM {
 		self.stack.last().unwrap()
 	}
 
-	pub fn peek_mut(&mut self) -> &mut Object {
-		self.stack.last_mut().unwrap()
-	}
-
 	pub fn push(&mut self, object: Object) {
 		self.stack.push(object);
 	}
@@ -89,11 +85,6 @@ impl VM {
 				}
 
 				Instruction::Pop => _ = self.drop()?,
-				Instruction::PopN(count) => {
-					for _ in 0..count {
-						_ = self.drop()?;
-					}
-				},
 				Instruction::Halt => self.ip = self.len,
 				Instruction::Negate => {
 					let last = self.drop()?;
@@ -222,6 +213,14 @@ impl VM {
 					}
 				}
 
+				Instruction::GetGlobal(slot) => {
+					self.stack.push(self.stack[slot as usize].clone());
+				}
+
+				Instruction::SetGlobal(slot) => {
+					self.stack[slot as usize] = (*self.peek()).clone();
+				}
+
 				Instruction::GetLocal(slot) => {
 					self.stack.push(self.stack[
 							self.frames.last().unwrap().stack_start + slot as usize
@@ -232,7 +231,7 @@ impl VM {
 				Instruction::SetLocal(slot) => {
 					self.stack[
 						self.frames.last().unwrap().stack_start + slot as usize
-					] = self.drop()?;
+					] = (*self.peek()).clone();
 				}
 
 				Instruction::Jump(loc) => {
@@ -282,21 +281,18 @@ impl VM {
 					}
 				},
 
-				Instruction::Return(count) => {
+				Instruction::Return => {
 					let frame = self.frames.pop().unwrap();
 					self.ip = frame.return_to;
 
-					if count > 0 {
-						let value = self.drop()?;
-						while self.stack.len() > frame.stack_start {
-							self.drop()?;
-						}
-
-						self.push(value);
-					}
+					// Remove all end values, except return
+					self.stack.drain(frame.stack_start..self.stack.len() - 1);
 				},
 
+				Instruction::None => self.push(Object::None),
+
 				Instruction::NoOp => {},
+
 				_ => todo!(
 					"Unimplemented instruction in VM '{:?}'",
 					self.env.code[self.ip]
@@ -315,7 +311,7 @@ impl VM {
 	fn check_function_args_count(&self, args: usize) -> Result<(), RuntimeErr> {
 		if args > self.stack.len() - self.frames.last().unwrap().stack_start {
 			return Err(RuntimeErr(format!(
-				"Native Function requires {} arguments, but the stack only contains {}",
+				"Native Function requires {} arguments, but received {}",
 				args,
 				self.stack.len(),
 			)));
