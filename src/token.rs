@@ -11,15 +11,7 @@ impl Span {
 			len,
 		}
 	}
-
-	pub fn is_underscore(&self, source: &str) -> bool {
-		if self.len > 1 {
-			return false;
-		}
-
-		source.chars().nth(self.start + 1).unwrap() == '_'
-	}
-
+	
 	pub fn slice_from<'a>(&'a self, source: &'a str) -> &'a str {
 		&source[self.start..self.start + self.len]
 	}

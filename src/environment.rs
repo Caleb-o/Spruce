@@ -1,4 +1,4 @@
-use std::{fmt::Display, hash::{Hash, Hasher}, collections::hash_map::DefaultHasher};
+use std::fmt::Display;
 
 use crate::{instructions::{Instruction, ParamKind}, object::Object, compiler::Function};
 
@@ -93,7 +93,7 @@ impl Environment {
 	fn find_constant(&self, obj: &Object) -> Option<usize> {
 		for (i, item) in self.constants.iter().enumerate() {
 			if let ConstantValue::Obj(ref o) = item {
-				if obj.is_similar(o) {
+				if obj.is_exact(o) {
 					return Some(i);
 				}
 			}
@@ -163,7 +163,7 @@ impl Environment {
 	pub fn dump(&self) {
 		println!("=== {} Constants ===", self.constants.len());
 		for (index, constant) in self.constants.iter().enumerate() {
-			println!("{:0>3}  {}", index, constant);
+			println!("{:0>3}  \"{}\"", index, constant);
 		}
 		println!();
 

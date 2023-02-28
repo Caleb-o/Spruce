@@ -1,4 +1,4 @@
-use std::{fmt::Display, hash::Hash};
+use std::fmt::Display;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Object {
@@ -16,22 +16,40 @@ pub enum Object {
 
 impl Object {
 	pub fn is_similar(&self, other: &Object) -> bool {
-		if self != other {
-			return false;
+		match *self {
+			Self::None => true,
+			Self::Number(_) => match *other {
+				Self::Number(_) => true,
+				_ => false,
+			},
+			Self::Boolean(_) => match *other {
+				Self::Boolean(_) => true,
+				_ => false,
+			},
+			Self::String(_) => match *other {
+				Self::String(_) => true,
+				_ => false,
+			},
+			_ => false,
 		}
+	}
 
-		match &*self {
-			Self::Number(v) => *v == match *other {
+	pub fn is_exact(&self, other: &Object) -> bool {
+		match *self {
+			Self::None => true,
+			Self::Number(v) => v == match *other {
 				Self::Number(v) => v,
-				_ => unreachable!(),
+				_ => -0.0,
 			},
-			Self::Boolean(v) => *v == match *other {
+			Self::Boolean(v) => v == match *other {
 				Self::Boolean(v) => v,
-				_ => unreachable!(),
+				_ => false,
 			},
-			Self::String(v) => v == match *other {
-				Self::String(ref v) => v,
-				_ => unreachable!(),
+			Self::String(ref v) => {
+				if let Self::String(ref o) = other {
+					return v.eq(o);
+				}
+				false
 			},
 			_ => false,
 		}

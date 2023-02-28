@@ -174,11 +174,21 @@ impl VM {
 				Instruction::Add => {
 					let (lhs, rhs) = self.pop_2_check()?;
 
-					if let Object::Number(l) = lhs {
-						if let Object::Number(r) = rhs {
-							self.stack.push(Object::Number(l + r));
-						}
-					}
+					self.stack.push(match lhs {
+						Object::Number(v) => Object::Number(v + match rhs {
+							Object::Number(v) => v,
+							_ => unreachable!(),
+						}),
+						Object::String(v) => {
+							let mut new_str = v.clone();
+							new_str.push_str(match rhs {
+								Object::String(ref v) => v,
+								_ => unreachable!(),
+							});
+							Object::String(new_str)
+						},
+						_ => Object::None,
+					});
 				}
 
 				Instruction::Sub => {
@@ -364,14 +374,14 @@ impl VM {
 	}
 	
 	fn check_types_match(lhs: &Object, rhs: &Object) -> Result<(), RuntimeErr> {
-		if !matches!(lhs, Object::Number(_)) || !matches!(rhs, Object::Number(_)) {
-			return Err(RuntimeErr(format!(
-				"Value types do not match or are not integers '{}' != '{}'",
-				lhs, rhs,
-			)));
+		if lhs.is_similar(rhs) {
+			return Ok(());
 		}
-
-		Ok(())
+		
+		Err(RuntimeErr(format!(
+			"Value types do not match or are not integers '{}' != '{}'",
+			lhs, rhs,
+		)))
 	}
 
 	fn get_byte_location(&mut self) -> u8 {
