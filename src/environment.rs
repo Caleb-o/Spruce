@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, hash::{Hash, Hasher}, collections::hash_map::DefaultHasher};
 
 use crate::{instructions::{Instruction, ParamKind}, object::Object, compiler::Function};
 
@@ -36,7 +36,7 @@ impl Environment {
 	pub fn new() -> Self {
 		Self {
 			code: Vec::new(),
-			constants: Vec::new()
+			constants: Vec::new(),
 		}
 	}
 
@@ -69,20 +69,37 @@ impl Environment {
 
 	pub fn add_constant(&mut self, constant: Object) {
 		// FIXME: Only allow unique constants
-		self.constants.push(ConstantValue::Obj(constant));
-		let len = self.constants.len() - 1;
+		let idx = match self.find_constant(&constant) {
+			Some(idx) => idx,
+			None => {
+				self.constants.push(ConstantValue::Obj(constant));
+				self.constants.len() - 1
+			}
+		};
 
-		if len > 255 {
+		if idx > 255 {
 			// 16-bit location
 			self.add_op(Instruction::ConstantLong);
-			let bytes = (len as u16).to_be_bytes();
+			let bytes = (idx as u16).to_be_bytes();
 			self.add_opb(bytes[0]);
 			self.add_opb(bytes[1]);
 		} else {
 			// 8-bit location
 			self.add_op(Instruction::Constant);
-			self.add_opb(len as u8);
+			self.add_opb(idx as u8);
 		}
+	}
+
+	fn find_constant(&self, obj: &Object) -> Option<usize> {
+		for (i, item) in self.constants.iter().enumerate() {
+			if let ConstantValue::Obj(ref o) = item {
+				if obj.is_similar(o) {
+					return Some(i);
+				}
+			}
+		}
+
+		None
 	}
 
 	pub fn find_constant_func_loc(&self, id: &str) -> u8 {

@@ -1,5 +1,5 @@
 fn main {
-    for var i = 0; i < 20; i = i + 1 {
-        println(i);
+    for var i = 0; i < 10; i = i + 1 {
+        println(i + 10);
     }
 }

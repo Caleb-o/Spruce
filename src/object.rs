@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, hash::Hash};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Object {
@@ -12,6 +12,30 @@ pub enum Object {
 	// TODO: "Pointer" type, which holds its location in the stack
 	//		 If we want a complex/large type, we don't really want to
 	//		 duplicate it, especially if we want to mutate it.
+}
+
+impl Object {
+	pub fn is_similar(&self, other: &Object) -> bool {
+		if self != other {
+			return false;
+		}
+
+		match &*self {
+			Self::Number(v) => *v == match *other {
+				Self::Number(v) => v,
+				_ => unreachable!(),
+			},
+			Self::Boolean(v) => *v == match *other {
+				Self::Boolean(v) => v,
+				_ => unreachable!(),
+			},
+			Self::String(v) => v == match *other {
+				Self::String(ref v) => v,
+				_ => unreachable!(),
+			},
+			_ => false,
+		}
+	}
 }
 
 impl Display for Object {
