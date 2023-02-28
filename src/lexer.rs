@@ -43,7 +43,8 @@ impl Lexer {
 		}
 
 		match current {
-			'"' => self.read_string(),
+			'"' => self.read_string('"'),
+			'\'' => self.read_string('\''),
 
 			'+' => self.make_char_token(TokenKind::Plus),
 			'-' => self.make_char_token(TokenKind::Minus),
@@ -132,12 +133,12 @@ impl Lexer {
 		Token { span: Span::new(self.pos - 1, 1), kind, line: self.line, column: self.column - 1 }
 	}
 
-	fn check_if_matches(&self, start:usize, potential: Vec<(&'static str, TokenKind)>) -> TokenKind {
+	fn check_if_matches(&self, start:usize, potential: &[(&'static str, TokenKind)]) -> TokenKind {
 		let begin = start + 1;
 
 		for (rest, kind) in potential {
-			if &self.source[begin..begin + rest.len()] == rest {
-				return kind;
+			if &self.source[begin..begin + rest.len()] == *rest {
+				return *kind;
 			}
 		}
 
@@ -149,22 +150,22 @@ impl Lexer {
 		
 		// Fixme: chars.nth seems dumb here
 		match lexeme.chars().nth(0).unwrap() {
-			'e' => self.check_if_matches(start, vec![("lse", TokenKind::Else)]),
-			'f' => self.check_if_matches(start, vec![
+			'e' => self.check_if_matches(start, &[("lse", TokenKind::Else)]),
+			'f' => self.check_if_matches(start, &[
 				("alse", TokenKind::False),
 				("n", TokenKind::Function),
 			]),
-			'i' => self.check_if_matches(start, vec![
+			'i' => self.check_if_matches(start, &[
 					("f", TokenKind::If),
 					("s", TokenKind::Is),
 				]),
-			'l' => self.check_if_matches(start, vec![("et", TokenKind::Let)]),
-			'n' => self.check_if_matches(start, vec![("one", TokenKind::None)]),
-			'r' => self.check_if_matches(start, vec![("eturn", TokenKind::Return)]),
-			's' => self.check_if_matches(start, vec![("ruct", TokenKind::Struct)]),
-			't' => self.check_if_matches(start, vec![("true", TokenKind::True)]),
-			'v' => self.check_if_matches(start, vec![("ar", TokenKind::Var)]),
-			'w' => self.check_if_matches(start, vec![("hile", TokenKind::While)]),
+			'l' => self.check_if_matches(start, &[("et", TokenKind::Let)]),
+			'n' => self.check_if_matches(start, &[("one", TokenKind::None)]),
+			'r' => self.check_if_matches(start, &[("eturn", TokenKind::Return)]),
+			's' => self.check_if_matches(start, &[("ruct", TokenKind::Struct)]),
+			't' => self.check_if_matches(start, &[("true", TokenKind::True)]),
+			'v' => self.check_if_matches(start, &[("ar", TokenKind::Var)]),
+			'w' => self.check_if_matches(start, &[("hile", TokenKind::While)]),
 			_ => TokenKind::Identifier,
 		}
 	}
@@ -188,13 +189,13 @@ impl Lexer {
 		)
 	}
 
-	fn read_string(&mut self) -> Token {
+	fn read_string(&mut self, end: char) -> Token {
 		let column = self.column;
 		
 		self.advance();
 		let pos = self.pos;
 
-		while !self.is_at_end() && self.peek() != '"' {
+		while !self.is_at_end() && self.peek() != end {
 			self.advance();
 		}
 

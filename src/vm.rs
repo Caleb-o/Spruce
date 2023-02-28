@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, time::Instant};
 
 use crate::{environment::{Environment, ConstantValue}, object::Object, instructions::Instruction, compiler::Function};
 
@@ -14,6 +14,7 @@ pub struct VM {
 	len: usize,
 	stack: Vec<Object>,
 	frames: Vec<CallFrame>,
+	pub started: Instant,
 }
 
 #[derive(Debug)]
@@ -34,9 +35,14 @@ impl VM {
 			env,
 			ip: 0,
 			len,
-			stack: Vec::new(),
-			frames: Vec::new(),
+			stack: Vec::with_capacity(512),
+			frames: Vec::with_capacity(64),
+			started: Instant::now(),
 		}
+	}
+
+	pub fn stack_slice_from_call(&self) -> &[Object] {
+		&self.stack[self.frames.last().unwrap().stack_start..]
 	}
 
 	pub fn stack_size(&self) -> usize {
@@ -104,13 +110,13 @@ impl VM {
 				Instruction::Negate => {
 					let last = self.drop()?;
 					
-					if !matches!(last, Object::Int(_)) {
+					if !matches!(last, Object::Number(_)) {
 						return Err(RuntimeErr(format!(
 							"Value type does not match or is not an integer '{last}'"
 						)));
 					}
 
-					self.stack.push(Object::Int(match last { Object::Int(v) => -v, _ => unreachable!()}));
+					self.stack.push(Object::Number(match last { Object::Number(v) => -v, _ => unreachable!()}));
 				},
 
 				Instruction::BuildList => {
@@ -128,8 +134,8 @@ impl VM {
 				Instruction::Greater => {
 					let (lhs, rhs) = self.pop_2_check()?;
 
-					if let Object::Int(l) = lhs {
-						if let Object::Int(r) = rhs {
+					if let Object::Number(l) = lhs {
+						if let Object::Number(r) = rhs {
 							self.stack.push(Object::Boolean(l > r));
 						}
 					}
@@ -138,8 +144,8 @@ impl VM {
 				Instruction::GreaterEqual => {
 					let (lhs, rhs) = self.pop_2_check()?;
 
-					if let Object::Int(l) = lhs {
-						if let Object::Int(r) = rhs {
+					if let Object::Number(l) = lhs {
+						if let Object::Number(r) = rhs {
 							self.stack.push(Object::Boolean(l >= r));
 						}
 					}
@@ -148,8 +154,8 @@ impl VM {
 				Instruction::Less => {
 					let (lhs, rhs) = self.pop_2_check()?;
 
-					if let Object::Int(l) = lhs {
-						if let Object::Int(r) = rhs {
+					if let Object::Number(l) = lhs {
+						if let Object::Number(r) = rhs {
 							self.stack.push(Object::Boolean(l < r));
 						}
 					}
@@ -158,8 +164,8 @@ impl VM {
 				Instruction::LessEqual => {
 					let (lhs, rhs) = self.pop_2_check()?;
 
-					if let Object::Int(l) = lhs {
-						if let Object::Int(r) = rhs {
+					if let Object::Number(l) = lhs {
+						if let Object::Number(r) = rhs {
 							self.stack.push(Object::Boolean(l <= r));
 						}
 					}
@@ -168,9 +174,9 @@ impl VM {
 				Instruction::Add => {
 					let (lhs, rhs) = self.pop_2_check()?;
 
-					if let Object::Int(l) = lhs {
-						if let Object::Int(r) = rhs {
-							self.stack.push(Object::Int(l + r));
+					if let Object::Number(l) = lhs {
+						if let Object::Number(r) = rhs {
+							self.stack.push(Object::Number(l + r));
 						}
 					}
 				}
@@ -178,9 +184,9 @@ impl VM {
 				Instruction::Sub => {
 					let (lhs, rhs) = self.pop_2_check()?;
 
-					if let Object::Int(l) = lhs {
-						if let Object::Int(r) = rhs {
-							self.stack.push(Object::Int(l - r));
+					if let Object::Number(l) = lhs {
+						if let Object::Number(r) = rhs {
+							self.stack.push(Object::Number(l - r));
 						}
 					}
 				}
@@ -188,9 +194,9 @@ impl VM {
 				Instruction::Mul => {
 					let (lhs, rhs) = self.pop_2_check()?;
 
-					if let Object::Int(l) = lhs {
-						if let Object::Int(r) = rhs {
-							self.stack.push(Object::Int(l * r));
+					if let Object::Number(l) = lhs {
+						if let Object::Number(r) = rhs {
+							self.stack.push(Object::Number(l * r));
 						}
 					}
 				}
@@ -198,13 +204,13 @@ impl VM {
 				Instruction::Div => {
 					let (lhs, rhs) = self.pop_2_check()?;
 
-					if let Object::Int(l) = lhs {
-						if let Object::Int(r) = rhs {
-							if r == 0 {
+					if let Object::Number(l) = lhs {
+						if let Object::Number(r) = rhs {
+							if r == 0.0 {
 								return Err(RuntimeErr("Trying to divide by 0".into()));
 							}
 
-							self.stack.push(Object::Int(l / r));
+							self.stack.push(Object::Number(l / r));
 						}
 					}
 				}
@@ -212,8 +218,8 @@ impl VM {
 				Instruction::EqualEqual => {
 					let (lhs, rhs) = self.pop_2_check()?;
 
-					if let Object::Int(l) = lhs {
-						if let Object::Int(r) = rhs {
+					if let Object::Number(l) = lhs {
+						if let Object::Number(r) = rhs {
 							self.stack.push(Object::Boolean(l == r));
 						}
 					}
@@ -222,8 +228,8 @@ impl VM {
 				Instruction::NotEqual => {
 					let (lhs, rhs) = self.pop_2_check()?;
 
-					if let Object::Int(l) = lhs {
-						if let Object::Int(r) = rhs {
+					if let Object::Number(l) = lhs {
+						if let Object::Number(r) = rhs {
 							self.stack.push(Object::Boolean(l != r));
 						}
 					}
@@ -296,12 +302,16 @@ impl VM {
 					let loc = self.get_long_location();
 					self.check_function_args_count(args)?;
 
-					if let ConstantValue::Func(ref f) = self.env.constants[loc as usize].clone() {
-						match f {
-							Function::Native { identifier: _, param_count: _, function, .. } => {
-								function(self, args)?;
-							},
-							_ => {}
+					if let ConstantValue::Func(f) = self.env.constants[loc as usize].clone() {
+						if let Function::Native { identifier: _, param_count: _, function, .. } = f {
+							self.frames.push(CallFrame { 
+								return_to: self.ip,
+								stack_start: self.stack.len() - args as usize,
+							});
+
+							function(self, args)?;
+
+							_ = self.frames.pop();
 						}
 					}
 				},
@@ -311,7 +321,7 @@ impl VM {
 					self.ip = frame.return_to;
 
 					// Remove all end values, except return
-					self.stack.drain(frame.stack_start..self.stack.len() - 1);
+					self.stack.drain(frame.stack_start..self.stack.len()-1);
 				},
 
 				Instruction::None => self.push(Object::None),
@@ -354,7 +364,7 @@ impl VM {
 	}
 	
 	fn check_types_match(lhs: &Object, rhs: &Object) -> Result<(), RuntimeErr> {
-		if !matches!(lhs, Object::Int(_)) || !matches!(rhs, Object::Int(_)) {
+		if !matches!(lhs, Object::Number(_)) || !matches!(rhs, Object::Number(_)) {
 			return Err(RuntimeErr(format!(
 				"Value types do not match or are not integers '{}' != '{}'",
 				lhs, rhs,

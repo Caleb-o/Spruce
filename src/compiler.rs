@@ -1,4 +1,4 @@
-use std::{io::Error, fmt::Display, rc::Rc, fs};
+use std::{io::Error, fmt::Display, rc::Rc, fs, thread, time::Duration};
 
 use crate::{lexer::Lexer, token::{Span, Token, TokenKind}, environment::{Environment, ConstantValue}, object::Object, instructions::{Instruction, ParamKind}, vm::{VM, RuntimeErr}};
 
@@ -7,8 +7,6 @@ struct Local {
 	identifier: Span,
 	// Position in bytecode
 	position: u16,
-	// Cannot shadow/overwrite parameters
-	is_param: bool,
 	is_global: bool,
 	mutable: bool,
 }
@@ -30,7 +28,7 @@ pub enum Function {
 	User { 
 		identifier: Span,
 		position: u32,
-		parameters: Vec<Span>,
+		parameters: Option<Vec<Span>>,
 		empty: bool,
 	},
 	Native {
@@ -90,7 +88,7 @@ impl Compiler {
 			lexer,
 			unresolved: Vec::new(),
 			locals: Vec::new(),
-			functable: Vec::new()
+			functable: Vec::new(),
 		})
 	}
 
@@ -105,7 +103,7 @@ impl Compiler {
 		match self.find_function_str("main") {
 			Some(func) => {
 				if let Function::User { identifier: _, position, parameters, .. } = func {
-					env.add_call(parameters.len() as u8, *position);
+					env.add_call(parameters.as_ref().map_or(0, |p| p.len()) as u8, *position);
 				}
 			}
 			None => return Err(self.error("Cannot find function 'main'".into())),
@@ -147,25 +145,42 @@ impl Compiler {
 	// TODO: Move to different file
 	fn register_native_functions(&mut self, env: &mut Box<Environment>) {
 		self.add_fn(env, "print", ParamKind::Any, false, Rc::new(|vm, args| {
-			(0..args).into_iter()
-				.map(|_| vm.drop().unwrap())
-				.rev()
+			vm.stack_slice_from_call()
+				.iter()
 				.for_each(|o| print!("{o}"));
+
+			(0..args).into_iter()
+				.for_each(|_| {vm.drop().unwrap();});
 
 			Ok(())
 		}));
 
 		self.add_fn(env, "println", ParamKind::Any, false, Rc::new(|vm, args| {
-			(0..args).into_iter()
-				.map(|_| vm.drop().unwrap())
-				.rev()
+			vm.stack_slice_from_call()
+				.iter()
 				.for_each(|o| print!("{o}"));
+
+			(0..args).into_iter()
+				.for_each(|_| {vm.drop().unwrap();});
 
 			println!();
 			Ok(())
 		}));
 
-		self.add_fn(env, "read_file", ParamKind::Count(1), true, Rc::new(|vm, _args| {
+		self.add_fn(env, "time", ParamKind::Count(0), true, Rc::new(|vm, _| {
+			let t = vm.started.elapsed().as_millis() as f32;
+			vm.push(Object::Number(t));
+			Ok(())
+		}));
+
+		self.add_fn(env, "sleep", ParamKind::Count(1), false, Rc::new(|vm, _| {
+			if let Object::Number(n) = vm.drop()? {
+				thread::sleep(Duration::from_millis(n as u64));
+			}
+			Ok(())
+		}));
+
+		self.add_fn(env, "read_file", ParamKind::Count(1), true, Rc::new(|vm, _| {
 			if let Object::String(s) = vm.drop()? {
 				match fs::read_to_string(s) {
 					Ok(content) => {
@@ -187,7 +202,7 @@ impl Compiler {
 
 		self.add_fn(env, "strlen", ParamKind::Count(1), true, Rc::new(|vm, _args| {
 			if let Object::String(s) = vm.drop()? {
-				vm.push(Object::Int(s.len() as i64));
+				vm.push(Object::Number(s.len() as f32));
 			} else {
 				vm.warning(format!("strlen expected a string but received {}", vm.peek()));
 				vm.push(Object::None);
@@ -227,7 +242,7 @@ impl Compiler {
 
 		self.add_fn(env, "list_len", ParamKind::Count(1), true, Rc::new(|vm, _args| {
 			if let Object::List(ref list) = vm.drop()? {
-				vm.push(Object::Int(list.len() as i64));
+				vm.push(Object::Number(list.len() as f32));
 			} else {
 				vm.warning(format!("list_push expected a list but received {}", vm.peek()));
 				vm.push(Object::None);
@@ -268,14 +283,15 @@ impl Compiler {
 						// Generate the function if it is not empty
 						if !empty {
 							let id = identifier.slice_from(&self.lexer.source).to_string();
+							let paramc = parameters.as_ref().map_or(0, |p| p.len()) as usize;
 							
 							// Correct function ID, but arity does not match
-							if parameters.len() != lookahead.args as usize {
-								unresolved.push((id.clone(), parameters.len(), lookahead.args));
+							if paramc != lookahead.args as usize {
+								unresolved.push((id.clone(), paramc, lookahead.args));
 								continue;
 							}
 
-							env.code[lookahead.position as usize] = parameters.len() as u8;
+							env.code[lookahead.position as usize] = paramc as u8;
 							u32::to_be_bytes(*position)
 								.into_iter()
 								.enumerate()
@@ -387,7 +403,7 @@ impl Compiler {
 		self.find_local_in(span, topmost, self.locals.len() - 1)
 	}
 
-	fn register_local(&mut self, span: Span, is_param: bool, mutable: bool) -> Option<usize> {
+	fn register_local(&mut self, span: Span, mutable: bool) -> Option<usize> {
 		let local = self.find_local(span, true);
 
 		match local {
@@ -406,7 +422,6 @@ impl Compiler {
 				self.locals.last_mut().unwrap().push(Local {
 					identifier: span,
 					position,
-					is_param,
 					is_global: len == 1,
 					mutable,
 				});
@@ -418,7 +433,7 @@ impl Compiler {
 	fn register_function(
 		&mut self,
 		identifier: Span,
-		parameters: Vec<Span>,
+		parameters: Option<Vec<Span>>,
 		env: &mut Box<Environment>,
 	) -> Result<(), CompilerErr>
 	{
@@ -435,12 +450,10 @@ impl Compiler {
 		}
 
 		// Register locals from parameters
-		for param in parameters.iter() {
-			if param.is_underscore(&self.lexer.source) {
-				break;
+		if let Some(ref params) = parameters {
+			for param in params.iter() {
+				_ = self.register_local(*param, false);
 			}
-
-			_ = self.register_local(*param, true, false);
 		}
 
 		let position = (env.op_here() + if env.code.len() >= u16::MAX as usize {
@@ -474,10 +487,10 @@ impl Compiler {
 		let identifier = self.current;
 		self.consume(TokenKind::Identifier, "Expected identifier in function call")?;
 
+		let mut arg_count: u8 = 0;
 		self.consume(TokenKind::LParen, "Expect '(' after function identifier")?;
 		
 		// We track arguments, since native functions can have N..Any parameters
-		let mut arg_count: u8 = 0;
 		if self.current.kind != TokenKind::RParen {
 			self.expression(env)?;
 			arg_count += 1;
@@ -499,12 +512,13 @@ impl Compiler {
 					match func {
 						Function::User { identifier, position, parameters, empty: _ } => {
 							let id = identifier.slice_from(&self.lexer.source).to_string();
+							let paramc = parameters.as_ref().map_or(0, |p| p.len()) as usize;
 							
-							if parameters.len() as u8 != arg_count {
-								fnerr = Some((id.clone(), parameters.len() as u8));
+							if paramc != arg_count as usize {
+								fnerr = Some((id.clone(), paramc as u8));
 							}
 
-							env.add_call(parameters.len() as u8, *position);
+							env.add_call(paramc as u8, *position);
 						}
 						Function::Native { identifier, param_count, .. } => {
 							if let ParamKind::Count(c) = param_count {
@@ -623,9 +637,9 @@ impl Compiler {
 		match self.current.kind {
 			TokenKind::Int => {
 				let span = self.current.span;
-				env.add_constant(Object::Int(
+				env.add_constant(Object::Number(
 					self.lexer.source[span.start..span.start + span.len]
-						.parse::<i64>()
+						.parse::<f32>()
 						.unwrap()
 				));
 				self.consume_here();
@@ -660,6 +674,13 @@ impl Compiler {
 				env.add_constant(Object::None);
 				Ok(())
 			}
+
+			TokenKind::LParen => {
+				self.consume_here();
+				self.expression(env)?;
+				self.consume(TokenKind::RParen, "Expect ')' to close group expression")?;
+				Ok(())
+			},
 
 			TokenKind::LSquare => self.list_literal(env),
 
@@ -829,7 +850,7 @@ impl Compiler {
 		let identifier = self.current;
 		self.consume(TokenKind::Identifier, "Expected identifier after 'var'/'let'")?;
 
-		_ = self.register_local(identifier.span, false, mutable);
+		_ = self.register_local(identifier.span, mutable);
 
 		// Produce the expression
 		if self.current.kind == TokenKind::Equal {
@@ -941,45 +962,29 @@ impl Compiler {
 		let identifier = self.current.span;
 		self.consume(TokenKind::Identifier, "Expected identifier after 'func'")?;
 
-		let mut parameters = Vec::new();
-		let mut has_underscore = false;
-
-		self.consume(TokenKind::LParen, "Expect '(' at the start of parameter list")?;
-
-		// Consume paarameter list
-		// TODO: Underscore to add unnamed parameter
-		if self.current.kind != TokenKind::RParen {
-			let param = self.current.span;
-			self.consume(TokenKind::Identifier, "Expected identifier in parameter list")?;
-			parameters.push(param);
-
-			if param.is_underscore(&self.lexer.source) {
-				has_underscore = true;
-			}
-
-			while self.current.kind == TokenKind::Comma {
-				self.consume_here();
-
+		let parameters = if self.current.kind == TokenKind::LParen {
+			let mut parameters = Vec::new();
+			self.consume(TokenKind::LParen, "Expect '(' at the start of parameter list")?;
+	
+			// Consume paarameter list
+			// TODO: Underscore to add unnamed parameter
+			if self.current.kind != TokenKind::RParen {
 				let param = self.current.span;
-				self.consume(TokenKind::Identifier, "Expected identifier in parameter list after comma")?;
+				self.consume(TokenKind::Identifier, "Expected identifier in parameter list")?;
 				parameters.push(param);
-
-				if param.is_underscore(&self.lexer.source) {
-					// Cannot use identifiers after an underscore
-					if has_underscore {
-						self.error_no_exit(format!(
-							"Trying to use an identifer at parameter position {}, after an underscore in function '{}'",
-							parameters.len(),
-							param.slice_from(&self.lexer.source),
-						));
-					}
-					
-					has_underscore = true;
+	
+				while self.current.kind == TokenKind::Comma {
+					self.consume_here();
+	
+					let param = self.current.span;
+					self.consume(TokenKind::Identifier, "Expected identifier in parameter list after comma")?;
+					parameters.push(param);
 				}
 			}
-		}
-
-		self.consume(TokenKind::RParen, "Expect ')' after function parameter list")?;
+			
+			self.consume(TokenKind::RParen, "Expect ')' after function parameter list")?;
+			Some(parameters)
+		} else {None};
 
 		self.register_function(identifier, parameters, env)?;
 

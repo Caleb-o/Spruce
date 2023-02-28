@@ -1,7 +1,4 @@
-var a = 10;
-
-fn main() {
-    println(a);
-    a = 20;
-    println(a);
+fn main {
+    let list = [1, 2, 3, 4];
+    println(list);
 }
