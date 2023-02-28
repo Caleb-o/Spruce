@@ -362,6 +362,10 @@ impl Compiler {
 		self.current = self.lexer.next();
 	}
 
+	fn is_any_of(&self, kinds: &[TokenKind]) -> bool {
+		kinds.iter().any(|k| self.current.kind == *k)
+	}
+
 	fn find_function_str(&self, id: &str) -> Option<&Function> {
 		for func in &self.functable {
 			match func {
@@ -576,7 +580,7 @@ impl Compiler {
 		self.expression(env)?;
 
 		let before_block = env.add_jump_op(Instruction::JumpNot);
-		self.body(env)?;
+		self.body(env, true)?;
 		let true_block = env.add_jump_op(Instruction::Jump);
 
 		if self.current.kind == TokenKind::Else {
@@ -586,7 +590,7 @@ impl Compiler {
 			if self.current.kind == TokenKind::If {
 				self.if_statement(env)?;
 			} else {
-				self.body(env)?;
+				self.body(env, true)?;
 			}
 		} else {
 			env.patch_jump_op(before_block);
@@ -596,21 +600,41 @@ impl Compiler {
 		Ok(())
 	}
 
-	fn while_statement(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
+	fn for_statement(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
 		self.consume_here();
+		self.push_scope();
+
+		if self.is_any_of(&[TokenKind::Var, TokenKind::Let]) {
+			self.var_declaration(env)?;
+			self.consume(TokenKind::SemiColon, "Expect ';' after binding declarion in for")?;
+		}
 
 		// Evaluate condition
 		let start = env.op_here();
 		self.expression(env)?;
 		let before_block = env.add_jump_op(Instruction::JumpNot);
+		let before_iter = if self.current.kind == TokenKind::SemiColon {
+			let before_iter = env.add_jump_op(Instruction::Jump);
+			let after_jmp = env.op_here();
+			self.consume(TokenKind::SemiColon, "Expect ';' after for condition")?;
+			self.expression(env)?;
+			
+			let after_pos = env.add_jump_op(Instruction::Jump);
+			env.patch_jump_op_to(after_pos, start);
+			
+			env.patch_jump_op(before_iter);
 
-		self.body(env)?;
+			after_jmp
+		} else {start};
+
+		self.body(env, false)?;
 		// Return back before the condition to re-evaluate
 		let jmp = env.add_jump_op(Instruction::Jump);
-		env.patch_jump_op_to(jmp, start);
+		env.patch_jump_op_to(jmp, before_iter);
 
 		env.patch_jump_op(before_block);
-
+		
+		self.pop_scope();
 		Ok(())
 	}
 
@@ -920,8 +944,8 @@ impl Compiler {
 				self.if_statement(env)?;
 				return Ok(());
 			},
-			TokenKind::While => {
-				self.while_statement(env)?;
+			TokenKind::For => {
+				self.for_statement(env)?;
 				return Ok(());
 			},
 			// Default as expression statement
@@ -939,16 +963,20 @@ impl Compiler {
 		self.consume(TokenKind::SemiColon, "Expect ';' after statement")
 	}
 
-	fn body(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
+	fn body(&mut self, env: &mut Box<Environment>, new_scope: bool) -> Result<(), CompilerErr> {
 		self.consume(TokenKind::LCurly, "Expect '{' to start block body")?;
 
-		self.push_scope();
+		if new_scope {
+			self.push_scope();
+		}
 
 		while self.current.kind != TokenKind::RCurly {
 			self.statement(env)?;
 		}
 
-		self.pop_scope();
+		if new_scope {
+			self.pop_scope();
+		}
 
 		self.consume(TokenKind::RCurly, "Expect '}' to end block body")?;
 
@@ -991,7 +1019,7 @@ impl Compiler {
 		let jmp = env.add_jump_op(Instruction::Jump);
 		let start_loc = env.op_here();
 
-		self.body(env)?;
+		self.body(env, false)?;
 		
 		// Don't generate pointless returns for empty functions
 		if start_loc != env.op_here() {

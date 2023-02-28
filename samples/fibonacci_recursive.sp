@@ -1,7 +1,7 @@
 # Recursive fibonacci
 fn main() {
 	let start = time();
-	let val = fib(40);
+	let val = fib(32);
 	let elapsed = (time() - start) / 1000;
 	println('Value: ', val, ', Elapsed sec: ', elapsed); # 2178309
 }

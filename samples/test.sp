@@ -1,4 +1,5 @@
 fn main {
-    let list = [1, 2, 3, 4];
-    println(list);
+    for var i = 0; i < 20; i = i + 1 {
+        println(i);
+    }
 }

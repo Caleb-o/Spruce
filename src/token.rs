@@ -63,7 +63,7 @@ pub enum TokenKind {
 	// Literal types
 	Int, Float, String, True, False, None,
 	
-	If, Else, While, Let, Var,
+	If, Else, For, Let, Var,
 	Function, Struct, Is, Return,
 	Identifier,
 	

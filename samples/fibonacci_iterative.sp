@@ -1,6 +1,6 @@
 # Fibonacci using variable swaps instead of recursion
 fn main() {
-	print(fib(64)); # 10610209857723
+	print(fib(48)); # 10610209857723
 }
 
 fn fib(nth) {
