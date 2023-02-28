@@ -1,5 +1,6 @@
 use std::fmt::Display;
 
+#[allow(unused)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Object {
 	None,
