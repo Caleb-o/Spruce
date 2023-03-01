@@ -174,6 +174,13 @@ impl Compiler {
 									env.code[lookahead.position as usize + 2 + i] = b
 								);
 						} else {
+							self.warning(format!(
+									"Calling empty function '{}'",
+									lookahead.token.span.slice_from(&self.lexer.source)
+								),
+								&lookahead.token
+							);
+
 							// Patch call to no-op as it is empty
 							env.code[lookahead.position as usize] = Instruction::NoOp as u8;
 							(0..5)
@@ -209,9 +216,10 @@ impl Compiler {
 		}
 	}
 
+	// FIXME: Replace these logging functions with a logger
 	fn error(&self, msg: String) -> CompilerErr {
 		CompilerErr(format!(
-			"[Compiler Error] {} [{}:{}]",
+			"[\x1b[31mError\x1b[0m] {} [{}:{}]",
 			msg,
 			self.current.line,
 			self.current.column,
@@ -222,7 +230,16 @@ impl Compiler {
 		self.had_error = true;
 
 		println!("{}", format!(
-			"[Compiler Error] {} [{}:{}]",
+			"[\x1b[31mError\x1b[0m] {} [{}:{}]",
+			msg,
+			token.line,
+			token.column,
+		));
+	}
+
+	fn warning(&self, msg: String, token: &Token) {
+		println!("{}", format!(
+			"[\x1b[33mWarning\x1b[0m] {} [{}:{}]",
 			msg,
 			token.line,
 			token.column,
@@ -426,6 +443,13 @@ impl Compiler {
 							}
 						}
 					}
+				} else {
+					self.warning(format!(
+							"Calling empty function '{}'",
+							identifier.span.slice_from(&self.lexer.source)
+						),
+						&identifier
+					);
 				}
 			}
 
