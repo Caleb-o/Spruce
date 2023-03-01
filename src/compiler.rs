@@ -1,6 +1,6 @@
 use std::{io::Error, fmt::Display};
 
-use crate::{lexer::Lexer, token::{Span, Token, TokenKind}, environment::{Environment, ConstantValue}, object::Object, instructions::{Instruction, ParamKind}, nativefns::{self, NativeFunction}, symtable::SymTable};
+use crate::{lexer::Lexer, token::{Span, Token, TokenKind}, environment::{Environment, ConstantValue, FunctionMeta}, object::Object, instructions::{Instruction, ParamKind}, nativefns::{self, NativeFunction}, symtable::SymTable};
 
 #[derive(Debug, Clone)]
 struct LookAhead {
@@ -14,8 +14,8 @@ struct LookAhead {
 #[repr(u8)]
 pub enum Function {
 	User { 
-		identifier: Span,
-		position: u32,
+		meta_id: u32,
+		span: Span,
 		parameters: Option<Vec<(Token, Option<Token>)>>,
 		empty: bool,
 	},
@@ -29,7 +29,7 @@ pub enum Function {
 
 impl Function {
 	fn is_empty(&self) -> bool {
-		if let Function::User { identifier: _, position: _, parameters: _, empty } = *self {
+		if let Function::User { meta_id: _, span: _, parameters: _, empty } = *self {
 				empty
 		} else {
 			false
@@ -37,7 +37,7 @@ impl Function {
 	}
 
 	fn mark_empty(&mut self) {
-		if let Function::User { identifier: _, position: _, parameters: _, ref mut empty } = * self {
+		if let Function::User { meta_id: _, span: _, parameters: _, ref mut empty } = * self {
 			*empty = true;
 		} 
 	}
@@ -84,8 +84,8 @@ impl Compiler {
 
 		match self.find_function_str("main") {
 			Some(func) => {
-				if let Function::User { identifier: _, position, parameters, .. } = func {
-					env.add_call(parameters.as_ref().map_or(0, |p| p.len()) as u8, *position);
+				if let Function::User { meta_id, .. } = func {
+					env.add_call(*meta_id);
 				}
 			}
 			None => return Err(self.error("Cannot find function 'main'".into())),
@@ -141,7 +141,7 @@ impl Compiler {
 			match self.find_function(lookahead.token.span) {
 				Some(ref mut func) => {
 					// Cannot resolve native calls, since they're part of the compiler
-					if let Function::User { identifier: _, position, parameters, empty } = func {
+					if let Function::User { meta_id, empty, ..} = func {
 						// Generate the function if it is not empty
 						if *empty {
 							self.warning(format!(
@@ -152,21 +152,19 @@ impl Compiler {
 							);
 						}
 
-						let paramc = parameters.as_ref().map_or(0, |p| p.len()) as usize;
-						
+						let func = &env.functions[*meta_id as usize];
 						// Correct function ID, but arity does not match
-						if paramc != lookahead.args as usize {
-							unresolved.push((lookahead.token, paramc, lookahead.args));
+						if func.arg_count != lookahead.args {
+							unresolved.push((lookahead.token, func.arg_count, lookahead.args));
 							continue;
 						}
 
-						env.code[lookahead.position as usize + 1] = paramc as u8;
-						u32::to_be_bytes(*position)
+						u32::to_be_bytes(*meta_id)
 							.into_iter()
 							.enumerate()
 							.for_each(
 								|(i, b)| 
-								env.code[lookahead.position as usize + 2 + i] = b
+								env.code[lookahead.position as usize + 1 + i] = b
 							);
 						}
 					}
@@ -179,7 +177,7 @@ impl Compiler {
 		for (token, params, args) in unresolved {
 			let id = token.span.slice_from(&self.lexer.source).to_string();
 
-			if params != args as usize {
+			if params != args {
 				self.error_no_exit(format!(
 					"Function '{id}' expected {params} argument(s), but received {args}",
 					),
@@ -245,8 +243,8 @@ impl Compiler {
 	fn find_function_str(&self, id: &str) -> Option<&Function> {
 		for func in &self.functable {
 			match func {
-				Function::User { identifier, .. } => {
-					if identifier.compare_str(id, &self.lexer.source) {
+				Function::User { meta_id: _, span,  .. } => {
+					if span.compare_str(id, &self.lexer.source) {
 						return Some(func);
 					}
 				}
@@ -321,9 +319,18 @@ impl Compiler {
 			}
 		}
 
+		env.functions.push(FunctionMeta::new(
+			identifier.span.slice_from(&self.lexer.source).to_string(),
+			match parameters {
+				Some(ref p) => p.len() as u8,
+				None => 0,
+			},
+			position
+		));
+
 		self.functable.push(Function::User {
-			identifier: identifier.span,
-			position,
+			meta_id: env.functions.len() as u32 - 1,
+			span: identifier.span,
 			parameters,
 			empty: false
 		});
@@ -334,8 +341,8 @@ impl Compiler {
 	fn mark_function_empty(&mut self, id: Span) {
 		for func in &mut self.functable {
 			// Cannot mark native functions as empty
-			if let Function::User { identifier, .. } = func {
-				if identifier.compare(&id, &self.lexer.source) {
+			if let Function::User { span, .. } = func {
+				if span.compare(&id, &self.lexer.source) {
 					func.mark_empty();
 				}
 			}
@@ -369,15 +376,15 @@ impl Compiler {
 				if !func.is_empty() {
 					// Only generate the call if the function is not empty
 					match func {
-						Function::User { identifier, position, parameters, empty: _ } => {
-							let id = identifier.slice_from(&self.lexer.source).to_string();
-							let paramc = parameters.as_ref().map_or(0, |p| p.len()) as usize;
+						Function::User { meta_id, span, ..} => {
+							let func = &env.functions[*meta_id as usize];
+							let id = span.slice_from(&self.lexer.source).to_string();
 							
-							if paramc != arg_count as usize {
-								fnerr = Some((id.clone(), paramc as u8));
+							if func.arg_count != arg_count {
+								fnerr = Some((id, func.arg_count));
 							}
 
-							env.add_call(paramc as u8, *position);
+							env.add_call(*meta_id);
 						}
 						Function::Native { identifier, param_count, .. } => {
 							if let ParamKind::Count(c) = param_count {
@@ -412,7 +419,7 @@ impl Compiler {
 				// Push the call to a stack of unresolved calls
 				// They will be filled in at the end, if they exist
 				let position = env.op_here() as u32;
-				env.add_call(0, 0);
+				env.add_call(0);
 
 				self.unresolved.push(LookAhead {
 					token: identifier,

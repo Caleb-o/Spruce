@@ -8,7 +8,6 @@ pub enum Object {
 	String(String),
 	Boolean(bool),
 	List(Vec<Box<Object>>),
-	// Bytecode location, Parameter Count
 	Function(u8, usize),
 	// TODO: "Pointer" type, which holds its location in the stack
 	//		 If we want a complex/large type, we don't really want to

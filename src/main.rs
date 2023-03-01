@@ -32,11 +32,7 @@ fn main() {
         }
         "r" | "run" => {
             match compile(&args[2]) {
-                Ok(e) => {
-                    if let Err(e) = VM::new(e).run() {
-                        println!("Runtime: {}", e.0);
-                    }
-                }
+                Ok(e) => VM::new(e).run(),
                 Err(e) => eprintln!("{e}"),
             }
         }

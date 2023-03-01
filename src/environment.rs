@@ -9,6 +9,18 @@ pub enum ConstantValue {
 	Func(Function),
 }
 
+pub struct FunctionMeta {
+	pub identifier: String,
+	pub arg_count: u8,
+	pub location: u32,
+}
+
+impl FunctionMeta {
+	pub fn new(identifier: String, arg_count: u8, location: u32) -> Self {
+		Self { identifier, arg_count, location }
+	}
+}
+
 impl Display for ConstantValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", match self {
@@ -30,6 +42,7 @@ impl Display for ConstantValue {
 pub struct Environment {
 	pub code: Vec<u8>,
 	pub constants: Vec<ConstantValue>,
+	pub functions: Vec<FunctionMeta>
 }
 
 impl Environment {
@@ -37,6 +50,7 @@ impl Environment {
 		Self {
 			code: Vec::new(),
 			constants: Vec::new(),
+			functions: Vec::new(),
 		}
 	}
 
@@ -63,10 +77,8 @@ impl Environment {
 		location.to_be_bytes().into_iter().for_each(|b| self.code.push(b));
 	}
 
-	pub fn add_call(&mut self, args: u8, location: u32) {
+	pub fn add_call(&mut self, location: u32) {
 		self.code.push(Instruction::Call as u8);
-		self.code.push(args);
-
 		location.to_be_bytes().into_iter().for_each(|b| self.code.push(b));
 	}
 
@@ -177,6 +189,12 @@ impl Environment {
 		}
 		println!();
 
+		println!("=== {} Function Meta ===", self.constants.len());
+		for (index, func) in self.functions.iter().enumerate() {
+			println!("{:0>3}  {}({})", index, func.identifier, func.arg_count);
+		}
+		println!();
+
 		println!("=== {} Instructions ===", self.code.len());
 
 		let mut offset = 0;
@@ -213,7 +231,7 @@ impl Environment {
 				Instruction::JumpNot => short_location_instruction("JUMP_NOT", offset, &self),
 
 				Instruction::Call => call_instruction("CALL", offset, &self),
-				Instruction::CallNative => call_instruction("NATIVE_CALL", offset, &self),
+				Instruction::CallNative => native_call_instruction("NATIVE_CALL", offset, &self),
 				Instruction::Return => simple_instruction("RETURN", offset),
 				Instruction::Halt => simple_instruction("HALT", offset),
 
@@ -257,6 +275,20 @@ fn short_location_instruction(name: &str, offset: usize, env: &Environment) -> u
 }
 
 fn call_instruction(name: &str, offset: usize, env: &Environment) -> usize {
+	let location = u32::from_be_bytes([
+		env.code[offset + 1],
+		env.code[offset + 2],
+		env.code[offset + 3],
+		env.code[offset + 4],
+	]);
+
+	let meta = &env.functions[location as usize];
+	println!("{name}<{}, {}>", meta.arg_count, meta.location);
+
+	offset + 5
+}
+
+fn native_call_instruction(name: &str, offset: usize, env: &Environment) -> usize {
 	let args = env.code[offset + 1];
 	let location = u32::from_be_bytes([
 		env.code[offset + 2],

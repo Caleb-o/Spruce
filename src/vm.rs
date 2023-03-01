@@ -3,8 +3,15 @@ use std::{fmt::Display, time::Instant};
 use crate::{environment::{Environment, ConstantValue, get_type_name}, object::Object, instructions::Instruction, compiler::Function};
 
 struct CallFrame {
+	identifier: String,
 	return_to: usize,
 	stack_start: usize,
+}
+
+impl CallFrame {
+	fn new(identifier: String, return_to: usize, stack_start: usize) -> Self {
+		Self { identifier, return_to, stack_start }
+	}
 }
 
 pub struct VM {
@@ -74,9 +81,16 @@ impl VM {
 		println!("Warning: {msg}");
 	}
 
-	pub fn run(&mut self) -> Result<(), RuntimeErr> {
+	pub fn run(&mut self) {
+		if let Err(e) = self.run_inner() {
+			println!("Runtime: {}", e.0);
+			self.dump_stack_trace();
+		}
+	}
+
+	fn run_inner(&mut self) -> Result<(), RuntimeErr> {
 		// Initial frame
-		self.frames.push(CallFrame { return_to: 0, stack_start: 0 });
+		self.frames.push(CallFrame::new(String::from("<script>"), 0, 0));
 		
 		while !self.had_error && self.ip < self.len {
 			let code = match num::FromPrimitive::from_u8(self.env.code[self.ip]) {
@@ -299,16 +313,17 @@ impl VM {
 				}
 				
 				Instruction::Call => {
-					let args = self.get_byte();
-					let loc = self.get_long();
-					self.check_function_args_count(args)?;
+					let loc = self.get_long() as usize;
+					let meta = &self.env.functions[loc];
+					self.check_function_args_count(meta.arg_count)?;
 
-					self.frames.push(CallFrame { 
-						return_to: self.ip,
-						stack_start: self.stack.len() - args as usize,
-					});
+					self.frames.push(CallFrame::new( 
+						meta.identifier.clone(),
+						self.ip,
+						self.stack.len() - meta.arg_count as usize,
+					));
 
-					self.ip = loc as usize;
+					self.ip = meta.location as usize;
 					continue;
 				},
 
@@ -318,11 +333,12 @@ impl VM {
 					self.check_function_args_count(args)?;
 
 					if let ConstantValue::Func(f) = self.env.constants[loc as usize].clone() {
-						if let Function::Native { identifier: _, param_count: _, function, .. } = f {
-							self.frames.push(CallFrame { 
-								return_to: self.ip,
-								stack_start: self.stack.len() - args as usize,
-							});
+						if let Function::Native { identifier, param_count: _, function, .. } = f {
+							self.frames.push(CallFrame::new(
+								String::from(identifier),
+								self.ip,
+								self.stack.len() - args as usize,
+							));
 
 							function(self, args)?;
 
@@ -390,6 +406,15 @@ impl VM {
 			return Err(RuntimeErr("Error occured".into()));
 		}
 		Ok(())
+	}
+
+	fn dump_stack_trace(&self) {
+		println!("=== Stack Trace ===");
+		self.frames.iter()
+			.rev()
+			.for_each(|frame| {
+				println!("at {}()", frame.identifier);
+			});
 	}
 
 	fn check_function_args_count(&self, args: u8) -> Result<(), RuntimeErr> {
