@@ -113,14 +113,14 @@ impl VM {
 				Instruction::Halt => self.ip = self.len,
 				Instruction::Negate => {
 					let last = self.drop()?;
-					
-					if !matches!(last, Object::Number(_)) {
-						return Err(RuntimeErr(format!(
-							"Value type does not match or is not an integer '{last}'"
-						)));
-					}
 
-					self.stack.push(Object::Number(match last { Object::Number(v) => -v, _ => unreachable!()}));
+					match last {
+						Object::Number(n) => self.push(Object::Number(-n)),
+						Object::Boolean(b) => self.push(Object::Boolean(!b)),
+						_ => return Err(RuntimeErr(format!(
+							"Cannot negate value '{last}'"
+						))),
+					}
 				},
 
 				Instruction::BuildList => {

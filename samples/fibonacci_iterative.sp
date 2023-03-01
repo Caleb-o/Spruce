@@ -1,5 +1,5 @@
 # Fibonacci using variable swaps instead of recursion
-fn main() {
+fn main {
 	print(fib(48)); # 10610209857723
 }
 

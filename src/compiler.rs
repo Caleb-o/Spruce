@@ -600,7 +600,18 @@ impl Compiler {
 	}
 
 	fn unary(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
-		// TODO
+		if self.is_any_of(&[TokenKind::Minus, TokenKind::Bang]) {
+			match self.current.kind {
+				TokenKind::Minus | TokenKind::Bang => {
+					self.consume_here();
+					self.primary(env)?;
+					env.add_op(Instruction::Negate);
+					return Ok(());
+				},
+				_ => {},
+			}
+		}
+		
 		self.primary(env)
 	}
 
@@ -934,5 +945,15 @@ impl Compiler {
 		}
 
 		Ok(())
+	}
+
+	fn check_type(type_name: &str) -> Option<u8> {
+		match type_name {
+			"none" => Some(0),
+			"number" => Some(1),
+			"string" => Some(2),
+			"bool" => Some(3),
+			_ => None,
+		}
 	}
 }
