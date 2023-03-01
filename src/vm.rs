@@ -89,7 +89,7 @@ impl VM {
 
 			match code {
 				Instruction::Constant => {
-					let idx = self.get_byte_location();
+					let idx = self.get_byte();
 					let constant = match self.env.constants[idx as usize] {
 						ConstantValue::Obj(ref o) => o,
 						_ => return Err(RuntimeErr(
@@ -100,7 +100,7 @@ impl VM {
 				}
 
 				Instruction::ConstantLong => {
-					let idx = self.get_short_location();
+					let idx = self.get_short();
 					let constant = match self.env.constants[idx as usize] {
 						ConstantValue::Obj(ref o) => o,
 						_ => return Err(RuntimeErr(
@@ -124,7 +124,7 @@ impl VM {
 				},
 
 				Instruction::BuildList => {
-					let count = self.get_byte_location();
+					let count = self.get_byte();
 					let mut list = Vec::with_capacity(count as usize);
 
 					for _ in 0..count {
@@ -251,17 +251,17 @@ impl VM {
 				}
 
 				Instruction::GetGlobal => {
-					let slot = self.get_short_location();
+					let slot = self.get_short();
 					self.stack.push(self.stack[slot as usize].clone());
 				}
 				
 				Instruction::SetGlobal => {
-					let slot = self.get_short_location();
+					let slot = self.get_short();
 					self.stack[slot as usize] = (*self.peek()).clone();
 				}
 				
 				Instruction::GetLocal => {
-					let slot = self.get_short_location();
+					let slot = self.get_short();
 					self.stack.push(self.stack[
 						self.frames.last().unwrap().stack_start + slot as usize
 						].clone()
@@ -269,20 +269,20 @@ impl VM {
 				}
 				
 				Instruction::SetLocal => {
-					let slot = self.get_short_location();
+					let slot = self.get_short();
 					self.stack[
 						self.frames.last().unwrap().stack_start + slot as usize
 					] = (*self.peek()).clone();
 				}
 
 				Instruction::Jump => {
-					self.ip = self.get_short_location() as usize;
+					self.ip = self.get_short() as usize;
 					continue;
 				}
 
 				Instruction::JumpNot => {
 					let top = self.drop()?;
-					let loc = self.get_short_location();
+					let loc = self.get_short();
 
 					if !matches!(top, Object::Boolean(_)) {
 						return Err(RuntimeErr(
@@ -299,8 +299,8 @@ impl VM {
 				}
 				
 				Instruction::Call => {
-					let args = self.get_byte_location();
-					let loc = self.get_long_location();
+					let args = self.get_byte();
+					let loc = self.get_long();
 					self.check_function_args_count(args)?;
 
 					self.frames.push(CallFrame { 
@@ -313,8 +313,8 @@ impl VM {
 				},
 
 				Instruction::CallNative => {
-					let args = self.get_byte_location();
-					let loc = self.get_long_location();
+					let args = self.get_byte();
+					let loc = self.get_long();
 					self.check_function_args_count(args)?;
 
 					if let ConstantValue::Func(f) = self.env.constants[loc as usize].clone() {
@@ -329,6 +329,18 @@ impl VM {
 							_ = self.frames.pop();
 						}
 					}
+				},
+
+				Instruction::TypeCheck => {
+					let item = self.drop()?;
+					let type_id = self.get_byte();
+					self.push(Object::Boolean(match type_id {
+						0 => item == Object::None,
+						1 => matches!(item, Object::Number(_)),
+						2 => matches!(item, Object::String(_)),
+						3 => matches!(item, Object::Boolean(_)),
+						_ => false,
+					}));
 				},
 
 				Instruction::Return => {
@@ -392,13 +404,13 @@ impl VM {
 	}
 
 	#[inline]
-	fn get_byte_location(&mut self) -> u8 {
+	fn get_byte(&mut self) -> u8 {
 		self.ip += 1;
 		self.env.code[self.ip]
 	}
 
 	#[inline]
-	fn get_short_location(&mut self) -> u16 {
+	fn get_short(&mut self) -> u16 {
 		let a = self.env.code[self.ip + 1];
 		let b = self.env.code[self.ip + 2];
 		self.ip += 2;
@@ -407,7 +419,7 @@ impl VM {
 	}
 
 	#[inline]
-	fn get_long_location(&mut self) -> u32 {
+	fn get_long(&mut self) -> u32 {
 		let a = self.env.code[self.ip + 1];
 		let b = self.env.code[self.ip + 2];
 		let c = self.env.code[self.ip + 3];

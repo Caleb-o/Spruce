@@ -117,7 +117,7 @@ pub fn register_native_functions(compiler: &mut Compiler, env: &mut Box<Environm
         Ok(())
     }));
 
-    compiler.add_fn(env, "dbg_print", ParamKind::Count(0), false, Rc::new(|vm, _args| {
+    compiler.add_fn(env, "dbg_stack_print", ParamKind::Count(0), false, Rc::new(|vm, _args| {
         for (index, item) in vm.get_stack().iter().enumerate() {
             println!("{index:0>4} {item}");
         }

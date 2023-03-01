@@ -611,7 +611,7 @@ impl Compiler {
 				_ => {},
 			}
 		}
-		
+
 		self.primary(env)
 	}
 
@@ -723,8 +723,31 @@ impl Compiler {
 		Ok(())
 	}
 
+	fn type_equality(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
+		self.equality(env)?;
+
+		if self.current.kind == TokenKind::Is {
+			self.consume_here();
+			let type_id = self.current;
+			self.consume(TokenKind::Identifier, "Expect identifier after 'is'")?;
+
+			let type_str = type_id.span.slice_from(&self.lexer.source);
+			match Compiler::check_type(type_str) {
+				Some(id) => env.add_type_check(id),
+				None => {
+					self.error_no_exit(
+						"Invalid type name in 'is' expression '{type_str}'".into(),
+						&type_id
+					);
+				}
+			}
+		}
+
+		Ok(())
+	}
+
 	fn expression(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
-		self.equality(env)
+		self.type_equality(env)
 	}
 
 	fn list_literal(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
