@@ -15,8 +15,7 @@ type NativeFunction = Rc<dyn Fn(&mut VM, u8) -> Result<(), RuntimeErr>>;
 
 #[derive(Debug, Clone)]
 struct LookAhead {
-	span: Span,
-	identifier: String,
+	token: Token,
 	args: u8,
 	// Position in bytecode
 	position: u32,
@@ -28,7 +27,7 @@ pub enum Function {
 	User { 
 		identifier: Span,
 		position: u32,
-		parameters: Option<Vec<Span>>,
+		parameters: Option<Vec<Token>>,
 		empty: bool,
 	},
 	Native {
@@ -276,18 +275,17 @@ impl Compiler {
 		let mut unresolved = Vec::new();
 
 		for lookahead in self.unresolved.iter() {
-			match self.find_function(lookahead.span) {
+			match self.find_function(lookahead.token.span) {
 				Some(ref mut func) => {
 					// Cannot resolve native calls, since they're part of the compiler
 					if let Function::User { identifier, position, parameters, empty } = func {
 						// Generate the function if it is not empty
 						if !empty {
-							let id = identifier.slice_from(&self.lexer.source).to_string();
 							let paramc = parameters.as_ref().map_or(0, |p| p.len()) as usize;
 							
 							// Correct function ID, but arity does not match
 							if paramc != lookahead.args as usize {
-								unresolved.push((id.clone(), paramc, lookahead.args));
+								unresolved.push((lookahead.token, paramc, lookahead.args));
 								continue;
 							}
 
@@ -311,20 +309,26 @@ impl Compiler {
 					}
 				}
 
-				None => unresolved.push((lookahead.identifier.clone(), 0, lookahead.args)),
+				None => unresolved.push((lookahead.token, 0, lookahead.args)),
 			}
 		}
 
 		// Identifiers that were still not found
-		for (identifier, params, args) in unresolved {
+		for (token, params, args) in unresolved {
+			let id = token.span.slice_from(&self.lexer.source).to_string();
+
 			if params != args as usize {
 				self.error_no_exit(format!(
-					"Function '{identifier}' expected {params} argument(s), but received {args}",
-				));
+					"Function '{id}' expected {params} argument(s), but received {args}",
+					),
+					&token
+				);
 			} else {
 				self.error_no_exit(format!(
-					"Function '{identifier}' does not exist",
-				));
+					"Function '{id}' does not exist",
+					),
+					&token
+				);
 			}
 		}
 	}
@@ -338,14 +342,14 @@ impl Compiler {
 		))
 	}
 
-	fn error_no_exit(&mut self, msg: String) {
+	fn error_no_exit(&mut self, msg: String, token: &Token) {
 		self.had_error = true;
 
 		println!("{}", format!(
 			"[Compiler Error] {} [{}:{}]",
 			msg,
-			self.current.line,
-			self.current.column,
+			token.line,
+			token.column,
 		));
 	}
 
@@ -407,16 +411,18 @@ impl Compiler {
 		self.find_local_in(span, topmost, self.locals.len() - 1)
 	}
 
-	fn register_local(&mut self, span: Span, mutable: bool) -> Option<usize> {
-		let local = self.find_local(span, true);
+	fn register_local(&mut self, token: &Token, mutable: bool) -> Option<usize> {
+		let local = self.find_local(token.span, true);
 
 		match local {
 			Some(local) => {
 				// We aren't allowed to overwrite, it is an error
 				self.error_no_exit(format!(
-					"Local with identifier '{}' already exists in scope",
-					local.identifier.slice_from(&self.lexer.source),
-				));
+						"Local with identifier '{}' already exists in scope",
+						local.identifier.slice_from(&self.lexer.source),
+					),
+					token
+				);
 				None
 			}
 
@@ -424,7 +430,7 @@ impl Compiler {
 				let len = self.locals.len();
 				let position = self.locals.last().unwrap().len() as u16;
 				self.locals.last_mut().unwrap().push(Local {
-					identifier: span,
+					identifier: token.span,
 					position,
 					is_global: len == 1,
 					mutable,
@@ -436,27 +442,28 @@ impl Compiler {
 
 	fn register_function(
 		&mut self,
-		identifier: Span,
-		parameters: Option<Vec<Span>>,
+		identifier: Token,
+		parameters: Option<Vec<Token>>,
 		env: &mut Box<Environment>,
 	) -> Result<(), CompilerErr>
 	{
-		let func = self.find_function(identifier);
+		let func = self.find_function(identifier.span);
 
 		// Function already exists
 		if func.is_some() {
 			self.error_no_exit(
 				format!(
 					"Function with identifier '{}' already exists",
-					identifier.slice_from(&self.lexer.source)
-				)
+					identifier.span.slice_from(&self.lexer.source)
+				),
+				&identifier
 			);
 		}
 
 		// Register locals from parameters
 		if let Some(ref params) = parameters {
 			for param in params.iter() {
-				_ = self.register_local(*param, false);
+				_ = self.register_local(param, false);
 			}
 		}
 
@@ -467,7 +474,7 @@ impl Compiler {
 		}) as u32;
 
 		self.functable.push(Function::User {
-			identifier,
+			identifier: identifier.span,
 			position,
 			parameters,
 			empty: false
@@ -554,8 +561,7 @@ impl Compiler {
 
 				let string = identifier.span.slice_from(&self.lexer.source).to_string();
 				self.unresolved.push(LookAhead {
-					span: identifier.span,
-					identifier: string,
+					token: identifier,
 					args: arg_count,
 					position,
 				});
@@ -566,9 +572,11 @@ impl Compiler {
 		if fnerr.is_some() {
 			let fnerr = fnerr.unwrap();
 			self.error_no_exit(format!(
-				"Function '{}' expected {} argument(s), but received {arg_count}",
-				fnerr.0, fnerr.1,
-			));
+					"Function '{}' expected {} argument(s), but received {arg_count}",
+					fnerr.0, fnerr.1,
+				),
+				&identifier
+			);
 		}
 		
 		Ok(())
@@ -649,9 +657,11 @@ impl Compiler {
 			},
 
 			None => self.error_no_exit(format!(
-				"Identifier '{}' does not exist",
-				self.current.span.slice_from(&self.lexer.source),
-			)),
+					"Identifier '{}' does not exist",
+					self.current.span.slice_from(&self.lexer.source),
+				),
+				&self.current.clone()
+			),
 		}
 
 		self.consume_here();
@@ -874,7 +884,7 @@ impl Compiler {
 		let identifier = self.current;
 		self.consume(TokenKind::Identifier, "Expected identifier after 'var'/'let'")?;
 
-		_ = self.register_local(identifier.span, mutable);
+		_ = self.register_local(&identifier, mutable);
 
 		// Produce the expression
 		if self.current.kind == TokenKind::Equal {
@@ -899,9 +909,11 @@ impl Compiler {
 			Some(local) => {
 				if !local.mutable {
 					self.error_no_exit(format!(
-						"Cannot re-assign an immutable value '{}'",
-						identifier.span.slice_from(&self.lexer.source),
-					));
+							"Cannot re-assign an immutable value '{}'",
+							identifier.span.slice_from(&self.lexer.source),
+						),
+						&identifier
+					);
 				} else {
 					if local.is_global {
 						env.add_local(Instruction::SetGlobal, local.position);
@@ -912,9 +924,11 @@ impl Compiler {
 			}
 			None => {
 				self.error_no_exit(format!(
-					"Cannot assign to variable '{}' as it does not exist",
-					identifier.span.slice_from(&self.lexer.source),
-				));
+						"Cannot assign to variable '{}' as it does not exist",
+						identifier.span.slice_from(&self.lexer.source),
+					),
+					&identifier
+				);
 			}
 		}
 
@@ -987,7 +1001,7 @@ impl Compiler {
 		self.consume_here();
 		self.push_scope();
 
-		let identifier = self.current.span;
+		let identifier = self.current;
 		self.consume(TokenKind::Identifier, "Expected identifier after 'func'")?;
 
 		let parameters = if self.current.kind == TokenKind::LParen {
@@ -997,14 +1011,14 @@ impl Compiler {
 			// Consume paarameter list
 			// TODO: Underscore to add unnamed parameter
 			if self.current.kind != TokenKind::RParen {
-				let param = self.current.span;
+				let param = self.current;
 				self.consume(TokenKind::Identifier, "Expected identifier in parameter list")?;
 				parameters.push(param);
 	
 				while self.current.kind == TokenKind::Comma {
 					self.consume_here();
 	
-					let param = self.current.span;
+					let param = self.current;
 					self.consume(TokenKind::Identifier, "Expected identifier in parameter list after comma")?;
 					parameters.push(param);
 				}
@@ -1029,7 +1043,7 @@ impl Compiler {
 				env.add_op(Instruction::Return);
 			}
 		} else {
-			self.mark_function_empty(identifier);
+			self.mark_function_empty(identifier.span);
 		}
 		
 		env.patch_jump_op(jmp);

@@ -8,36 +8,51 @@ mod vm;
 
 use std::env;
 use compiler::Compiler;
+use environment::Environment;
 use vm::VM;
 
 fn main() {
     let args = env::args().collect::<Vec<_>>();
 
-    if args.len() != 2 {
-        println!("Usage: spruce script");
+    if args.len() != 3 {
+        println!("Usage: spruce [debug|run] script");
         return;
     }
 
-    let mut compiler = match Compiler::new(&args[1]) {
-        Ok(c) => c,
-        Err(e) => {
-            println!("{e}");
+    match &args[1][0..] {
+        "debug" => {
+            match compile(&args[2]) {
+                Ok(e) => {
+                    e.dump();
+                }
+                Err(e) => eprintln!("{e}"),
+            }
+        }
+        "run" => {
+            match compile(&args[2]) {
+                Ok(e) => {
+                    if let Err(e) = VM::new(e).run() {
+                        println!("Runtime: {}", e.0);
+                    }
+                }
+                Err(e) => eprintln!("{e}"),
+            }
+        }
+        _ => {
+            println!("Unknown sub-command '{}'", args[1]);
             return;
         },
+    }
+}
+
+fn compile(file_path: &String) -> Result<Box<Environment>, String> {
+    let mut compiler = match Compiler::new(&file_path) {
+        Ok(c) => c,
+        Err(e) => return Err(e.to_string()),
     };
 
-    let env = match compiler.run() {
-        Ok(env) => env,
-        Err(e) => {
-            println!("{}", e.0);
-            return;  
-        },
-    };
-
-    env.dump();
-    
-    match VM::new(env).run() {
-        Err(e) => println!("Runtime: {}", e.0),
-        _ => {},
-    };
+    match compiler.run() {
+        Ok(env) => Ok(env),
+        Err(e) => Err(e.0),
+    }
 }
