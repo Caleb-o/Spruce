@@ -57,7 +57,7 @@ pub enum TokenKind {
 	
 	If, Else, For, Val, Var,
 	Function, Struct, Is, Return,
-	Identifier,
+	Ensure, Identifier,
 	
 	EndOfFile,
 	Error,

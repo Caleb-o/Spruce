@@ -726,14 +726,21 @@ impl Compiler {
 	fn type_equality(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
 		self.equality(env)?;
 
-		if self.current.kind == TokenKind::Is {
+		if self.is_any_of(&[TokenKind::Is, TokenKind::Ensure]) {
+			let is_asrt = self.current.kind == TokenKind::Ensure;
 			self.consume_here();
 			let type_id = self.current;
-			self.consume(TokenKind::Identifier, "Expect identifier after 'is'")?;
+			self.consume(TokenKind::Identifier, "Expect identifier after is/ensure")?;
 
 			let type_str = type_id.span.slice_from(&self.lexer.source);
 			match Compiler::check_type(type_str) {
-				Some(id) => env.add_type_check(id),
+				Some(id) => {
+					if is_asrt {
+						env.add_type_check_asrt(id);
+					} else {
+						env.add_type_check(id);
+					}
+				},
 				None => {
 					self.error_no_exit(
 						"Invalid type name in 'is' expression '{type_str}'".into(),

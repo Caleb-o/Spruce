@@ -1,6 +1,6 @@
 use std::{fmt::Display, time::Instant};
 
-use crate::{environment::{Environment, ConstantValue}, object::Object, instructions::Instruction, compiler::Function};
+use crate::{environment::{Environment, ConstantValue, get_type_name}, object::Object, instructions::Instruction, compiler::Function};
 
 struct CallFrame {
 	return_to: usize,
@@ -341,6 +341,26 @@ impl VM {
 						3 => matches!(item, Object::Boolean(_)),
 						_ => false,
 					}));
+				},
+
+				Instruction::TypeCheckAssert => {
+					let type_id = self.get_byte();
+					let item = self.peek();
+					let matches = match type_id {
+						0 => *item == Object::None,
+						1 => matches!(*item, Object::Number(_)),
+						2 => matches!(*item, Object::String(_)),
+						3 => matches!(*item, Object::Boolean(_)),
+						_ => false,
+					};
+
+					if !matches {
+						return Err(RuntimeErr(format!(
+							"Expected type {} but received {}",
+							item.get_type_name(),
+							get_type_name(type_id),
+						)));
+					}
 				},
 
 				Instruction::Return => {

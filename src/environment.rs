@@ -53,6 +53,11 @@ impl Environment {
 		self.code.push(id);
 	}
 
+	pub fn add_type_check_asrt(&mut self, id: u8) {
+		self.code.push(Instruction::TypeCheckAssert as u8);
+		self.code.push(id);
+	}
+
 	pub fn add_local(&mut self, op: Instruction, location: u16) {
 		self.code.push(op as u8);
 		location.to_be_bytes().into_iter().for_each(|b| self.code.push(b));
@@ -213,6 +218,7 @@ impl Environment {
 				Instruction::Halt => simple_instruction("HALT", offset),
 
 				Instruction::TypeCheck => type_instruction("TYPE_CHECK", offset, &self),
+				Instruction::TypeCheckAssert => type_instruction("TYPE_CHECK_ASRT", offset, &self),
 
 				Instruction::None => simple_instruction("NONE", offset),
 				Instruction::True => simple_instruction("TRUE", offset),
@@ -265,14 +271,17 @@ fn call_instruction(name: &str, offset: usize, env: &Environment) -> usize {
 }
 
 fn type_instruction(name: &str, offset: usize, env: &Environment) -> usize {
-	let type_name = match env.code[offset + 1] {
+	let type_name = get_type_name(env.code[offset + 1]);
+	println!("{name}<{type_name}>");
+	offset + 2
+}
+
+pub fn get_type_name(type_id: u8) -> &'static str {
+	match type_id {
 		0 => "none",
 		1 => "number",
 		2 => "string",
 		3 => "bool",
 		_ => unreachable!(),
-	};
-
-	println!("{name}<{type_name}>");
-	offset + 2
+	}
 }

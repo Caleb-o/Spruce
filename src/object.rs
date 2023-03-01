@@ -16,6 +16,17 @@ pub enum Object {
 }
 
 impl Object {
+	pub fn get_type_name(&self) -> &'static str {
+		match *self {
+			Object::None => "none",
+    		Object::Number(_) => "number",
+    		Object::String(_) => "string",
+    		Object::Boolean(_) => "bool",
+    		Object::List(_) => "list",
+    		Object::Function(_, _) => "function",
+		}
+	}
+
 	pub fn is_similar(&self, other: &Object) -> bool {
 		match *self {
 			Self::None => true,
