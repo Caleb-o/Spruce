@@ -16,7 +16,7 @@ pub enum Function {
 	User { 
 		identifier: Span,
 		position: u32,
-		parameters: Option<Vec<Token>>,
+		parameters: Option<Vec<(Token, Option<Token>)>>,
 		empty: bool,
 	},
 	Native {
@@ -147,41 +147,34 @@ impl Compiler {
 					// Cannot resolve native calls, since they're part of the compiler
 					if let Function::User { identifier: _, position, parameters, empty } = func {
 						// Generate the function if it is not empty
-						if !empty {
-							let paramc = parameters.as_ref().map_or(0, |p| p.len()) as usize;
-							
-							// Correct function ID, but arity does not match
-							if paramc != lookahead.args as usize {
-								unresolved.push((lookahead.token, paramc, lookahead.args));
-								continue;
-							}
-
-							env.code[lookahead.position as usize + 1] = paramc as u8;
-							u32::to_be_bytes(*position)
-								.into_iter()
-								.enumerate()
-								.for_each(
-									|(i, b)| 
-									env.code[lookahead.position as usize + 2 + i] = b
-								);
-						} else {
+						if *empty {
 							self.warning(format!(
 									"Calling empty function '{}'",
 									lookahead.token.span.slice_from(&self.lexer.source)
 								),
 								&lookahead.token
 							);
+							continue;
+						}
 
-							// Patch call to no-op as it is empty
-							env.code[lookahead.position as usize] = Instruction::NoOp as u8;
-							(0..5)
-								.for_each(
-									|i|
-									env.code[lookahead.position as usize + 1 + i] = Instruction::NoOp as u8
+						let paramc = parameters.as_ref().map_or(0, |p| p.len()) as usize;
+						
+						// Correct function ID, but arity does not match
+						if paramc != lookahead.args as usize {
+							unresolved.push((lookahead.token, paramc, lookahead.args));
+							continue;
+						}
+
+						env.code[lookahead.position as usize + 1] = paramc as u8;
+						u32::to_be_bytes(*position)
+							.into_iter()
+							.enumerate()
+							.for_each(
+								|(i, b)| 
+								env.code[lookahead.position as usize + 2 + i] = b
 							);
 						}
 					}
-				}
 
 				None => unresolved.push((lookahead.token, 0, lookahead.args)),
 			}
@@ -301,7 +294,8 @@ impl Compiler {
 	fn register_function(
 		&mut self,
 		identifier: Token,
-		parameters: Option<Vec<Token>>,
+		position: u32,
+		parameters: Option<Vec<(Token, Option<Token>)>>,
 		env: &mut Box<Environment>,
 	) -> Result<(), CompilerErr>
 	{
@@ -320,16 +314,17 @@ impl Compiler {
 
 		// Register locals from parameters
 		if let Some(ref params) = parameters {
-			for param in params.iter() {
-				_ = self.register_local(param, false);
+			for (idx, (identifier, type_name)) in params.iter().enumerate() {
+				_ = self.register_local(identifier, false);
+
+				if let Some(type_name) = type_name {
+					env.add_op(Instruction::GetLocal);
+					env.add_opb(0);
+					env.add_opb(idx as u8);
+					self.check_valid_type(env, &type_name, true)?;
+				}
 			}
 		}
-
-		let position = (env.op_here() + if env.code.len() >= u16::MAX as usize {
-			5
-		} else {
-			3
-		}) as u32;
 
 		self.functable.push(Function::User {
 			identifier: identifier.span,
@@ -723,6 +718,31 @@ impl Compiler {
 		Ok(())
 	}
 
+	fn check_valid_type(
+		&mut self,
+		env: &mut Box<Environment>,
+		type_id: &Token,
+		is_asrt: bool
+	) -> Result<(), CompilerErr> {
+		let type_name = type_id.span.slice_from(&self.lexer.source);
+		match Compiler::check_type(type_name) {
+			Some(id) => {
+				if is_asrt {
+					env.add_type_check_asrt(id);
+				} else {
+					env.add_type_check(id);
+				}
+			},
+			None => {
+				self.error_no_exit(
+					"Invalid type name in 'is' expression '{type_str}'".into(),
+					&type_id
+				);
+			}
+		}
+		Ok(())
+	}
+
 	fn type_equality(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
 		self.equality(env)?;
 
@@ -731,23 +751,7 @@ impl Compiler {
 			self.consume_here();
 			let type_id = self.current;
 			self.consume(TokenKind::Identifier, "Expect identifier after is/ensure")?;
-
-			let type_str = type_id.span.slice_from(&self.lexer.source);
-			match Compiler::check_type(type_str) {
-				Some(id) => {
-					if is_asrt {
-						env.add_type_check_asrt(id);
-					} else {
-						env.add_type_check(id);
-					}
-				},
-				None => {
-					self.error_no_exit(
-						"Invalid type name in 'is' expression '{type_str}'".into(),
-						&type_id
-					);
-				}
-			}
+			self.check_valid_type(env, &type_id, is_asrt)?;
 		}
 
 		Ok(())
@@ -902,12 +906,30 @@ impl Compiler {
 		Ok(())
 	}
 
+	#[inline]
+	fn consume_parameter(&mut self) -> Result<(Token, Option<Token>), CompilerErr> {
+		let param_name = self.current;
+		self.consume(TokenKind::Identifier, "Expected identifier in parameter list")?;
+
+		if self.current.kind == TokenKind::Colon {
+			self.consume_here();
+			let param_type = self.current;
+			self.consume(TokenKind::Identifier, "Expected type name after identifier")?;
+			return Ok((param_name, Some(param_type)));
+		}
+
+		Ok((param_name, None))
+	}
+
 	fn function(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
 		self.consume_here();
 		self.push_scope();
 
 		let identifier = self.current;
 		self.consume(TokenKind::Identifier, "Expected identifier after 'func'")?;
+
+		let jmp = env.add_jump_op(Instruction::Jump);
+		let start_loc = env.op_here() as u32;
 
 		let parameters = if self.current.kind == TokenKind::LParen {
 			let mut parameters = Vec::new();
@@ -916,16 +938,11 @@ impl Compiler {
 			// Consume paarameter list
 			// TODO: Underscore to add unnamed parameter
 			if self.current.kind != TokenKind::RParen {
-				let param = self.current;
-				self.consume(TokenKind::Identifier, "Expected identifier in parameter list")?;
-				parameters.push(param);
-	
+				parameters.push(self.consume_parameter()?);
+				
 				while self.current.kind == TokenKind::Comma {
 					self.consume_here();
-	
-					let param = self.current;
-					self.consume(TokenKind::Identifier, "Expected identifier in parameter list after comma")?;
-					parameters.push(param);
+					parameters.push(self.consume_parameter()?);
 				}
 			}
 			
@@ -933,15 +950,12 @@ impl Compiler {
 			Some(parameters)
 		} else {None};
 
-		self.register_function(identifier, parameters, env)?;
-
-		let jmp = env.add_jump_op(Instruction::Jump);
-		let start_loc = env.op_here();
+		self.register_function(identifier, start_loc, parameters, env)?;
 
 		self.body(env, false)?;
 		
 		// Don't generate pointless returns for empty functions
-		if start_loc != env.op_here() {
+		if start_loc as usize != env.op_here() {
 			if *env.code.last().unwrap() != Instruction::Return as u8 {
 				// Only add return if the last instruction wasn't a return
 				env.add_op(Instruction::None);

@@ -346,7 +346,7 @@ impl VM {
 				Instruction::TypeCheckAssert => {
 					let type_id = self.get_byte();
 					let item = self.peek();
-					let matches = match type_id {
+					let is_type = match type_id {
 						0 => *item == Object::None,
 						1 => matches!(*item, Object::Number(_)),
 						2 => matches!(*item, Object::String(_)),
@@ -354,11 +354,11 @@ impl VM {
 						_ => false,
 					};
 
-					if !matches {
+					if !is_type {
 						return Err(RuntimeErr(format!(
 							"Expected type {} but received {}",
-							item.get_type_name(),
 							get_type_name(type_id),
+							item.get_type_name(),
 						)));
 					}
 				},
