@@ -1,4 +1,4 @@
-use std::{fmt::Display, time::Instant};
+use std::{fmt::Display, time::Instant, mem::transmute};
 
 use crate::{environment::{Environment, ConstantValue, get_type_name}, object::Object, instructions::Instruction, compiler::Function};
 
@@ -17,8 +17,7 @@ impl CallFrame {
 pub struct VM {
 	had_error: bool,
 	env: Box<Environment>,
-	ip: usize,
-	len: usize,
+	ip: *mut u8,
 	stack: Vec<Object>,
 	frames: Vec<CallFrame>,
 	pub started: Instant,
@@ -34,32 +33,35 @@ impl Display for RuntimeErr {
 }
 
 impl VM {
-	pub fn new(env: Box<Environment>) -> Self {
-		let len = env.op_here();
+	pub fn new(mut env: Box<Environment>) -> Self {
+		let ip = env.code.as_mut_ptr();
 		
 		Self {
 			had_error: false,
 			env,
-			ip: 0,
-			len,
+			ip,
 			stack: Vec::with_capacity(512),
 			frames: Vec::with_capacity(64),
 			started: Instant::now(),
 		}
 	}
 
+	#[inline]
 	pub fn stack_slice_from_call(&self) -> &[Object] {
 		&self.stack[self.frames.last().unwrap().stack_start..]
 	}
 
+	#[inline]
 	pub fn stack_size(&self) -> usize {
 		self.stack.len()
 	}
 
+	#[inline]
 	pub fn get_stack(&self) -> &Vec<Object> {
 		&self.stack
 	}
 
+	#[inline]
 	pub fn drop(&mut self) -> Result<Object, RuntimeErr> {
 		match self.stack.pop() {
 			Some(o) => Ok(o),
@@ -69,14 +71,17 @@ impl VM {
 		}
 	}
 
+	#[inline]
 	pub fn peek(&self) -> &Object {
 		self.stack.last().unwrap()
 	}
-
+	
+	#[inline]
 	pub fn push(&mut self, object: Object) {
 		self.stack.push(object);
 	}
 
+	#[inline]
 	pub fn warning(&self, msg: String) {
 		println!("Warning: {msg}");
 	}
@@ -88,20 +93,40 @@ impl VM {
 		}
 	}
 
+	#[inline]
+	fn get_instruction(&self) -> u8 {
+		unsafe {
+			*self.ip
+		}
+	}
+
+	#[inline]
+	fn inc(&mut self) {
+		unsafe {
+			self.ip = self.ip.offset(1);
+		}
+	}
+	
+	#[inline]
+	fn set_ip(&mut self, location: usize) {
+		unsafe {
+			self.ip = self.env.code.as_mut_ptr().add(location);
+		}
+	}
+	
+	#[inline]
+	fn ip_distance(&mut self) -> usize {
+		self.ip as usize - self.env.code.as_mut_ptr() as usize
+	}
+
 	fn run_inner(&mut self) -> Result<(), RuntimeErr> {
 		// Initial frame
 		self.frames.push(CallFrame::new(None, 0, 0));
-		
-		while !self.had_error && self.ip < self.len {
-			let code = match num::FromPrimitive::from_u8(self.env.code[self.ip]) {
-				Some(c) => c,
-				None => return Err(RuntimeErr(format!(
-					"Could not cast byte '{}' to valid opcode",
-					self.env.code[self.ip]
-				))),
-			};
 
-			match code {
+		while !self.had_error {
+			// println!("CODE :: {:0>4} {code:?}", self.ip_distance());
+
+			match *unsafe { transmute::<*mut u8, &Instruction>(self.ip) } {
 				Instruction::Constant => {
 					let idx = self.get_byte();
 					let constant = match self.env.constants[idx as usize] {
@@ -124,7 +149,7 @@ impl VM {
 					self.stack.push(constant.clone());
 				}
 
-				Instruction::Halt => self.ip = self.len,
+				Instruction::Halt => break,
 				Instruction::Negate => {
 					let last = self.drop()?;
 
@@ -290,7 +315,8 @@ impl VM {
 				}
 
 				Instruction::Jump => {
-					self.ip = self.get_short() as usize;
+					let location = self.get_short() as usize;
+					self.set_ip(location);
 					continue;
 				}
 
@@ -306,7 +332,7 @@ impl VM {
 
 					if let Object::Boolean(v) = top {
 						if !v {
-							self.ip = loc as usize;
+							self.set_ip(loc as usize);
 							continue;
 						}
 					}
@@ -314,16 +340,17 @@ impl VM {
 				
 				Instruction::Call => {
 					let meta_id = self.get_long();
+					let distance = self.ip_distance();
 					let meta = &self.env.functions[meta_id as usize];
 					self.check_function_args_count(meta.arg_count)?;
-
-					self.frames.push(CallFrame::new( 
+					
+					self.frames.push(CallFrame::new(
 						Some(meta_id),
-						self.ip,
+						distance,
 						self.stack.len() - meta.arg_count as usize,
 					));
 
-					self.ip = meta.location as usize;
+					self.set_ip(meta.location as usize);
 					continue;
 				},
 
@@ -334,10 +361,11 @@ impl VM {
 
 					if let ConstantValue::Func(f) = self.env.constants[loc as usize].clone() {
 						if let Function::Native { param_count: _, function, .. } = f {
+							let distance = self.ip_distance();
 							self.frames.push(CallFrame::new(
 								// TODO: Add a flag for native function
 								None,
-								self.ip,
+								distance,
 								self.stack.len() - args as usize,
 							));
 
@@ -382,7 +410,7 @@ impl VM {
 
 				Instruction::Return => {
 					let frame = self.frames.pop().unwrap();
-					self.ip = frame.return_to;
+					self.set_ip(frame.return_to as usize);
 
 					// Remove all end values, except return
 					self.stack.drain(frame.stack_start..self.stack.len()-1);
@@ -396,11 +424,11 @@ impl VM {
 
 				_ => todo!(
 					"Unimplemented instruction in VM '{:?}'",
-					self.env.code[self.ip]
+					self.get_instruction()
 				),
 			}
 
-			self.ip += 1;
+			self.inc();
 		}
 
 		if self.had_error {
@@ -434,6 +462,7 @@ impl VM {
 		Ok(())
 	}
 
+	#[inline]
 	fn pop_2_check(&mut self) -> Result<(Object, Object), RuntimeErr> {
 		let rhs = self.drop()?;
 		let lhs = self.drop()?;
@@ -442,6 +471,7 @@ impl VM {
 		Ok((lhs, rhs))
 	}
 	
+	#[inline]
 	fn check_types_match(lhs: &Object, rhs: &Object) -> Result<(), RuntimeErr> {
 		if lhs.is_similar(rhs) {
 			return Ok(());
@@ -452,29 +482,33 @@ impl VM {
 			lhs, rhs,
 		)))
 	}
-
+	
 	#[inline]
 	fn get_byte(&mut self) -> u8 {
-		self.ip += 1;
-		self.env.code[self.ip]
+		self.inc();
+		self.get_instruction()
 	}
-
+	
 	#[inline]
 	fn get_short(&mut self) -> u16 {
-		let a = self.env.code[self.ip + 1];
-		let b = self.env.code[self.ip + 2];
-		self.ip += 2;
-
+		self.inc();
+		let a = self.get_instruction();
+		self.inc();
+		let b = self.get_instruction();
+		
 		u16::from_be_bytes([a, b])
 	}
 
 	#[inline]
 	fn get_long(&mut self) -> u32 {
-		let a = self.env.code[self.ip + 1];
-		let b = self.env.code[self.ip + 2];
-		let c = self.env.code[self.ip + 3];
-		let d = self.env.code[self.ip + 4];
-		self.ip += 4;
+		self.inc();
+		let a = self.get_instruction();
+		self.inc();
+		let b = self.get_instruction();
+		self.inc();
+		let c = self.get_instruction();
+		self.inc();
+		let d = self.get_instruction();
 
 		u32::from_be_bytes([a, b, c, d])
 	}

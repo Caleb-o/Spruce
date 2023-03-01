@@ -448,9 +448,9 @@ impl Compiler {
 
 		self.expression(env)?;
 
-		let before_block = env.add_jump_op(Instruction::JumpNot);
+		let before_block = env.add_jump_op(true);
 		self.body(env, true)?;
-		let true_block = env.add_jump_op(Instruction::Jump);
+		let true_block = env.add_jump_op(false);
 
 		if self.current.kind == TokenKind::Else {
 			self.consume_here();
@@ -479,27 +479,27 @@ impl Compiler {
 		}
 
 		// Evaluate condition
-		let start = env.op_here();
+		let start = env.op_here() as u32;
 		self.expression(env)?;
-		let before_block = env.add_jump_op(Instruction::JumpNot);
+		let before_block = env.add_jump_op(true);
 		let before_iter = if self.current.kind == TokenKind::SemiColon {
-			let before_iter = env.add_jump_op(Instruction::Jump);
+			let before_iter = env.add_jump_op(false);
 			let after_jmp = env.op_here();
 			self.consume(TokenKind::SemiColon, "Expect ';' after for condition")?;
 			self.expression(env)?;
 			
-			let after_pos = env.add_jump_op(Instruction::Jump);
-			env.patch_jump_op_to(after_pos, start);
+			let after_pos = env.add_jump_op(false);
+			env.patch_jump_op_to(after_pos as usize, start);
 			
 			env.patch_jump_op(before_iter);
 
-			after_jmp
-		} else {start};
+			after_jmp as u32
+		} else {start as u32};
 
 		self.body(env, false)?;
 		// Return back before the condition to re-evaluate
-		let jmp = env.add_jump_op(Instruction::Jump);
-		env.patch_jump_op_to(jmp, before_iter);
+		let jmp = env.add_jump_op(false);
+		env.patch_jump_op_to(jmp as usize, before_iter);
 
 		env.patch_jump_op(before_block);
 		
@@ -930,7 +930,7 @@ impl Compiler {
 		let identifier = self.current;
 		self.consume(TokenKind::Identifier, "Expected identifier after 'func'")?;
 
-		let jmp = env.add_jump_op(Instruction::Jump);
+		let jmp = env.add_jump_op(false);
 		let start_loc = env.op_here() as u32;
 
 		let parameters = if self.current.kind == TokenKind::LParen {

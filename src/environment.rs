@@ -146,25 +146,37 @@ impl Environment {
 		self.code.len()
 	}
 
-	pub fn add_jump_op(&mut self, op: Instruction) -> usize {
-		self.code.push(op as u8);
-		self.code.push(0);
-		self.code.push(0);
-
+	pub fn add_jump_op(&mut self, not: bool) -> u32 {
 		if self.code.len() >= u32::MAX as usize {
+			if not {
+				self.code.push(Instruction::JumpLongNot as u8);
+			} else {
+				self.code.push(Instruction::JumpLong as u8);
+			}
 			self.code.push(0);
 			self.code.push(0);
-			return self.code.len() - 5;
+			self.code.push(0);
+			self.code.push(0);
+
+			self.code.len() as u32 - 5
+		} else {
+			if not {
+				self.code.push(Instruction::JumpNot as u8);
+			} else {
+				self.code.push(Instruction::Jump as u8);
+			}
+			self.code.push(0);
+			self.code.push(0);
+
+			self.code.len() as u32 - 3
 		}
-
-		self.code.len() - 3
 	}
 
-	pub fn patch_jump_op(&mut self, index: usize) {
-		self.patch_jump_op_to(index, self.code.len());
+	pub fn patch_jump_op(&mut self, index: u32) {
+		self.patch_jump_op_to(index as usize, self.code.len() as u32);
 	}
 
-	pub fn patch_jump_op_to(&mut self, index: usize, location: usize) {
+	pub fn patch_jump_op_to(&mut self, index: usize, location: u32) {
 		match num::FromPrimitive::from_u8(self.code[index]).unwrap() {
 			Instruction::Jump => {
 				let bytes = (location as u16).to_be_bytes();
