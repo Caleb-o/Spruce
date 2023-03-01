@@ -16,3 +16,6 @@ tmp/
 
 # Spruce
 experimenting.sp
+
+*.data
+*.svg

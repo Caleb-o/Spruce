@@ -467,14 +467,13 @@ impl VM {
 		let rhs = self.drop()?;
 		let lhs = self.drop()?;
 
-		VM::check_types_match(&lhs, &rhs)?;
-		Ok((lhs, rhs))
+		VM::check_types_match(lhs, rhs)
 	}
 	
 	#[inline]
-	fn check_types_match(lhs: &Object, rhs: &Object) -> Result<(), RuntimeErr> {
-		if lhs.is_similar(rhs) {
-			return Ok(());
+	fn check_types_match(lhs: Object, rhs: Object) -> Result<(Object, Object), RuntimeErr> {
+		if std::mem::discriminant(&lhs) == std::mem::discriminant(&rhs) {
+			return Ok((lhs, rhs));
 		}
 		
 		Err(RuntimeErr(format!(
