@@ -1,15 +1,6 @@
 use std::{io::Error, fmt::Display};
 
-use crate::{lexer::Lexer, token::{Span, Token, TokenKind}, environment::{Environment, ConstantValue}, object::Object, instructions::{Instruction, ParamKind}, nativefns::{self, NativeFunction}};
-
-#[derive(Debug, Clone, Copy)]
-struct Local {
-	identifier: Span,
-	// Position in bytecode
-	position: u16,
-	is_global: bool,
-	mutable: bool,
-}
+use crate::{lexer::Lexer, token::{Span, Token, TokenKind}, environment::{Environment, ConstantValue}, object::Object, instructions::{Instruction, ParamKind}, nativefns::{self, NativeFunction}, symtable::SymTable};
 
 #[derive(Debug, Clone)]
 struct LookAhead {
@@ -37,7 +28,7 @@ pub enum Function {
 }
 
 impl Function {
-	pub fn is_empty(&self) -> bool {
+	fn is_empty(&self) -> bool {
 		match *self {
 			Function::User { identifier: _, position: _, parameters: _, empty } => {
 				empty
@@ -46,7 +37,7 @@ impl Function {
 		}
 	}
 
-	pub fn mark_empty(&mut self) {
+	fn mark_empty(&mut self) {
 		match *self {
 			Function::User { identifier: _, position: _, parameters: _, ref mut empty } => {
 				*empty = true;
@@ -56,14 +47,12 @@ impl Function {
 	}
 }
 
-type LocalTable = Vec<Vec<Local>>;
-
 pub struct Compiler {
 	had_error: bool,
 	current: Token,
 	lexer: Lexer,
 	unresolved: Vec<LookAhead>,
-	locals: LocalTable,
+	table: SymTable,
 	functable: Vec<Function>,
 }
 
@@ -84,7 +73,7 @@ impl Compiler {
 			current: lexer.next(),
 			lexer,
 			unresolved: Vec::new(),
-			locals: Vec::new(),
+			table: SymTable::new(),
 			functable: Vec::new(),
 		})
 	}
@@ -139,12 +128,14 @@ impl Compiler {
 		env.add_constant_function(ConstantValue::Func(function));
 	}
 
+	#[inline]
 	fn push_scope(&mut self) {
-		self.locals.push(Vec::new());
+		self.table.new_scope();
 	}
 
+	#[inline]
 	fn pop_scope(&mut self) {
-		_= self.locals.pop();
+		self.table.close_scope();
 	}
 
 	fn resolve_function_calls(&mut self, env: &mut Box<Environment>) {
@@ -286,26 +277,8 @@ impl Compiler {
 		self.find_function_str(span.slice_from(&self.lexer.source))
 	}
 
-	fn find_local_in(&self, span: Span, topmost: bool, index: usize) -> Option<Local> {
-		for local in self.locals[index].iter() {
-			if local.identifier.compare(&span, &self.lexer.source) {
-				return Some(*local);
-			}
-		}
-
-		if topmost || index == 0 {
-			return None;
-		}
-
-		return self.find_local_in(span, false, index - 1);
-	}
-
-	fn find_local(&self, span: Span, topmost: bool) -> Option<Local> {
-		self.find_local_in(span, topmost, self.locals.len() - 1)
-	}
-
 	fn register_local(&mut self, token: &Token, mutable: bool) -> Option<usize> {
-		let local = self.find_local(token.span, true);
+		let local = self.table.find_local(&self.lexer.source, &token.span, false);
 
 		match local {
 			Some(local) => {
@@ -320,15 +293,7 @@ impl Compiler {
 			}
 
 			None => {
-				let len = self.locals.len();
-				let position = self.locals.last().unwrap().len() as u16;
-				self.locals.last_mut().unwrap().push(Local {
-					identifier: token.span,
-					position,
-					is_global: len == 1,
-					mutable,
-				});
-				Some(self.locals.last().unwrap().len() - 1)
+				Some(self.table.new_local(token.span, mutable) as usize)
 			}
 		}
 	}
@@ -546,9 +511,9 @@ impl Compiler {
 	}
 
 	fn identifier(&mut self, env: &mut Box<Environment>) {
-		match self.find_local(self.current.span, false) {
-			Some(ref local) => {
-				if local.is_global {
+		match self.table.find_local(&self.lexer.source, &self.current.span, true) {
+			Some(local) => {
+				if local.is_global() {
 					env.add_local(Instruction::GetGlobal, local.position);
 				} else {
 					env.add_local(Instruction::GetLocal, local.position);
@@ -568,7 +533,7 @@ impl Compiler {
 
 	fn primary(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
 		match self.current.kind {
-			TokenKind::Int => {
+			TokenKind::Number => {
 				let span = self.current.span;
 				env.add_constant(Object::Number(
 					self.lexer.source[span.start..span.start + span.len]
@@ -592,13 +557,13 @@ impl Compiler {
 
 			TokenKind::True => {
 				self.consume_here();
-				env.add_constant(Object::Boolean(true));
+				env.add_op(Instruction::True);
 				Ok(())
 			}
 
 			TokenKind::False => {
 				self.consume_here();
-				env.add_constant(Object::Boolean(false));
+				env.add_op(Instruction::False);
 				Ok(())
 			}
 
@@ -804,7 +769,7 @@ impl Compiler {
 
 		self.expression(env)?;
 
-		match self.find_local(identifier.span, false) {
+		match self.table.find_local(&self.lexer.source, &identifier.span, true) {
 			Some(local) => {
 				if !local.mutable {
 					self.error_no_exit(format!(
@@ -814,7 +779,7 @@ impl Compiler {
 						&identifier
 					);
 				} else {
-					if local.is_global {
+					if local.is_global() {
 						env.add_local(Instruction::SetGlobal, local.position);
 					} else {
 						env.add_local(Instruction::SetLocal, local.position);

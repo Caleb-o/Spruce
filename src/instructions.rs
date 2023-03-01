@@ -46,7 +46,7 @@ pub enum Instruction {
 
 	Negate, Add, Sub, Mul, Div,
 
-	None,
+	None, True, False,
 
 	Call, 		// ArgCount u8, Location u32
 	CallNative, // ArgCount u8, index u32

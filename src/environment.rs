@@ -208,6 +208,8 @@ impl Environment {
 				Instruction::Halt => simple_instruction("HALT", offset),
 
 				Instruction::None => simple_instruction("NONE", offset),
+				Instruction::True => simple_instruction("TRUE", offset),
+				Instruction::False => simple_instruction("FALSE", offset),
 				Instruction::NoOp => simple_instruction("NO_OP", offset),
 
 				_ => todo!("Unimplemented Debug Instruction '{:?}'", instruction),

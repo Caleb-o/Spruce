@@ -53,7 +53,7 @@ pub enum TokenKind {
 	LCurly, RCurly,
 	
 	// Literal types
-	Int, Float, String, True, False, None,
+	Number, String, True, False, None,
 	
 	If, Else, For, Let, Var,
 	Function, Struct, Is, Return,

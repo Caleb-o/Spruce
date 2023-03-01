@@ -77,11 +77,15 @@ impl VM {
 	pub fn run(&mut self) -> Result<(), RuntimeErr> {
 		// Initial frame
 		self.frames.push(CallFrame { return_to: 0, stack_start: 0 });
-
 		
 		while !self.had_error && self.ip < self.len {
-			let code = num::FromPrimitive::from_u8(self.env.code[self.ip]).unwrap();
-			// println!("Current ip: {}-{:?}", self.ip, code);
+			let code = match num::FromPrimitive::from_u8(self.env.code[self.ip]) {
+				Some(c) => c,
+				None => return Err(RuntimeErr(format!(
+					"Could not cast byte '{}' to valid opcode",
+					self.env.code[self.ip]
+				))),
+			};
 
 			match code {
 				Instruction::Constant => {
@@ -175,14 +179,15 @@ impl VM {
 					let (lhs, rhs) = self.pop_2_check()?;
 
 					self.stack.push(match lhs {
-						Object::Number(v) => Object::Number(v + match rhs {
-							Object::Number(v) => v,
+						// Even though numbers are F32, they are added like integers
+						Object::Number(l) => Object::Number(l as f32 + match rhs {
+							Object::Number(r) => r  as f32,
 							_ => unreachable!(),
 						}),
-						Object::String(v) => {
-							let mut new_str = v.clone();
+						Object::String(l) => {
+							let mut new_str = l.clone();
 							new_str.push_str(match rhs {
-								Object::String(ref v) => v,
+								Object::String(ref r) => r,
 								_ => unreachable!(),
 							});
 							Object::String(new_str)
@@ -335,6 +340,8 @@ impl VM {
 				},
 
 				Instruction::None => self.push(Object::None),
+				Instruction::True => self.push(Object::Boolean(true)),
+				Instruction::False => self.push(Object::Boolean(false)),
 
 				Instruction::NoOp => {},
 

@@ -4,6 +4,7 @@ mod environment;
 mod instructions;
 mod object;
 mod nativefns;
+mod symtable;
 mod compiler;
 mod vm;
 

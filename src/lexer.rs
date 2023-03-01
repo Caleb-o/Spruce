@@ -164,7 +164,7 @@ impl Lexer {
 			'n' => self.check_if_matches(start, &[("one", TokenKind::None)]),
 			'r' => self.check_if_matches(start, &[("eturn", TokenKind::Return)]),
 			's' => self.check_if_matches(start, &[("ruct", TokenKind::Struct)]),
-			't' => self.check_if_matches(start, &[("true", TokenKind::True)]),
+			't' => self.check_if_matches(start, &[("rue", TokenKind::True)]),
 			'v' => self.check_if_matches(start, &[("ar", TokenKind::Var)]),
 			_ => TokenKind::Identifier,
 		}
@@ -211,16 +211,34 @@ impl Lexer {
 	fn read_numeric(&mut self) -> Token {
 		let pos = self.pos;
 		let column = self.column;
+		let mut is_float = false;
 		
 		self.advance();
+
+		if self.peek() == '.' {
+			self.advance();
+			is_float = true;
+		}
 
 		while !self.is_at_end() && self.peek().is_numeric() {
 			// TODO: Allow floats
 			self.advance();
+
+			if self.peek() == '.' {
+				self.advance();
+				if is_float {
+					return self.make_token(
+						TokenKind::Error,
+						Span::new(self.pos, self.pos),
+						self.column
+					);
+				}
+				is_float = true;
+			}
 		}
 
 		self.make_token(
-			TokenKind::Int,
+			TokenKind::Number,
 			Span::new(pos, self.pos - pos),
 			column,
 		)
