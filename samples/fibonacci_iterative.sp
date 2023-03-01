@@ -12,10 +12,7 @@ fn fib(nth) {
 		return nth;
 	}
 
-	var i = 2;
-	while i <= nth {
-		i = i + 1;
-
+	for var i = 2; i <= nth; i = i + 1 {
 		c = a + b;
 		a = b;
 		b = c;

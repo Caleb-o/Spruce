@@ -160,12 +160,14 @@ impl Lexer {
 					("f", TokenKind::If),
 					("s", TokenKind::Is),
 				]),
-			'l' => self.check_if_matches(start, &[("et", TokenKind::Let)]),
 			'n' => self.check_if_matches(start, &[("one", TokenKind::None)]),
 			'r' => self.check_if_matches(start, &[("eturn", TokenKind::Return)]),
 			's' => self.check_if_matches(start, &[("ruct", TokenKind::Struct)]),
 			't' => self.check_if_matches(start, &[("rue", TokenKind::True)]),
-			'v' => self.check_if_matches(start, &[("ar", TokenKind::Var)]),
+			'v' => self.check_if_matches(start, &[
+				("ar", TokenKind::Var),
+				("al", TokenKind::Val),
+			]),
 			_ => TokenKind::Identifier,
 		}
 	}

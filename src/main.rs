@@ -22,7 +22,7 @@ fn main() {
     }
 
     match &args[1][0..] {
-        "debug" => {
+        "d" | "debug" => {
             match compile(&args[2]) {
                 Ok(e) => {
                     e.dump();
@@ -30,7 +30,7 @@ fn main() {
                 Err(e) => eprintln!("{e}"),
             }
         }
-        "run" => {
+        "r" | "run" => {
             match compile(&args[2]) {
                 Ok(e) => {
                     if let Err(e) = VM::new(e).run() {

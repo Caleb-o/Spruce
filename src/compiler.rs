@@ -156,7 +156,7 @@ impl Compiler {
 								continue;
 							}
 
-							env.code[lookahead.position as usize] = paramc as u8;
+							env.code[lookahead.position as usize + 1] = paramc as u8;
 							u32::to_be_bytes(*position)
 								.into_iter()
 								.enumerate()
@@ -476,7 +476,7 @@ impl Compiler {
 		self.consume_here();
 		self.push_scope();
 
-		if self.is_any_of(&[TokenKind::Var, TokenKind::Let]) {
+		if self.is_any_of(&[TokenKind::Var, TokenKind::Val]) {
 			self.var_declaration(env)?;
 			self.consume(TokenKind::SemiColon, "Expect ';' after binding declarion in for")?;
 		}
@@ -746,7 +746,7 @@ impl Compiler {
 		self.consume_here();
 
 		let identifier = self.current;
-		self.consume(TokenKind::Identifier, "Expected identifier after 'var'/'let'")?;
+		self.consume(TokenKind::Identifier, "Expected identifier after 'var'/'val'")?;
 
 		_ = self.register_local(&identifier, mutable);
 
@@ -828,7 +828,7 @@ impl Compiler {
 			},
 			// Default as expression statement
 			// TODO: Check that this is only assignment or function call
-			TokenKind::Var | TokenKind::Let => self.var_declaration(env)?,
+			TokenKind::Var | TokenKind::Val => self.var_declaration(env)?,
 			TokenKind::Return => self.return_statement(env)?,
 			_ => {
 				// Since expressions yield a value, it makes no sense to keep them
@@ -920,7 +920,7 @@ impl Compiler {
 		while self.current.kind != TokenKind::EndOfFile {
 			match self.current.kind {
 				TokenKind::Function => self.function(env)?,
-				TokenKind::Let | TokenKind::Var => {
+				TokenKind::Val | TokenKind::Var => {
 					self.var_declaration(env)?;
 					self.consume(TokenKind::SemiColon, "Expect ';' after statement")?;
 				},

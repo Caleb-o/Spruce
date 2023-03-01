@@ -391,11 +391,13 @@ impl VM {
 		)))
 	}
 
+	#[inline]
 	fn get_byte_location(&mut self) -> u8 {
 		self.ip += 1;
 		self.env.code[self.ip]
 	}
 
+	#[inline]
 	fn get_short_location(&mut self) -> u16 {
 		let a = self.env.code[self.ip + 1];
 		let b = self.env.code[self.ip + 2];
@@ -404,6 +406,7 @@ impl VM {
 		u16::from_be_bytes([a, b])
 	}
 
+	#[inline]
 	fn get_long_location(&mut self) -> u32 {
 		let a = self.env.code[self.ip + 1];
 		let b = self.env.code[self.ip + 2];
