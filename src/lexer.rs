@@ -133,11 +133,12 @@ impl Lexer {
 		Token { span: Span::new(self.pos - 1, 1), kind, line: self.line, column: self.column - 1 }
 	}
 
-	fn check_if_matches(&self, start:usize, potential: &[(&'static str, TokenKind)]) -> TokenKind {
+	fn check_if_matches(&self, start: usize, len: usize, potential: &[(&'static str, TokenKind)]) -> TokenKind {
 		let begin = start + 1;
 
 		for (rest, kind) in potential {
-			if &self.source[begin..begin + rest.len()] == *rest {
+			let rlen = rest.len();
+			if len - 1 == rlen && &self.source[begin..begin + rlen] == *rest {
 				return *kind;
 			}
 		}
@@ -150,24 +151,24 @@ impl Lexer {
 		
 		// Fixme: chars.nth seems dumb here
 		match lexeme.chars().nth(0).unwrap() {
-			'e' => self.check_if_matches(start, &[
+			'e' => self.check_if_matches(start, len, &[
 				("lse", TokenKind::Else),
 				("nsure", TokenKind::Ensure),
 			]),
-			'f' => self.check_if_matches(start, &[
+			'f' => self.check_if_matches(start, len, &[
 				("alse", TokenKind::False),
 				("n", TokenKind::Function),
 				("or", TokenKind::For),
 			]),
-			'i' => self.check_if_matches(start, &[
+			'i' => self.check_if_matches(start, len, &[
 					("f", TokenKind::If),
 					("s", TokenKind::Is),
 				]),
-			'n' => self.check_if_matches(start, &[("one", TokenKind::None)]),
-			'r' => self.check_if_matches(start, &[("eturn", TokenKind::Return)]),
-			's' => self.check_if_matches(start, &[("ruct", TokenKind::Struct)]),
-			't' => self.check_if_matches(start, &[("rue", TokenKind::True)]),
-			'v' => self.check_if_matches(start, &[
+			'n' => self.check_if_matches(start, len, &[("one", TokenKind::None)]),
+			'r' => self.check_if_matches(start, len, &[("eturn", TokenKind::Return)]),
+			's' => self.check_if_matches(start, len, &[("ruct", TokenKind::Struct)]),
+			't' => self.check_if_matches(start, len, &[("rue", TokenKind::True)]),
+			'v' => self.check_if_matches(start, len, &[
 				("ar", TokenKind::Var),
 				("al", TokenKind::Val),
 			]),

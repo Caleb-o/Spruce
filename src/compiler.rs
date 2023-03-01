@@ -978,7 +978,7 @@ impl Compiler {
 		while self.current.kind != TokenKind::EndOfFile {
 			match self.current.kind {
 				TokenKind::Function => self.function(env)?,
-				TokenKind::Val | TokenKind::Var => {
+				TokenKind::Var | TokenKind::Val => {
 					self.var_declaration(env)?;
 					self.consume(TokenKind::SemiColon, "Expect ';' after statement")?;
 				},

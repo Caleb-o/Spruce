@@ -3,13 +3,13 @@ use std::{fmt::Display, time::Instant};
 use crate::{environment::{Environment, ConstantValue, get_type_name}, object::Object, instructions::Instruction, compiler::Function};
 
 struct CallFrame {
-	identifier: String,
+	identifier: Option<u32>,
 	return_to: usize,
 	stack_start: usize,
 }
 
 impl CallFrame {
-	fn new(identifier: String, return_to: usize, stack_start: usize) -> Self {
+	fn new(identifier: Option<u32>, return_to: usize, stack_start: usize) -> Self {
 		Self { identifier, return_to, stack_start }
 	}
 }
@@ -90,7 +90,7 @@ impl VM {
 
 	fn run_inner(&mut self) -> Result<(), RuntimeErr> {
 		// Initial frame
-		self.frames.push(CallFrame::new(String::from("<script>"), 0, 0));
+		self.frames.push(CallFrame::new(None, 0, 0));
 		
 		while !self.had_error && self.ip < self.len {
 			let code = match num::FromPrimitive::from_u8(self.env.code[self.ip]) {
@@ -313,12 +313,12 @@ impl VM {
 				}
 				
 				Instruction::Call => {
-					let loc = self.get_long() as usize;
-					let meta = &self.env.functions[loc];
+					let meta_id = self.get_long();
+					let meta = &self.env.functions[meta_id as usize];
 					self.check_function_args_count(meta.arg_count)?;
 
 					self.frames.push(CallFrame::new( 
-						meta.identifier.clone(),
+						Some(meta_id),
 						self.ip,
 						self.stack.len() - meta.arg_count as usize,
 					));
@@ -333,9 +333,10 @@ impl VM {
 					self.check_function_args_count(args)?;
 
 					if let ConstantValue::Func(f) = self.env.constants[loc as usize].clone() {
-						if let Function::Native { identifier, param_count: _, function, .. } = f {
+						if let Function::Native { param_count: _, function, .. } = f {
 							self.frames.push(CallFrame::new(
-								String::from(identifier),
+								// TODO: Add a flag for native function
+								None,
 								self.ip,
 								self.stack.len() - args as usize,
 							));
@@ -413,7 +414,11 @@ impl VM {
 		self.frames.iter()
 			.rev()
 			.for_each(|frame| {
-				println!("at {}()", frame.identifier);
+				if let Some(id) = frame.identifier {
+					println!("at {}()", self.env.functions[id as usize].identifier);
+				} else {
+					println!("at func()");
+				}
 			});
 	}
 
