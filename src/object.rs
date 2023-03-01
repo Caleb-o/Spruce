@@ -38,13 +38,17 @@ impl Object {
 	pub fn is_exact(&self, other: &Object) -> bool {
 		match *self {
 			Self::None => true,
-			Self::Number(v) => v == match *other {
-				Self::Number(v) => v,
-				_ => -0.0,
+			Self::Number(v) => {
+				if let Self::Number(o) = *other {
+					return v == o;
+				}
+				false
 			},
-			Self::Boolean(v) => v == match *other {
-				Self::Boolean(v) => v,
-				_ => false,
+			Self::Boolean(v) => {
+				if let Self::Boolean(o) = *other {
+					return v == o;
+				}
+				false
 			},
 			Self::String(ref v) => {
 				if let Self::String(ref o) = other {

@@ -3,6 +3,7 @@ mod lexer;
 mod environment;
 mod instructions;
 mod object;
+mod nativefns;
 mod compiler;
 mod vm;
 

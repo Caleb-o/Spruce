@@ -5,7 +5,7 @@ use crate::token::{Token, TokenKind, Span};
 #[derive(Debug)]
 pub struct Lexer {
 	pub source: String,
-	line: u64,
+	line: u32,
 	column: u32,
 	pos: usize,
 }

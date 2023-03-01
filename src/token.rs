@@ -67,6 +67,6 @@ pub enum TokenKind {
 pub struct Token {
 	pub span: Span,
 	pub kind: TokenKind,
-	pub line: u64,
+	pub line: u32,
 	pub column: u32,
 }
