@@ -29,21 +29,17 @@ pub enum Function {
 
 impl Function {
 	fn is_empty(&self) -> bool {
-		match *self {
-			Function::User { identifier: _, position: _, parameters: _, empty } => {
+		if let Function::User { identifier: _, position: _, parameters: _, empty } = *self {
 				empty
-			}
-			_ => false,
+		} else {
+			false
 		}
 	}
 
 	fn mark_empty(&mut self) {
-		match *self {
-			Function::User { identifier: _, position: _, parameters: _, ref mut empty } => {
-				*empty = true;
-			}
-			_ => {}
-		}
+		if let Function::User { identifier: _, position: _, parameters: _, ref mut empty } = * self {
+			*empty = true;
+		} 
 	}
 }
 
@@ -154,7 +150,6 @@ impl Compiler {
 								),
 								&lookahead.token
 							);
-							continue;
 						}
 
 						let paramc = parameters.as_ref().map_or(0, |p| p.len()) as usize;
@@ -951,17 +946,18 @@ impl Compiler {
 		} else {None};
 
 		self.register_function(identifier, start_loc, parameters, env)?;
-
+		
+		let after_params = env.op_here();
 		self.body(env, false)?;
 		
-		// Don't generate pointless returns for empty functions
-		if start_loc as usize != env.op_here() {
-			if *env.code.last().unwrap() != Instruction::Return as u8 {
-				// Only add return if the last instruction wasn't a return
-				env.add_op(Instruction::None);
-				env.add_op(Instruction::Return);
-			}
-		} else {
+		// Don't generate pointless returns
+		if *env.code.last().unwrap() != Instruction::Return as u8 {
+			// Only add return if the last instruction wasn't a return
+			env.add_op(Instruction::None);
+			env.add_op(Instruction::Return);
+		}
+		
+		if after_params == env.op_here() - 2 {
 			self.mark_function_empty(identifier.span);
 		}
 		
