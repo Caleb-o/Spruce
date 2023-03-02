@@ -737,7 +737,7 @@ impl Compiler {
 			},
 			None => {
 				self.error_no_exit(
-					"Invalid type name in 'is' expression '{type_str}'".into(),
+					format!("Invalid type name in type assert '{type_name}'"),
 					&type_id
 				);
 			}
@@ -856,7 +856,8 @@ impl Compiler {
 		}
 
 		if !has_expr {
-			env.add_op(Instruction::None);
+			env.add_op(Instruction::ReturnNone);
+			return Ok(());
 		}
 
 		env.add_op(Instruction::Return);
@@ -960,8 +961,7 @@ impl Compiler {
 		// Don't generate pointless returns
 		if *env.code.last().unwrap() != Instruction::Return as u8 {
 			// Only add return if the last instruction wasn't a return
-			env.add_op(Instruction::None);
-			env.add_op(Instruction::Return);
+			env.add_op(Instruction::ReturnNone);
 		}
 		
 		if after_params == env.op_here() - 2 {
@@ -1000,6 +1000,7 @@ impl Compiler {
 			"number" => Some(1),
 			"string" => Some(2),
 			"bool" => Some(3),
+			"list" => Some(4),
 			_ => None,
 		}
 	}

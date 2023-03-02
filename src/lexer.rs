@@ -134,11 +134,9 @@ impl Lexer {
 	}
 
 	fn check_if_matches(&self, start: usize, len: usize, potential: &[(&'static str, TokenKind)]) -> TokenKind {
-		let begin = start + 1;
-
 		for (rest, kind) in potential {
 			let rlen = rest.len();
-			if len - 1 == rlen && &self.source[begin..begin + rlen] == *rest {
+			if len - 1 == rlen && &self.source[start + 1..start + len] == *rest {
 				return *kind;
 			}
 		}

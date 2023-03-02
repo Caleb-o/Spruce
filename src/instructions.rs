@@ -55,6 +55,7 @@ pub enum Instruction {
 	CallNative, // ArgCount u8, index u32
 
 	// Return
+	ReturnNone,
 	Return,
 	Halt,
 

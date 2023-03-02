@@ -1,15 +1,15 @@
-use std::{fmt::Display, time::Instant, mem::transmute};
+use std::{fmt::Display, time::Instant, mem::{transmute, discriminant}};
 
 use crate::{environment::{Environment, ConstantValue, get_type_name}, object::Object, instructions::Instruction, compiler::Function};
 
 struct CallFrame {
 	identifier: Option<u32>,
-	return_to: usize,
-	stack_start: usize,
+	return_to: u32,
+	stack_start: u32,
 }
 
 impl CallFrame {
-	fn new(identifier: Option<u32>, return_to: usize, stack_start: usize) -> Self {
+	fn new(identifier: Option<u32>, return_to: u32, stack_start: u32) -> Self {
 		Self { identifier, return_to, stack_start }
 	}
 }
@@ -48,7 +48,7 @@ impl VM {
 
 	#[inline]
 	pub fn stack_slice_from_call(&self) -> &[Object] {
-		&self.stack[self.frames.last().unwrap().stack_start..]
+		&self.stack[self.frames.last().unwrap().stack_start as usize..]
 	}
 
 	#[inline]
@@ -180,41 +180,45 @@ impl VM {
 				}
 
 				Instruction::Greater => {
-					let (lhs, rhs) = self.pop_2_check()?;
+					let size = self.stack_size() - 2;
+					let (lhs, rhs) = self.pop_peek_check()?;
 
-					if let Object::Number(l) = lhs {
+					if let Object::Number(ref mut l) = lhs {
 						if let Object::Number(r) = rhs {
-							self.stack.push(Object::Boolean(l > r));
+							self.stack[size] = Object::Boolean(*l > r);
 						}
 					}
 				}
 
 				Instruction::GreaterEqual => {
-					let (lhs, rhs) = self.pop_2_check()?;
+					let size = self.stack_size() - 2;
+					let (lhs, rhs) = self.pop_peek_check()?;
 
-					if let Object::Number(l) = lhs {
+					if let Object::Number(ref mut l) = lhs {
 						if let Object::Number(r) = rhs {
-							self.stack.push(Object::Boolean(l >= r));
+							self.stack[size] = Object::Boolean(*l >= r);
 						}
 					}
 				}
 
 				Instruction::Less => {
-					let (lhs, rhs) = self.pop_2_check()?;
+					let size = self.stack_size() - 2;
+					let (lhs, rhs) = self.pop_peek_check()?;
 
-					if let Object::Number(l) = lhs {
+					if let Object::Number(ref mut l) = lhs {
 						if let Object::Number(r) = rhs {
-							self.stack.push(Object::Boolean(l < r));
+							self.stack[size] = Object::Boolean(*l < r);
 						}
 					}
 				}
 
 				Instruction::LessEqual => {
-					let (lhs, rhs) = self.pop_2_check()?;
+					let size = self.stack_size() - 2;
+					let (lhs, rhs) = self.pop_peek_check()?;
 
-					if let Object::Number(l) = lhs {
+					if let Object::Number(ref mut l) = lhs {
 						if let Object::Number(r) = rhs {
-							self.stack.push(Object::Boolean(l <= r));
+							self.stack[size] = Object::Boolean(*l <= r);
 						}
 					}
 				}
@@ -231,6 +235,11 @@ impl VM {
 						Object::String(ref mut l) => {
 							if let Object::String(ref r) = rhs {
 								l.push_str(r);
+							}
+						}
+						Object::List(ref mut l) => {
+							if let Object::List(r) = rhs {
+								l.extend(r);
 							}
 						}
 						_ => {}
@@ -304,7 +313,7 @@ impl VM {
 				Instruction::GetLocal => {
 					let slot = self.get_short();
 					self.stack.push(self.stack[
-						self.frames.last().unwrap().stack_start + slot as usize
+						self.frames.last().unwrap().stack_start as usize + slot as usize
 						].clone()
 					);
 				}
@@ -312,7 +321,7 @@ impl VM {
 				Instruction::SetLocal => {
 					let slot = self.get_short();
 					self.stack[
-						self.frames.last().unwrap().stack_start + slot as usize
+						self.frames.last().unwrap().stack_start as usize + slot as usize
 					] = (*self.peek()).clone();
 				}
 
@@ -342,16 +351,15 @@ impl VM {
 				
 				Instruction::Call => {
 					let meta_id = self.get_long();
-					let distance = self.ip_distance();
+					let distance = self.ip_distance() as u32;
 					let meta = &self.env.functions[meta_id as usize];
 					self.check_function_args_count(meta.arg_count)?;
 					
 					self.frames.push(CallFrame::new(
 						Some(meta_id),
 						distance,
-						self.stack.len() - meta.arg_count as usize,
+						self.stack.len() as u32 - meta.arg_count as u32,
 					));
-
 					self.set_ip(meta.location as usize);
 					continue;
 				},
@@ -363,12 +371,12 @@ impl VM {
 
 					if let ConstantValue::Func(f) = self.env.constants[loc as usize].clone() {
 						if let Function::Native { param_count: _, function, .. } = f {
-							let distance = self.ip_distance();
+							let distance = self.ip_distance() as u32;
 							self.frames.push(CallFrame::new(
 								// TODO: Add a flag for native function
 								None,
 								distance,
-								self.stack.len() - args as usize,
+								self.stack.len() as u32 - args as u32,
 							));
 
 							function(self, args)?;
@@ -381,27 +389,14 @@ impl VM {
 				Instruction::TypeCheck => {
 					let item = self.drop()?;
 					let type_id = self.get_byte();
-					self.push(Object::Boolean(match type_id {
-						0 => item == Object::None,
-						1 => matches!(item, Object::Number(_)),
-						2 => matches!(item, Object::String(_)),
-						3 => matches!(item, Object::Boolean(_)),
-						_ => false,
-					}));
+					self.push(Object::Boolean(self.get_type_match(&item, type_id)));
 				},
 
 				Instruction::TypeCheckAssert => {
 					let type_id = self.get_byte();
 					let item = self.peek();
-					let is_type = match type_id {
-						0 => *item == Object::None,
-						1 => matches!(*item, Object::Number(_)),
-						2 => matches!(*item, Object::String(_)),
-						3 => matches!(*item, Object::Boolean(_)),
-						_ => false,
-					};
 
-					if !is_type {
+					if !self.get_type_match(&item, type_id) {
 						return Err(RuntimeErr(format!(
 							"Expected type {} but received {}",
 							get_type_name(type_id),
@@ -410,12 +405,21 @@ impl VM {
 					}
 				},
 
-				Instruction::Return => {
+				Instruction::ReturnNone => {
 					let frame = self.frames.pop().unwrap();
 					self.set_ip(frame.return_to as usize);
 
 					// Remove all end values, except return
-					self.stack.drain(frame.stack_start..self.stack.len()-1);
+					self.stack.drain(frame.stack_start as usize..self.stack.len());
+					self.stack.push(Object::None);
+				},
+
+				Instruction::Return => {
+					let frame = self.frames.pop().unwrap();
+					self.set_ip(frame.return_to as usize);
+						
+					// Remove all end values, except return
+					self.stack.drain(frame.stack_start as usize..self.stack.len()-1);
 				},
 
 				Instruction::None => self.push(Object::None),
@@ -453,7 +457,7 @@ impl VM {
 	}
 
 	fn check_function_args_count(&self, args: u8) -> Result<(), RuntimeErr> {
-		if args as usize > self.stack.len() - self.frames.last().unwrap().stack_start {
+		if args as usize > self.stack.len() - self.frames.last().unwrap().stack_start as usize {
 			return Err(RuntimeErr(format!(
 				"Native Function requires {} arguments, but received {}",
 				args,
@@ -477,7 +481,7 @@ impl VM {
 		let rhs = self.drop()?;
 		let lhs = self.peek_mut();
 
-		if std::mem::discriminant(lhs) == std::mem::discriminant(&rhs) {
+		if discriminant(lhs) == discriminant(&rhs) {
 			return Ok((lhs, rhs));
 		}
 		
@@ -489,7 +493,7 @@ impl VM {
 	
 	#[inline]
 	fn check_types_match(lhs: Object, rhs: Object) -> Result<(Object, Object), RuntimeErr> {
-		if std::mem::discriminant(&lhs) == std::mem::discriminant(&rhs) {
+		if discriminant(&lhs) == discriminant(&rhs) {
 			return Ok((lhs, rhs));
 		}
 		
@@ -527,5 +531,16 @@ impl VM {
 		let d = self.get_instruction();
 
 		u32::from_be_bytes([a, b, c, d])
+	}
+
+	fn get_type_match(&self, item: &Object, type_id: u8) -> bool {
+		match type_id {
+			0 => matches!(item, Object::None),
+			1 => matches!(item, Object::Number(_)),
+			2 => matches!(item, Object::String(_)),
+			3 => matches!(item, Object::Boolean(_)),
+			4 => matches!(item, Object::List(_)),
+			_ => false,
+		}
 	}
 }

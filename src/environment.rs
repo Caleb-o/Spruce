@@ -242,8 +242,10 @@ impl Environment {
 				Instruction::Jump => short_location_instruction("JUMP", offset, &self),
 				Instruction::JumpNot => short_location_instruction("JUMP_NOT", offset, &self),
 
+				Instruction::BuildList => simple_instruction("BUILD_LIST", offset),
 				Instruction::Call => call_instruction("CALL", offset, &self),
 				Instruction::CallNative => native_call_instruction("NATIVE_CALL", offset, &self),
+				Instruction::ReturnNone => simple_instruction("RETURN_NONE", offset),
 				Instruction::Return => simple_instruction("RETURN", offset),
 				Instruction::Halt => simple_instruction("HALT", offset),
 
@@ -255,7 +257,13 @@ impl Environment {
 				Instruction::False => simple_instruction("FALSE", offset),
 				Instruction::NoOp => simple_instruction("NO_OP", offset),
 
-				_ => todo!("Unimplemented Debug Instruction '{:?}'", instruction),
+				_ => {
+					let instruction: Instruction = num::FromPrimitive::from_u8(instruction).unwrap();
+					todo!(
+						"Unimplemented Debug Instruction '{:?}'", 
+						instruction
+					)
+				},
 			}
 		}
 	}
@@ -326,6 +334,7 @@ pub fn get_type_name(type_id: u8) -> &'static str {
 		1 => "number",
 		2 => "string",
 		3 => "bool",
+		4 => "list",
 		_ => unreachable!(),
 	}
 }

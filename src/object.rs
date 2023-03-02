@@ -8,7 +8,7 @@ pub enum Object {
 	String(String),
 	Boolean(bool),
 	List(Vec<Box<Object>>),
-	Function(u8, usize),
+	Function(u32),
 	// TODO: "Pointer" type, which holds its location in the stack
 	//		 If we want a complex/large type, we don't really want to
 	//		 duplicate it, especially if we want to mutate it.
@@ -22,26 +22,7 @@ impl Object {
     		Object::String(_) => "string",
     		Object::Boolean(_) => "bool",
     		Object::List(_) => "list",
-    		Object::Function(_, _) => "function",
-		}
-	}
-
-	pub fn is_similar(&self, other: &Object) -> bool {
-		match *self {
-			Self::None => true,
-			Self::Number(_) => match *other {
-				Self::Number(_) => true,
-				_ => false,
-			},
-			Self::Boolean(_) => match *other {
-				Self::Boolean(_) => true,
-				_ => false,
-			},
-			Self::String(_) => match *other {
-				Self::String(_) => true,
-				_ => false,
-			},
-			_ => false,
+    		Object::Function(_) => "function",
 		}
 	}
 
@@ -92,8 +73,8 @@ impl Display for Object {
 				string.push(']');
 				string
 			},
-			Object::Function(paramc, loc) => {
-				format!("fn<({paramc}), {loc}>")
+			Object::Function(meta_id) => {
+				format!("fn<({meta_id}>")
 			},
 		})
     }

@@ -61,54 +61,16 @@ pub fn register_native_functions(compiler: &mut Compiler, env: &mut Box<Environm
         Ok(())
     }));
 
-    compiler.add_fn(env, "strlen", ParamKind::Count(1), true, Rc::new(|vm, _args| {
-        if let Object::String(s) = vm.drop()? {
-            vm.push(Object::Number(s.len() as f32));
-        } else {
-            vm.warning(format!("strlen expected a string but received {}", vm.peek()));
-            vm.push(Object::None);
+    compiler.add_fn(env, "len", ParamKind::Count(1), true, Rc::new(|vm, _args| {
+        match vm.drop()? {
+            Object::String(s) => vm.push(Object::Number(s.len() as f32)),
+            Object::List(ref l) => vm.push(Object::Number(l.len() as f32)),
+            _ => {
+                vm.warning(format!("strlen expected a string but received {}", vm.peek()));
+                vm.push(Object::None);
+            },
         }
 
-        Ok(())
-    }));
-
-    compiler.add_fn(env, "list_push", ParamKind::Count(2), true, Rc::new(|vm, _args| {
-        let item = vm.drop()?;
-
-        if let Object::List(ref list) = vm.drop()? {
-            let mut inner = list.clone();
-            inner.push(Box::new(item));
-            vm.push(Object::List(inner));
-        } else {
-            vm.warning(format!("list_push expected a list but received {}", vm.peek()));
-            vm.push(Object::None);
-        }
-        
-        Ok(())
-    }));
-
-    compiler.add_fn(env, "list_pop", ParamKind::Count(1), true, Rc::new(|vm, _args| {
-        // FIXME: Use pointer object type for it to effect items
-        if let Object::List(ref list) = vm.drop()? {
-            let mut inner = list.clone();
-            let item = *inner.pop().unwrap();
-            vm.push(item);
-        } else {
-            vm.warning(format!("list_push expected a list but received {}", vm.peek()));
-            vm.push(Object::None);
-        }
-        
-        Ok(())
-    }));
-
-    compiler.add_fn(env, "list_len", ParamKind::Count(1), true, Rc::new(|vm, _args| {
-        if let Object::List(ref list) = vm.drop()? {
-            vm.push(Object::Number(list.len() as f32));
-        } else {
-            vm.warning(format!("list_push expected a list but received {}", vm.peek()));
-            vm.push(Object::None);
-        }
-        
         Ok(())
     }));
 
