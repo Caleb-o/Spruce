@@ -75,6 +75,11 @@ impl VM {
 	pub fn peek(&self) -> &Object {
 		self.stack.last().unwrap()
 	}
+
+	#[inline]
+	pub fn peek_mut(&mut self) -> &mut Object {
+		self.stack.last_mut().unwrap()
+	}
 	
 	#[inline]
 	pub fn push(&mut self, object: Object) {
@@ -215,42 +220,39 @@ impl VM {
 				}
 
 				Instruction::Add => {
-					let (lhs, rhs) = self.pop_2_check()?;
+					let (lhs, rhs) = self.pop_peek_check()?;
 
-					self.stack.push(match lhs {
-						// Even though numbers are F32, they are added like integers
-						Object::Number(l) => Object::Number(l as f32 + match rhs {
-							Object::Number(r) => r  as f32,
-							_ => unreachable!(),
-						}),
-						Object::String(l) => {
-							let mut new_str = l.clone();
-							new_str.push_str(match rhs {
-								Object::String(ref r) => r,
-								_ => unreachable!(),
-							});
-							Object::String(new_str)
-						},
-						_ => Object::None,
-					});
+					match lhs {
+						Object::Number(ref mut l) => {
+							if let Object::Number(r) = rhs {
+								*l += r;
+							}
+						}
+						Object::String(ref mut l) => {
+							if let Object::String(ref r) = rhs {
+								l.push_str(r);
+							}
+						}
+						_ => {}
+					}
 				}
 
 				Instruction::Sub => {
-					let (lhs, rhs) = self.pop_2_check()?;
+					let (lhs, rhs) = self.pop_peek_check()?;
 
-					if let Object::Number(l) = lhs {
+					if let Object::Number(ref mut l) = lhs {
 						if let Object::Number(r) = rhs {
-							self.stack.push(Object::Number(l - r));
+							*l -= r;
 						}
 					}
 				}
 
 				Instruction::Mul => {
-					let (lhs, rhs) = self.pop_2_check()?;
+					let (lhs, rhs) = self.pop_peek_check()?;
 
-					if let Object::Number(l) = lhs {
+					if let Object::Number(ref mut l) = lhs {
 						if let Object::Number(r) = rhs {
-							self.stack.push(Object::Number(l * r));
+							*l *= r;
 						}
 					}
 				}
@@ -468,6 +470,21 @@ impl VM {
 		let lhs = self.drop()?;
 
 		VM::check_types_match(lhs, rhs)
+	}
+
+	#[inline]
+	fn pop_peek_check(&mut self) -> Result<(&mut Object, Object), RuntimeErr> {
+		let rhs = self.drop()?;
+		let lhs = self.peek_mut();
+
+		if std::mem::discriminant(lhs) == std::mem::discriminant(&rhs) {
+			return Ok((lhs, rhs));
+		}
+		
+		Err(RuntimeErr(format!(
+			"Value types do not match or are not integers '{}' != '{}'",
+			lhs, rhs,
+		)))
 	}
 	
 	#[inline]
