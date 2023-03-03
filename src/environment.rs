@@ -9,6 +9,7 @@ pub enum ConstantValue {
 	Func(Function),
 }
 
+#[derive(Debug, Clone)]
 pub struct FunctionMeta {
 	pub identifier: String,
 	pub arg_count: u8,
@@ -75,6 +76,16 @@ impl Environment {
 	pub fn add_local(&mut self, op: Instruction, location: u16) {
 		self.code.push(op as u8);
 		location.to_be_bytes().into_iter().for_each(|b| self.code.push(b));
+	}
+
+	pub fn add_get_fn(&mut self, location: u32) {
+		self.code.push(Instruction::GetFn as u8);
+		location.to_be_bytes().into_iter().for_each(|b| self.code.push(b));
+	}
+
+	pub fn add_local_call(&mut self, arguments: u8) {
+		self.code.push(Instruction::CallLocal as u8);
+		self.code.push(arguments);
 	}
 
 	pub fn add_call(&mut self, location: u32) {
@@ -243,7 +254,9 @@ impl Environment {
 				Instruction::JumpNot => short_location_instruction("JUMP_NOT", offset, &self),
 
 				Instruction::BuildList => simple_instruction("BUILD_LIST", offset),
+				Instruction::GetFn => call_instruction("GET_FN", offset, &self),
 				Instruction::Call => call_instruction("CALL", offset, &self),
+				Instruction::CallLocal => call_local_instruction("CALL_LOCAL", offset, &self),
 				Instruction::CallNative => native_call_instruction("NATIVE_CALL", offset, &self),
 				Instruction::ReturnNone => simple_instruction("RETURN_NONE", offset),
 				Instruction::Return => simple_instruction("RETURN", offset),
@@ -292,6 +305,13 @@ fn short_location_instruction(name: &str, offset: usize, env: &Environment) -> u
 	let location = u16::from_be_bytes([env.code[offset + 1], env.code[offset + 2]]);
 	println!("{name}<{location}>");
 	offset + 3
+}
+
+fn call_local_instruction(name: &str, offset: usize, env: &Environment) -> usize {
+	let arg_count = env.code[offset + 1];
+	println!("{name}<{arg_count}>");
+
+	offset + 2
 }
 
 fn call_instruction(name: &str, offset: usize, env: &Environment) -> usize {

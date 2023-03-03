@@ -1,11 +1,12 @@
 use crate::token::Span;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Local {
 	pub identifier: Span,
 	pub depth: u16,
 	pub position: u16,
 	pub mutable: bool,
+	pub func: Option<u32>,
 }
 
 impl Local {
@@ -39,6 +40,7 @@ impl SymTable {
 		&mut self,
 		identifier: Span,
 		mutable: bool,
+		func: Option<u32>,
 	) -> u16 {
         let position = self.find_position();
 		self.locals.push(Local { 
@@ -46,14 +48,15 @@ impl SymTable {
 			depth: self.depth,
 			position,
 			mutable,
+			func
 		});
         position
 	}
 
     pub fn find_local(&self, source: &String, span: &Span, anyscope: bool) -> Option<&Local> {
         for local in self.locals.iter().rev() {
-            if !anyscope && local.depth < self.depth {
-                return None;
+			if !anyscope && local.depth < self.depth {
+				return None;
             }
 
             if local.identifier.compare(span, source) {

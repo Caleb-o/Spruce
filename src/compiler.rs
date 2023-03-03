@@ -263,7 +263,7 @@ impl Compiler {
 		self.find_function_str(span.slice_from(&self.lexer.source))
 	}
 
-	fn register_local(&mut self, token: &Token, mutable: bool) -> Option<usize> {
+	fn register_local(&mut self, token: &Token, mutable: bool, func: Option<u32>) -> Option<usize> {
 		let local = self.table.find_local(&self.lexer.source, &token.span, false);
 
 		match local {
@@ -279,7 +279,7 @@ impl Compiler {
 			}
 
 			None => {
-				Some(self.table.new_local(token.span, mutable) as usize)
+				Some(self.table.new_local(token.span, mutable, func) as usize)
 			}
 		}
 	}
@@ -303,12 +303,16 @@ impl Compiler {
 				),
 				&identifier
 			);
+			return Err(CompilerErr(format!(
+				"Function with identifier '{}' already exists",
+				identifier.span.slice_from(&self.lexer.source)
+			)));
 		}
 
 		// Register locals from parameters
 		if let Some(ref params) = parameters {
 			for (idx, (identifier, type_name)) in params.iter().enumerate() {
-				_ = self.register_local(identifier, false);
+				_ = self.register_local(identifier, false, None);
 
 				if let Some(type_name) = type_name {
 					env.add_op(Instruction::GetLocal);
@@ -327,6 +331,8 @@ impl Compiler {
 			},
 			position
 		));
+
+		_ = self.register_local(&identifier, false, Some(env.functions.len() as u32 - 1));
 
 		self.functable.push(Function::User {
 			meta_id: env.functions.len() as u32 - 1,
@@ -370,6 +376,11 @@ impl Compiler {
 		
 		self.consume(TokenKind::RParen, "Expect ')' after argument list")?;
 		let mut fnerr: Option<(String, u8)> = None;
+
+		if let Some(_) = self.table.find_local(&self.lexer.source, &identifier.span, true) {
+			env.add_local_call(arg_count);
+			return Ok(());
+		}
 
 		match self.find_function(identifier.span) {
 			Some(func) => {
@@ -510,10 +521,14 @@ impl Compiler {
 	fn identifier(&mut self, env: &mut Box<Environment>) {
 		match self.table.find_local(&self.lexer.source, &self.current.span, true) {
 			Some(local) => {
-				if local.is_global() {
-					env.add_local(Instruction::GetGlobal, local.position);
+				if let Some(func) = &local.func {
+					env.add_get_fn(*func);
 				} else {
-					env.add_local(Instruction::GetLocal, local.position);
+					if local.is_global() {
+						env.add_local(Instruction::GetGlobal, local.position);
+					} else {
+						env.add_local(Instruction::GetLocal, local.position);
+					}
 				}
 			},
 
@@ -795,7 +810,7 @@ impl Compiler {
 		let identifier = self.current;
 		self.consume(TokenKind::Identifier, "Expected identifier after 'var'/'val'")?;
 
-		_ = self.register_local(&identifier, mutable);
+		_ = self.register_local(&identifier, mutable, None);
 
 		// Produce the expression
 		if self.current.kind == TokenKind::Equal {
@@ -953,10 +968,13 @@ impl Compiler {
 			Some(parameters)
 		} else {None};
 
+		self.pop_scope();
 		self.register_function(identifier, start_loc, parameters, env)?;
+		self.push_scope();
 		
 		let after_params = env.op_here();
 		self.body(env, false)?;
+		self.pop_scope();
 		
 		// Don't generate pointless returns
 		if *env.code.last().unwrap() != Instruction::Return as u8 {
@@ -969,7 +987,6 @@ impl Compiler {
 		}
 		
 		env.patch_jump_op(jmp);
-		self.pop_scope();
 
 		Ok(())
 	}

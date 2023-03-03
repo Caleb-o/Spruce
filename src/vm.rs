@@ -129,6 +129,7 @@ impl VM {
 		self.frames.push(CallFrame::new(None, 0, 0));
 
 		while !self.had_error {
+			// let code = unsafe { transmute::<*mut u8, &Instruction>(self.ip) };
 			// println!("CODE :: {:0>4} {code:?}", self.ip_distance());
 
 			match *unsafe { transmute::<*mut u8, &Instruction>(self.ip) } {
@@ -348,6 +349,40 @@ impl VM {
 						}
 					}
 				}
+
+				Instruction::GetFn => {
+					let location = self.get_long();
+					self.push(Object::Function(location));
+				},
+
+				Instruction::CallLocal => {
+					let arg_count = self.get_byte();
+					let func = self.drop()?;
+
+					if let Object::Function(meta_id) = func {
+						let distance = self.ip_distance() as u32;
+						let meta = &self.env.functions[meta_id as usize];
+
+						if arg_count != meta.arg_count {
+							return Err(RuntimeErr(format!(
+								"Trying to call function {} with {} args, but received {}",
+								meta.identifier, arg_count, meta.arg_count,
+							)));
+						}
+
+						self.frames.push(CallFrame::new(
+							Some(meta_id),
+							distance,
+							self.stack.len() as u32 - meta.arg_count as u32,
+						));
+						self.set_ip(meta.location as usize);
+					} else {
+						return Err(RuntimeErr(
+							"Cannot call non-function".into()
+						));
+					}
+					continue;
+				},
 				
 				Instruction::Call => {
 					let meta_id = self.get_long();

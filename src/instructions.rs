@@ -51,6 +51,8 @@ pub enum Instruction {
 	TypeCheck,			// Type u8
 	TypeCheckAssert,	// Type u8
 
+	GetFn, 		// Meta Location u32,
+	CallLocal, 	// Arguments u8
 	Call, 		// Meta Location u32
 	CallNative, // ArgCount u8, index u32
 
