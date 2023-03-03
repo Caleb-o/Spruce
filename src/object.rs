@@ -74,7 +74,7 @@ impl Display for Object {
 				string
 			},
 			Object::Function(meta_id) => {
-				format!("fn<({meta_id}>")
+				format!("fn<{meta_id}>")
 			},
 		})
     }

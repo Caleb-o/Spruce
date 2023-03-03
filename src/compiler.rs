@@ -377,11 +377,6 @@ impl Compiler {
 		self.consume(TokenKind::RParen, "Expect ')' after argument list")?;
 		let mut fnerr: Option<(String, u8)> = None;
 
-		if let Some(_) = self.table.find_local(&self.lexer.source, &identifier.span, true) {
-			env.add_local_call(arg_count);
-			return Ok(());
-		}
-
 		match self.find_function(identifier.span) {
 			Some(func) => {
 				if !func.is_empty() {
@@ -427,16 +422,21 @@ impl Compiler {
 			}
 
 			None => {
-				// Push the call to a stack of unresolved calls
-				// They will be filled in at the end, if they exist
-				let position = env.op_here() as u32;
-				env.add_call(0);
+				if let Some(_) = self.table.find_local(&self.lexer.source, &identifier.span, true) {
+					env.add_local_call(arg_count);
+				} else {
+					// Push the call to a stack of unresolved calls
+					// They will be filled in at the end, if they exist
+					let position = env.op_here() as u32;
+					env.add_call(0);
+	
+					self.unresolved.push(LookAhead {
+						token: identifier,
+						args: arg_count,
+						position,
+					});
 
-				self.unresolved.push(LookAhead {
-					token: identifier,
-					args: arg_count,
-					position,
-				});
+				}
 			}
 		}
 

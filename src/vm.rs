@@ -357,10 +357,10 @@ impl VM {
 
 				Instruction::CallLocal => {
 					let arg_count = self.get_byte();
-					let func = self.drop()?;
+					let distance = self.ip_distance() as u32;
+					let func = self.peek();
 
-					if let Object::Function(meta_id) = func {
-						let distance = self.ip_distance() as u32;
+					if let Object::Function(meta_id) = *func {
 						let meta = &self.env.functions[meta_id as usize];
 
 						if arg_count != meta.arg_count {
@@ -373,7 +373,7 @@ impl VM {
 						self.frames.push(CallFrame::new(
 							Some(meta_id),
 							distance,
-							self.stack.len() as u32 - meta.arg_count as u32,
+							self.stack.len() as u32,
 						));
 						self.set_ip(meta.location as usize);
 					} else {
@@ -393,7 +393,7 @@ impl VM {
 					self.frames.push(CallFrame::new(
 						Some(meta_id),
 						distance,
-						self.stack.len() as u32 - meta.arg_count as u32,
+						self.stack.len() as u32,
 					));
 					self.set_ip(meta.location as usize);
 					continue;
