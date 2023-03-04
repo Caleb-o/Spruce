@@ -9,6 +9,7 @@ pub enum Object {
 	Boolean(bool),
 	List(Vec<Box<Object>>),
 	Function(u32),
+	AnonFunction(u8, u32),
 	// TODO: "Pointer" type, which holds its location in the stack
 	//		 If we want a complex/large type, we don't really want to
 	//		 duplicate it, especially if we want to mutate it.
@@ -23,6 +24,7 @@ impl Object {
     		Object::Boolean(_) => "bool",
     		Object::List(_) => "list",
     		Object::Function(_) => "function",
+    		Object::AnonFunction(_, _) => "anon",
 		}
 	}
 
@@ -72,10 +74,13 @@ impl Display for Object {
 
 				string.push(']');
 				string
-			},
+			}
 			Object::Function(meta_id) => {
 				format!("fn<{meta_id}>")
-			},
+			}
+			Object::AnonFunction(arg_count, location) => {
+				format!("fn<{arg_count}, {location}>")
+			}
 		})
     }
 }

@@ -596,6 +596,8 @@ impl Compiler {
 
 			TokenKind::LSquare => self.list_literal(env),
 
+			TokenKind::Function => self.anon_function(env),
+
 			TokenKind::Identifier => {
 				match self.lexer.peek_type() {
 					TokenKind::LParen => self.function_call(env)?,
@@ -891,14 +893,8 @@ impl Compiler {
 
 	fn statement(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
 		match self.current.kind {
-			TokenKind::If => {
-				self.if_statement(env)?;
-				return Ok(());
-			},
-			TokenKind::For => {
-				self.for_statement(env)?;
-				return Ok(());
-			},
+			TokenKind::If => self.if_statement(env)?,
+			TokenKind::For => self.for_statement(env)?,
 			// Default as expression statement
 			// TODO: Check that this is only assignment or function call
 			TokenKind::Var | TokenKind::Val => self.var_declaration(env)?,
@@ -907,7 +903,6 @@ impl Compiler {
 				// Since expressions yield a value, it makes no sense to keep them
 				// on the stack, but we still want their effect (like a function call)
 				self.expression(env)?;
-				// env.add_op(Instruction::Pop);
 			},
 		}
 		
@@ -947,6 +942,58 @@ impl Compiler {
 		}
 
 		Ok((param_name, None))
+	}
+
+	fn anon_function(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
+		self.consume_here();
+		self.push_scope();
+
+		let jmp = env.add_jump_op(false);
+		let start_loc = env.op_here() as u32;
+
+		let parameters = if self.current.kind == TokenKind::LParen {
+			let mut parameters = Vec::new();
+			self.consume(TokenKind::LParen, "Expect '(' at the start of parameter list")?;
+	
+			// Consume paarameter list
+			// TODO: Underscore to add unnamed parameter
+			if self.current.kind != TokenKind::RParen {
+				parameters.push(self.consume_parameter()?);
+				
+				while self.current.kind == TokenKind::Comma {
+					self.consume_here();
+					parameters.push(self.consume_parameter()?);
+				}
+			}
+			
+			self.consume(TokenKind::RParen, "Expect ')' after function parameter list")?;
+			
+			for (idx, (identifier, type_name)) in parameters.iter().enumerate() {
+				_ = self.register_local(identifier, false, None);
+
+				if let Some(type_name) = type_name {
+					env.add_op(Instruction::GetLocal);
+					env.add_opb(0);
+					env.add_opb(idx as u8);
+					self.check_valid_type(env, &type_name, true)?;
+				}
+			}
+			
+			parameters.len() as u8
+		} else {0};
+
+		self.body(env, false)?;
+		self.pop_scope();
+		
+		// Don't generate pointless returns
+		if *env.code.last().unwrap() != Instruction::Return as u8 {
+			// Only add return if the last instruction wasn't a return
+			env.add_op(Instruction::ReturnNone);
+		}
+		
+		env.patch_jump_op(jmp);
+		env.add_anon_fn(parameters, start_loc);
+		Ok(())
 	}
 
 	fn function(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {

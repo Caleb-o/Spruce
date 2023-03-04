@@ -73,6 +73,12 @@ impl Environment {
 		self.code.push(id);
 	}
 
+	pub fn add_anon_fn(&mut self, arg_count: u8, location: u32) {
+		self.code.push(Instruction::BuildFn as u8);
+		self.code.push(arg_count);
+		location.to_be_bytes().into_iter().for_each(|b| self.code.push(b));
+	}
+
 	pub fn add_local(&mut self, op: Instruction, location: u16) {
 		self.code.push(op as u8);
 		location.to_be_bytes().into_iter().for_each(|b| self.code.push(b));
@@ -261,7 +267,9 @@ impl Environment {
 			Instruction::Jump => short_location_instruction("JUMP", offset, &self),
 			Instruction::JumpNot => short_location_instruction("JUMP_NOT", offset, &self),
 
+			Instruction::BuildFn => build_function("BUILD_FUNCTION", offset, &self),
 			Instruction::BuildList => simple_instruction("BUILD_LIST", offset),
+			
 			Instruction::GetFn => call_instruction("GET_FN", offset, &self),
 			Instruction::Call => call_instruction("CALL", offset, &self),
 			Instruction::CallLocal => call_local_instruction("CALL_LOCAL", offset, &self),
@@ -333,7 +341,7 @@ fn call_instruction(name: &str, offset: usize, env: &Environment) -> usize {
 }
 
 fn native_call_instruction(name: &str, offset: usize, env: &Environment) -> usize {
-	let args = env.code[offset + 1];
+	let arg_count = env.code[offset + 1];
 	let location = u32::from_be_bytes([
 		env.code[offset + 2],
 		env.code[offset + 3],
@@ -341,7 +349,7 @@ fn native_call_instruction(name: &str, offset: usize, env: &Environment) -> usiz
 		env.code[offset + 5],
 	]);
 
-	println!("{name}<{args}, {location}>");
+	println!("{name}<{arg_count}, {location}>");
 
 	offset + 6
 }
@@ -350,6 +358,19 @@ fn type_instruction(name: &str, offset: usize, env: &Environment) -> usize {
 	let type_name = get_type_name(env.code[offset + 1]);
 	println!("{name}<{type_name}>");
 	offset + 2
+}
+
+fn build_function(name: &str, offset: usize, env: &Environment) -> usize {
+	let arg_count = env.code[offset + 1];
+	let location = u32::from_be_bytes([
+		env.code[offset + 2],
+		env.code[offset + 3],
+		env.code[offset + 4],
+		env.code[offset + 5],
+	]);
+
+	println!("{name}<{arg_count}, {location}>");
+	offset + 6
 }
 
 pub fn get_type_name(type_id: u8) -> &'static str {

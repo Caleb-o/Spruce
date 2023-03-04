@@ -31,8 +31,8 @@ pub enum Instruction {
 	GetGlobal, // u16
 	SetGlobal, // u16
 
-	// BuildList Size
-	BuildList, // u8
+	BuildFn, 	// paramc u8, location u32
+	BuildList, 	// u8
 
 	Jump,		// u16
 	JumpNot,	// u16

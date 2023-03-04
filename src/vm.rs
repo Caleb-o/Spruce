@@ -191,6 +191,12 @@ impl VM {
 				}
 			},
 
+			Instruction::BuildFn => {
+				let arg_count = self.get_byte();
+				let location = self.get_long();
+				self.push(Object::AnonFunction(arg_count, location));
+			}
+
 			Instruction::BuildList => {
 				let count = self.get_byte();
 				let mut list = Vec::with_capacity(count as usize);
@@ -379,33 +385,52 @@ impl VM {
 			},
 
 			Instruction::CallLocal => {
-				let arg_count = self.get_byte();
+				let args = self.get_byte();
 				let distance = self.ip_distance() as u32;
 				let func = self.drop()?;
 
-				if let Object::Function(meta_id) = func {
-					let meta = &self.env.functions[meta_id as usize];
-
-					if arg_count != meta.arg_count {
-						return Err(RuntimeErr(format!(
-							"Trying to call function {} with {} args, but received {}",
-							meta.identifier, arg_count, meta.arg_count,
-						)));
+				match func {
+					Object::Function(meta_id) => {
+						let meta = &self.env.functions[meta_id as usize];
+	
+						if args != meta.arg_count {
+							return Err(RuntimeErr(format!(
+								"Trying to call function {} with {} args, but require {}",
+								meta.identifier, args, meta.arg_count,
+							)));
+						}
+	
+						self.frames.push(CallFrame::new(
+							Some(meta_id),
+							distance,
+							self.stack.len() as u32 - args as u32,
+						));
+						self.set_ip(meta.location as usize);
+						return Ok(());
 					}
 
-					self.frames.push(CallFrame::new(
-						Some(meta_id),
-						distance,
-						self.stack.len() as u32 - arg_count as u32,
-					));
-					self.set_ip(meta.location as usize);
-				} else {
-					return Err(RuntimeErr(format!(
+					Object::AnonFunction(arg_count, location) => {
+						if args != arg_count {
+							return Err(RuntimeErr(format!(
+								"Trying to call anon function with {} args, but require {}",
+								arg_count, args,
+							)));
+						}
+
+						self.frames.push(CallFrame::new(
+							None,
+							distance,
+							self.stack.len() as u32 - args as u32,
+						));
+						self.set_ip(location as usize);
+						return Ok(());
+					}
+
+					_ => return Err(RuntimeErr(format!(
 						"Cannot call non-function '{}'",
 						func.get_type_name()
-					)));
+					))),
 				}
-				return Ok(());
 			},
 			
 			Instruction::Call => {
