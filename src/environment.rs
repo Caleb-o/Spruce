@@ -40,6 +40,7 @@ impl Display for ConstantValue {
     }
 }
 
+#[derive(Clone)]
 pub struct Environment {
 	pub code: Vec<u8>,
 	pub constants: Vec<ConstantValue>,

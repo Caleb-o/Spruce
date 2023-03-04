@@ -520,6 +520,23 @@ impl Compiler {
 		Ok(())
 	}
 
+	fn do_while_statement(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
+		self.consume_here();
+
+		let code_here = env.op_here();
+		self.body(env, true)?;
+
+		self.consume(TokenKind::While, "Expect 'while' after do block")?;
+		self.expression(env)?;
+
+		let not = env.add_jump_op(true);
+		let loc = env.add_jump_op(false);
+		env.patch_jump_op_to(loc as usize, code_here as u32);
+		env.patch_jump_op(not);
+
+		Ok(())
+	}
+
 	fn identifier(&mut self, env: &mut Box<Environment>) {
 		match self.table.find_local(&self.lexer.source, &self.current.span, true) {
 			Some(local) => {
@@ -896,11 +913,12 @@ impl Compiler {
 			TokenKind::If => {
 				self.if_statement(env)?;
 				return Ok(());
-			},
+			}
 			TokenKind::For => {
 				self.for_statement(env)?;
 				return Ok(());
-			},
+			}
+			TokenKind::Do => self.do_while_statement(env)?,
 			// Default as expression statement
 			// TODO: Check that this is only assignment or function call
 			TokenKind::Var | TokenKind::Val => self.var_declaration(env)?,

@@ -2,6 +2,7 @@ use std::{fmt::Display, time::Instant, mem::{transmute, discriminant}};
 
 use crate::{environment::{Environment, ConstantValue, get_type_name}, object::Object, instructions::Instruction, compiler::Function};
 
+#[derive(Clone)]
 pub(crate) struct CallFrame {
 	identifier: Option<u32>,
 	return_to: u32,
@@ -14,6 +15,7 @@ impl CallFrame {
 	}
 }
 
+#[derive(Clone)]
 pub struct VM {
 	pub(crate) had_error: bool,
 	pub(crate) env: Box<Environment>,
