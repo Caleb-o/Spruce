@@ -21,7 +21,7 @@ impl Display for ParamKind {
 #[repr(u8)]
 pub enum Instruction {
 	Pop,
-	
+
 	Constant,
 	ConstantLong,
 
@@ -32,6 +32,9 @@ pub enum Instruction {
 	// They are not stored in a special location
 	GetGlobal, // u16
 	SetGlobal, // u16
+
+	IndexSet,
+	IndexGet,
 
 	BuildFn, 	// paramc u8, location u32
 	BuildList, 	// u8

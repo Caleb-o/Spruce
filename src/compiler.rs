@@ -456,6 +456,15 @@ impl Compiler {
 		Ok(())
 	}
 
+	fn index(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
+		self.consume(TokenKind::LSquare, "Expect '[' after expression to index")?;
+		self.expression(env)?;
+		self.consume(TokenKind::RSquare, "Expect ']' after index expression")?;
+		
+		env.add_op(Instruction::IndexGet);
+		Ok(())
+	}
+
 	fn if_statement(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
 		self.consume_here();
 
@@ -632,12 +641,22 @@ impl Compiler {
 		}
 	}
 
+	fn call(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
+		self.primary(env)?;
+
+		while self.current.kind == TokenKind::LSquare {
+			self.index(env)?;
+		}
+
+		Ok(())
+	}
+
 	fn unary(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
 		if self.is_any_of(&[TokenKind::Minus, TokenKind::Bang]) {
 			match self.current.kind {
 				TokenKind::Minus | TokenKind::Bang => {
 					self.consume_here();
-					self.primary(env)?;
+					self.call(env)?;
 					env.add_op(Instruction::Negate);
 					return Ok(());
 				},
@@ -645,7 +664,7 @@ impl Compiler {
 			}
 		}
 
-		self.primary(env)
+		self.call(env)
 	}
 
 	fn factor(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
@@ -924,8 +943,6 @@ impl Compiler {
 			TokenKind::Var | TokenKind::Val => self.var_declaration(env)?,
 			TokenKind::Return => self.return_statement(env)?,
 			_ => {
-				// Since expressions yield a value, it makes no sense to keep them
-				// on the stack, but we still want their effect (like a function call)
 				self.expression(env)?;
 				env.add_op(Instruction::Pop);
 			},
@@ -979,7 +996,7 @@ impl Compiler {
 		let parameters = if self.current.kind == TokenKind::LParen {
 			let mut parameters = Vec::new();
 			self.consume(TokenKind::LParen, "Expect '(' at the start of parameter list")?;
-	
+
 			// Consume paarameter list
 			// TODO: Underscore to add unnamed parameter
 			if self.current.kind != TokenKind::RParen {
@@ -1026,7 +1043,7 @@ impl Compiler {
 		self.push_scope();
 
 		let identifier = self.current;
-		self.consume(TokenKind::Identifier, "Expected identifier after 'func'")?;
+		self.consume(TokenKind::Identifier, "Expected identifier after 'fn'")?;
 
 		let jmp = env.add_jump_op(false);
 		let start_loc = env.op_here() as u32;

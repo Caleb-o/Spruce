@@ -243,7 +243,7 @@ impl Environment {
 	pub(crate) fn print_instruction(&mut self, offset: usize, instruction: Instruction) -> usize {
 		match instruction {
 			Instruction::Pop => simple_instruction("POP", offset),
-			
+
 			Instruction::Add => simple_instruction("ADD", offset),
 			Instruction::Sub => simple_instruction("SUB", offset),
 			Instruction::Mul => simple_instruction("MUL", offset),
@@ -257,6 +257,9 @@ impl Environment {
 			Instruction::GreaterEqual => simple_instruction("GREATER_EQUAL", offset),
 			Instruction::Less => simple_instruction("LESS", offset),
 			Instruction::LessEqual => simple_instruction("LESS_EQUAL", offset),
+
+			Instruction::IndexGet => simple_instruction("INDEX_GET", offset),
+			Instruction::IndexSet => simple_instruction("INDEX_SET", offset),
 
 			Instruction::SetLocal => short_location_instruction("SET_LOCAL", offset, &self),
 			Instruction::GetLocal => short_location_instruction("GET_LOCAL", offset, &self),

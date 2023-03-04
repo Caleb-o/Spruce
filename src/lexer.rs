@@ -155,8 +155,8 @@ impl Lexer {
 				("nsure", TokenKind::Ensure),
 			]),
 			'f' => self.check_if_matches(start, len, &[
-				("alse", TokenKind::False),
 				("n", TokenKind::Function),
+				("alse", TokenKind::False),
 				("or", TokenKind::For),
 			]),
 			'i' => self.check_if_matches(start, len, &[

@@ -2,7 +2,6 @@ use std::{fmt::Display, time::Instant, mem::{transmute, discriminant}};
 
 use crate::{environment::{Environment, ConstantValue, get_type_name}, object::Object, instructions::Instruction, compiler::Function};
 
-#[derive(Clone)]
 pub(crate) struct CallFrame {
 	identifier: Option<u32>,
 	return_to: u32,
@@ -15,7 +14,6 @@ impl CallFrame {
 	}
 }
 
-#[derive(Clone)]
 pub struct VM {
 	pub(crate) had_error: bool,
 	pub(crate) env: Box<Environment>,
@@ -331,6 +329,50 @@ impl VM {
 					if let Object::Number(r) = rhs {
 						self.stack.push(Object::Boolean(l != r));
 					}
+				}
+			}
+
+			Instruction::IndexGet => {
+				let indexer = self.drop()?;
+				let item = self.drop()?;
+
+				match indexer {
+					Object::Number(idx) => {
+						match item {
+							Object::String(ref v) => {
+								let index = idx as usize;
+								if index < v.len() {
+									self.push(Object::String(String::from(&v[index..index + 1])));
+								} else {
+									return Err(RuntimeErr(format!(
+										"Index out of bounds {} into item of {}",
+										index, v.len()
+									)))
+								}
+							}
+
+							Object::List(ref v) => {
+								let index = idx as usize;
+								if index < v.len() {
+									self.push((*v[index]).clone());
+								} else {
+									return Err(RuntimeErr(format!(
+										"Index out of bounds {} into item of {}",
+										index, v.len()
+									)))
+								}
+							}
+
+							_ => return Err(RuntimeErr(format!(
+								"Cannot index {} with numeric value {}",
+								item, idx
+							)))
+						}
+					}
+					_ => return Err(RuntimeErr(format!(
+						"Cannot index {} with non-indexer value {}",
+						item, indexer
+					)))
 				}
 			}
 
