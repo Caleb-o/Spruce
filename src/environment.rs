@@ -218,7 +218,7 @@ impl Environment {
 		}
 		println!();
 
-		println!("=== {} Function Meta ===", self.constants.len());
+		println!("=== {} Function Meta ===", self.functions.len());
 		for (index, func) in self.functions.iter().enumerate() {
 			println!("{:0>3}  {}({})", index, func.identifier, func.arg_count);
 		}
