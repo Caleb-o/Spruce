@@ -12,7 +12,8 @@ pub fn register_native_functions(compiler: &mut Compiler, env: &mut Box<Environm
 
         (0..args).into_iter()
             .for_each(|_| {vm.drop().unwrap();});
-
+        
+            vm.push(Object::None);
         Ok(())
     }));
 
@@ -25,6 +26,8 @@ pub fn register_native_functions(compiler: &mut Compiler, env: &mut Box<Environm
             .for_each(|_| {vm.drop().unwrap();});
 
         println!();
+
+        vm.push(Object::None);
         Ok(())
     }));
 
@@ -38,6 +41,7 @@ pub fn register_native_functions(compiler: &mut Compiler, env: &mut Box<Environm
         if let Object::Number(n) = vm.drop()? {
             thread::sleep(Duration::from_millis(n as u64));
         }
+        vm.push(Object::None);
         Ok(())
     }));
 
@@ -76,6 +80,7 @@ pub fn register_native_functions(compiler: &mut Compiler, env: &mut Box<Environm
 
     compiler.add_fn(env, "dbg_stack_size", ParamKind::Count(0), false, Rc::new(|vm, _args| {
         println!("Stack size {}", vm.stack_size());
+        vm.push(Object::None);
         Ok(())
     }));
 
@@ -83,6 +88,7 @@ pub fn register_native_functions(compiler: &mut Compiler, env: &mut Box<Environm
         for (index, item) in vm.get_stack().iter().enumerate() {
             println!("{index:0>4} {item}");
         }
+        vm.push(Object::None);
         Ok(())
     }));
 }

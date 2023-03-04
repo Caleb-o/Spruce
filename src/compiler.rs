@@ -61,8 +61,8 @@ impl Display for CompilerErr {
 }
 
 impl Compiler {
-	pub fn new(filepath: &str) -> Result<Self, Error> {
-		let mut lexer = Lexer::new(filepath)?;
+	pub fn new(is_file: bool, source: &str) -> Result<Self, Error> {
+		let mut lexer = Lexer::new(is_file, source)?;
 
 		Ok(Self {
 			had_error: false,
@@ -927,6 +927,7 @@ impl Compiler {
 				// Since expressions yield a value, it makes no sense to keep them
 				// on the stack, but we still want their effect (like a function call)
 				self.expression(env)?;
+				env.add_op(Instruction::Pop);
 			},
 		}
 		

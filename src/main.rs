@@ -25,7 +25,7 @@ fn main() {
 
     match &args[1][0..] {
         "d" | "dump" => {
-            match compile(&args[2]) {
+            match compile(true, &args[2]) {
                 Ok(mut e) => {
                     e.dump();
                 }
@@ -33,13 +33,13 @@ fn main() {
             }
         }
         "s" | "step" => {
-            match compile(&args[2]) {
+            match compile(true, &args[2]) {
                 Ok(e) => Stepper::new(e).run(),
                 Err(e) => eprintln!("{e}"),
             }
         }
         "r" | "run" => {
-            match compile(&args[2]) {
+            match compile(true, &args[2],) {
                 Ok(e) => VM::new(e).run(),
                 Err(e) => eprintln!("{e}"),
             }
@@ -51,8 +51,8 @@ fn main() {
     }
 }
 
-fn compile(file_path: &String) -> Result<Box<Environment>, String> {
-    let mut compiler = match Compiler::new(&file_path) {
+fn compile(is_file: bool, source: &String) -> Result<Box<Environment>, String> {
+    let mut compiler = match Compiler::new(is_file, &source) {
         Ok(c) => c,
         Err(e) => return Err(e.to_string()),
     };

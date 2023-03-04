@@ -154,6 +154,8 @@ impl VM {
 	#[inline]	
 	pub(crate) fn run_instruction(&mut self, code: Instruction) -> Result<(), RuntimeErr> {
 		match code {
+			Instruction::Pop => _ = self.drop()?,
+
 			Instruction::Constant => {
 				let idx = self.get_byte();
 				let constant = match self.env.constants[idx as usize] {

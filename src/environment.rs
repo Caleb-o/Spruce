@@ -242,6 +242,8 @@ impl Environment {
 
 	pub(crate) fn print_instruction(&mut self, offset: usize, instruction: Instruction) -> usize {
 		match instruction {
+			Instruction::Pop => simple_instruction("POP", offset),
+			
 			Instruction::Add => simple_instruction("ADD", offset),
 			Instruction::Sub => simple_instruction("SUB", offset),
 			Instruction::Mul => simple_instruction("MUL", offset),

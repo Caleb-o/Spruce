@@ -20,6 +20,8 @@ impl Display for ParamKind {
 #[derive(Debug, Clone, Copy, FromPrimitive)]
 #[repr(u8)]
 pub enum Instruction {
+	Pop,
+	
 	Constant,
 	ConstantLong,
 

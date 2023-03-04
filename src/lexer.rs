@@ -11,8 +11,8 @@ pub struct Lexer {
 }
 
 impl Lexer {
-	pub fn new(filepath: &str) -> Result<Self, Error> {
-		let source = fs::read_to_string(filepath)?;
+	pub fn new(is_file: bool, source: &str) -> Result<Self, Error> {
+		let source = if is_file { fs::read_to_string(source)? } else { source.into() };
 		Ok(Self {
 			source,
 			line: 1,
