@@ -29,7 +29,7 @@ pub fn register_native_functions(compiler: &mut Compiler, env: &mut Box<Environm
     }));
 
     compiler.add_fn(env, "time", ParamKind::Count(0), true, Rc::new(|vm, _| {
-        let t = vm.started.elapsed().as_millis() as f32;
+        let t = vm.started.elapsed().as_micros() as f32;
         vm.push(Object::Number(t));
         Ok(())
     }));

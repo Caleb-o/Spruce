@@ -893,8 +893,14 @@ impl Compiler {
 
 	fn statement(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
 		match self.current.kind {
-			TokenKind::If => self.if_statement(env)?,
-			TokenKind::For => self.for_statement(env)?,
+			TokenKind::If => {
+				self.if_statement(env)?;
+				return Ok(());
+			},
+			TokenKind::For => {
+				self.for_statement(env)?;
+				return Ok(());
+			},
 			// Default as expression statement
 			// TODO: Check that this is only assignment or function call
 			TokenKind::Var | TokenKind::Val => self.var_declaration(env)?,
