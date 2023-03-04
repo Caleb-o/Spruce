@@ -29,6 +29,10 @@ impl SymTable {
 		self.depth += 1;
 	}
 
+	pub fn is_global(&self) -> bool {
+		self.depth == 1
+	}
+
 	pub fn close_scope(&mut self) {
 		assert!(self.depth > 0);
         let start = self.count_scope() as usize;

@@ -7,10 +7,12 @@ mod nativefns;
 mod symtable;
 mod compiler;
 mod vm;
+mod stepper;
 
 use std::env;
 use compiler::Compiler;
 use environment::Environment;
+use stepper::Stepper;
 use vm::VM;
 
 fn main() {
@@ -22,11 +24,17 @@ fn main() {
     }
 
     match &args[1][0..] {
-        "d" | "debug" => {
+        "d" | "dump" => {
             match compile(&args[2]) {
-                Ok(e) => {
+                Ok(mut e) => {
                     e.dump();
                 }
+                Err(e) => eprintln!("{e}"),
+            }
+        }
+        "s" | "step" => {
+            match compile(&args[2]) {
+                Ok(e) => Stepper::new(e).run(),
                 Err(e) => eprintln!("{e}"),
             }
         }

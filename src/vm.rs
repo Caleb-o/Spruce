@@ -2,25 +2,26 @@ use std::{fmt::Display, time::Instant, mem::{transmute, discriminant}};
 
 use crate::{environment::{Environment, ConstantValue, get_type_name}, object::Object, instructions::Instruction, compiler::Function};
 
-struct CallFrame {
+pub(crate) struct CallFrame {
 	identifier: Option<u32>,
 	return_to: u32,
 	stack_start: u32,
 }
 
 impl CallFrame {
-	fn new(identifier: Option<u32>, return_to: u32, stack_start: u32) -> Self {
+	pub(crate) fn new(identifier: Option<u32>, return_to: u32, stack_start: u32) -> Self {
 		Self { identifier, return_to, stack_start }
 	}
 }
 
 pub struct VM {
-	had_error: bool,
-	env: Box<Environment>,
-	ip: *mut u8,
-	stack: Vec<Object>,
-	frames: Vec<CallFrame>,
-	pub started: Instant,
+	pub(crate) had_error: bool,
+	pub(crate) env: Box<Environment>,
+	pub(crate) ip: *mut u8,
+	pub(crate) stack: Vec<Object>,
+	pub(crate) frames: Vec<CallFrame>,
+	pub(crate) started: Instant,
+	pub(crate) running: bool,
 }
 
 #[derive(Debug)]
@@ -43,6 +44,7 @@ impl VM {
 			stack: Vec::with_capacity(512),
 			frames: Vec::with_capacity(64),
 			started: Instant::now(),
+			running: true,
 		}
 	}
 
@@ -113,367 +115,401 @@ impl VM {
 	}
 	
 	#[inline]
-	fn set_ip(&mut self, location: usize) {
+	pub(crate) fn set_ip(&mut self, location: usize) {
 		unsafe {
 			self.ip = self.env.code.as_mut_ptr().add(location);
 		}
 	}
 	
 	#[inline]
-	fn ip_distance(&mut self) -> usize {
+	pub(crate) fn ip_distance(&mut self) -> usize {
 		self.ip as usize - self.env.code.as_mut_ptr() as usize
+	}
+
+	pub(crate) fn print_current_stack(&self) {
+		let mut last = self.stack.len() as u32;
+
+		for (i, frame) in self.frames.iter().rev().enumerate() {
+			print!("{} ", self.frames.len() - 1 - i);
+
+			if let Some(id) = frame.identifier {
+				let meta = &self.env.functions[id as usize];
+				print!("{} -- ", meta.identifier);
+			} else {
+				print!("<script> -- ");
+			}
+
+			println!("{:#?}", frame.stack_start..last);
+			(frame.stack_start..last).rev()
+				.for_each(|idx| {
+					println!("    {idx:0>4} {}", self.stack[idx as usize]);
+				});
+			
+			last = frame.stack_start;
+		}
+	}
+	
+	#[inline]	
+	pub(crate) fn run_instruction(&mut self, code: Instruction) -> Result<(), RuntimeErr> {
+		match code {
+			Instruction::Constant => {
+				let idx = self.get_byte();
+				let constant = match self.env.constants[idx as usize] {
+					ConstantValue::Obj(ref o) => o,
+					_ => return Err(RuntimeErr(
+						"Trying to push a non-object to the stack".into()	
+					))
+				};
+				self.stack.push(constant.clone());
+			}
+
+			Instruction::ConstantLong => {
+				let idx = self.get_short();
+				let constant = match self.env.constants[idx as usize] {
+					ConstantValue::Obj(ref o) => o,
+					_ => return Err(RuntimeErr(
+						"Trying to push a non-object to the stack".into()	
+					))
+				};
+				self.stack.push(constant.clone());
+			}
+
+			Instruction::Halt => {
+				self.running = false;
+				return Ok(());
+			}
+
+			Instruction::Negate => {
+				let last = self.drop()?;
+
+				match last {
+					Object::Number(n) => self.push(Object::Number(-n)),
+					Object::Boolean(b) => self.push(Object::Boolean(!b)),
+					_ => return Err(RuntimeErr(format!(
+						"Cannot negate value '{last}'"
+					))),
+				}
+			},
+
+			Instruction::BuildList => {
+				let count = self.get_byte();
+				let mut list = Vec::with_capacity(count as usize);
+
+				for _ in 0..count {
+					list.push(Box::new(self.drop()?));
+				}
+				list.reverse();
+
+				self.push(Object::List(list));
+			}
+
+			Instruction::Greater => {
+				let size = self.stack_size() - 2;
+				let (lhs, rhs) = self.pop_peek_check()?;
+
+				if let Object::Number(ref mut l) = lhs {
+					if let Object::Number(r) = rhs {
+						self.stack[size] = Object::Boolean(*l > r);
+					}
+				}
+			}
+
+			Instruction::GreaterEqual => {
+				let size = self.stack_size() - 2;
+				let (lhs, rhs) = self.pop_peek_check()?;
+
+				if let Object::Number(ref mut l) = lhs {
+					if let Object::Number(r) = rhs {
+						self.stack[size] = Object::Boolean(*l >= r);
+					}
+				}
+			}
+
+			Instruction::Less => {
+				let size = self.stack_size() - 2;
+				let (lhs, rhs) = self.pop_peek_check()?;
+
+				if let Object::Number(ref mut l) = lhs {
+					if let Object::Number(r) = rhs {
+						self.stack[size] = Object::Boolean(*l < r);
+					}
+				}
+			}
+
+			Instruction::LessEqual => {
+				let size = self.stack_size() - 2;
+				let (lhs, rhs) = self.pop_peek_check()?;
+
+				if let Object::Number(ref mut l) = lhs {
+					if let Object::Number(r) = rhs {
+						self.stack[size] = Object::Boolean(*l <= r);
+					}
+				}
+			}
+
+			Instruction::Add => {
+				let (lhs, rhs) = self.pop_peek_check()?;
+
+				match lhs {
+					Object::Number(ref mut l) => {
+						if let Object::Number(r) = rhs {
+							*l += r;
+						}
+					}
+					Object::String(ref mut l) => {
+						if let Object::String(ref r) = rhs {
+							l.push_str(r);
+						}
+					}
+					Object::List(ref mut l) => {
+						if let Object::List(r) = rhs {
+							l.extend(r);
+						}
+					}
+					_ => {}
+				}
+			}
+
+			Instruction::Sub => {
+				let (lhs, rhs) = self.pop_peek_check()?;
+
+				if let Object::Number(ref mut l) = lhs {
+					if let Object::Number(r) = rhs {
+						*l -= r;
+					}
+				}
+			}
+
+			Instruction::Mul => {
+				let (lhs, rhs) = self.pop_peek_check()?;
+
+				if let Object::Number(ref mut l) = lhs {
+					if let Object::Number(r) = rhs {
+						*l *= r;
+					}
+				}
+			}
+
+			Instruction::Div => {
+				let (lhs, rhs) = self.pop_2_check()?;
+
+				if let Object::Number(l) = lhs {
+					if let Object::Number(r) = rhs {
+						if r == 0.0 {
+							return Err(RuntimeErr("Trying to divide by 0".into()));
+						}
+
+						self.stack.push(Object::Number(l / r));
+					}
+				}
+			}
+
+			Instruction::EqualEqual => {
+				let (lhs, rhs) = self.pop_2_check()?;
+
+				if let Object::Number(l) = lhs {
+					if let Object::Number(r) = rhs {
+						self.stack.push(Object::Boolean(l == r));
+					}
+				}
+			}
+
+			Instruction::NotEqual => {
+				let (lhs, rhs) = self.pop_2_check()?;
+
+				if let Object::Number(l) = lhs {
+					if let Object::Number(r) = rhs {
+						self.stack.push(Object::Boolean(l != r));
+					}
+				}
+			}
+
+			Instruction::GetGlobal => {
+				let slot = self.get_short();
+				self.stack.push(self.stack[slot as usize].clone());
+			}
+			
+			Instruction::SetGlobal => {
+				let slot = self.get_short();
+				self.stack[slot as usize] = (*self.peek()).clone();
+			}
+			
+			Instruction::GetLocal => {
+				let slot = self.get_short();
+				self.stack.push(self.stack[
+						self.frames.last().unwrap().stack_start as usize + slot as usize
+					].clone()
+				);
+			}
+			
+			Instruction::SetLocal => {
+				let slot = self.get_short();
+				self.stack[
+					self.frames.last().unwrap().stack_start as usize + slot as usize
+				] = (*self.peek()).clone();
+			}
+
+			Instruction::Jump => {
+				let location = self.get_short() as usize;
+				self.set_ip(location);
+				return Ok(());
+			}
+
+			Instruction::JumpNot => {
+				let top = self.drop()?;
+				let loc = self.get_short();
+
+				if !matches!(top, Object::Boolean(_)) {
+					return Err(RuntimeErr(
+						"Cannot use non-boolean in condition".into()
+					));
+				}
+
+				if let Object::Boolean(v) = top {
+					if !v {
+						self.set_ip(loc as usize);
+						return Ok(());
+					}
+				}
+			}
+
+			Instruction::GetFn => {
+				let location = self.get_long();
+				self.push(Object::Function(location));
+			},
+
+			Instruction::CallLocal => {
+				let arg_count = self.get_byte();
+				let distance = self.ip_distance() as u32;
+				let func = self.drop()?;
+
+				if let Object::Function(meta_id) = func {
+					let meta = &self.env.functions[meta_id as usize];
+
+					if arg_count != meta.arg_count {
+						return Err(RuntimeErr(format!(
+							"Trying to call function {} with {} args, but received {}",
+							meta.identifier, arg_count, meta.arg_count,
+						)));
+					}
+
+					self.frames.push(CallFrame::new(
+						Some(meta_id),
+						distance,
+						self.stack.len() as u32 - arg_count as u32,
+					));
+					self.set_ip(meta.location as usize);
+				} else {
+					return Err(RuntimeErr(format!(
+						"Cannot call non-function '{}'",
+						func.get_type_name()
+					)));
+				}
+				return Ok(());
+			},
+			
+			Instruction::Call => {
+				let meta_id = self.get_long();
+				let distance = self.ip_distance() as u32;
+				let meta = &self.env.functions[meta_id as usize];
+				self.check_function_args_count(meta.arg_count)?;
+				
+				self.frames.push(CallFrame::new(
+					Some(meta_id),
+					distance,
+					self.stack.len() as u32 - meta.arg_count as u32,
+				));
+				self.set_ip(meta.location as usize);
+				return Ok(());
+			},
+
+			Instruction::CallNative => {
+				let args = self.get_byte();
+				let loc = self.get_long();
+				self.check_function_args_count(args)?;
+
+				if let ConstantValue::Func(f) = self.env.constants[loc as usize].clone() {
+					if let Function::Native { param_count: _, function, .. } = f {
+						let distance = self.ip_distance() as u32;
+						self.frames.push(CallFrame::new(
+							// TODO: Add a flag for native function
+							None,
+							distance,
+							self.stack.len() as u32 - args as u32,
+						));
+
+						function(self, args)?;
+
+						_ = self.frames.pop();
+					}
+				}
+			},
+
+			Instruction::TypeCheck => {
+				let item = self.drop()?;
+				let type_id = self.get_byte();
+				self.push(Object::Boolean(self.get_type_match(&item, type_id)));
+			},
+
+			Instruction::TypeCheckAssert => {
+				let type_id = self.get_byte();
+				let item = self.peek();
+
+				if !self.get_type_match(&item, type_id) {
+					return Err(RuntimeErr(format!(
+						"Expected type {} but received {}",
+						get_type_name(type_id),
+						item.get_type_name(),
+					)));
+				}
+			},
+
+			Instruction::ReturnNone => {
+				let frame = self.frames.pop().unwrap();
+				self.set_ip(frame.return_to as usize);
+
+				// Remove all end values, except return
+				self.stack.drain(frame.stack_start as usize..self.stack.len());
+				self.stack.push(Object::None);
+			},
+
+			Instruction::Return => {
+				let frame = self.frames.pop().unwrap();
+				self.set_ip(frame.return_to as usize);
+					
+				// Remove all end values, except return
+				self.stack.drain(frame.stack_start as usize..self.stack.len()-1);
+			},
+
+			Instruction::None => self.push(Object::None),
+			Instruction::True => self.push(Object::Boolean(true)),
+			Instruction::False => self.push(Object::Boolean(false)),
+
+			Instruction::NoOp => {},
+
+			_ => todo!(
+				"Unimplemented instruction in VM '{:?}'",
+				self.get_instruction()
+			),
+		}
+
+		self.inc();
+
+		
+
+		Ok(())
 	}
 
 	fn run_inner(&mut self) -> Result<(), RuntimeErr> {
 		// Initial frame
 		self.frames.push(CallFrame::new(None, 0, 0));
 
-		while !self.had_error {
-			// let code = unsafe { transmute::<*mut u8, &Instruction>(self.ip) };
-			// println!("CODE :: {:0>4} {code:?}", self.ip_distance());
+		while !self.had_error && self.running {
+			self.run_instruction(*unsafe { transmute::<*mut u8, &Instruction>(self.ip) })?;
 
-			match *unsafe { transmute::<*mut u8, &Instruction>(self.ip) } {
-				Instruction::Constant => {
-					let idx = self.get_byte();
-					let constant = match self.env.constants[idx as usize] {
-						ConstantValue::Obj(ref o) => o,
-						_ => return Err(RuntimeErr(
-							"Trying to push a non-object to the stack".into()	
-						))
-					};
-					self.stack.push(constant.clone());
-				}
-
-				Instruction::ConstantLong => {
-					let idx = self.get_short();
-					let constant = match self.env.constants[idx as usize] {
-						ConstantValue::Obj(ref o) => o,
-						_ => return Err(RuntimeErr(
-							"Trying to push a non-object to the stack".into()	
-						))
-					};
-					self.stack.push(constant.clone());
-				}
-
-				Instruction::Halt => break,
-				Instruction::Negate => {
-					let last = self.drop()?;
-
-					match last {
-						Object::Number(n) => self.push(Object::Number(-n)),
-						Object::Boolean(b) => self.push(Object::Boolean(!b)),
-						_ => return Err(RuntimeErr(format!(
-							"Cannot negate value '{last}'"
-						))),
-					}
-				},
-
-				Instruction::BuildList => {
-					let count = self.get_byte();
-					let mut list = Vec::with_capacity(count as usize);
-
-					for _ in 0..count {
-						list.push(Box::new(self.drop()?));
-					}
-					list.reverse();
-
-					self.push(Object::List(list));
-				}
-
-				Instruction::Greater => {
-					let size = self.stack_size() - 2;
-					let (lhs, rhs) = self.pop_peek_check()?;
-
-					if let Object::Number(ref mut l) = lhs {
-						if let Object::Number(r) = rhs {
-							self.stack[size] = Object::Boolean(*l > r);
-						}
-					}
-				}
-
-				Instruction::GreaterEqual => {
-					let size = self.stack_size() - 2;
-					let (lhs, rhs) = self.pop_peek_check()?;
-
-					if let Object::Number(ref mut l) = lhs {
-						if let Object::Number(r) = rhs {
-							self.stack[size] = Object::Boolean(*l >= r);
-						}
-					}
-				}
-
-				Instruction::Less => {
-					let size = self.stack_size() - 2;
-					let (lhs, rhs) = self.pop_peek_check()?;
-
-					if let Object::Number(ref mut l) = lhs {
-						if let Object::Number(r) = rhs {
-							self.stack[size] = Object::Boolean(*l < r);
-						}
-					}
-				}
-
-				Instruction::LessEqual => {
-					let size = self.stack_size() - 2;
-					let (lhs, rhs) = self.pop_peek_check()?;
-
-					if let Object::Number(ref mut l) = lhs {
-						if let Object::Number(r) = rhs {
-							self.stack[size] = Object::Boolean(*l <= r);
-						}
-					}
-				}
-
-				Instruction::Add => {
-					let (lhs, rhs) = self.pop_peek_check()?;
-
-					match lhs {
-						Object::Number(ref mut l) => {
-							if let Object::Number(r) = rhs {
-								*l += r;
-							}
-						}
-						Object::String(ref mut l) => {
-							if let Object::String(ref r) = rhs {
-								l.push_str(r);
-							}
-						}
-						Object::List(ref mut l) => {
-							if let Object::List(r) = rhs {
-								l.extend(r);
-							}
-						}
-						_ => {}
-					}
-				}
-
-				Instruction::Sub => {
-					let (lhs, rhs) = self.pop_peek_check()?;
-
-					if let Object::Number(ref mut l) = lhs {
-						if let Object::Number(r) = rhs {
-							*l -= r;
-						}
-					}
-				}
-
-				Instruction::Mul => {
-					let (lhs, rhs) = self.pop_peek_check()?;
-
-					if let Object::Number(ref mut l) = lhs {
-						if let Object::Number(r) = rhs {
-							*l *= r;
-						}
-					}
-				}
-
-				Instruction::Div => {
-					let (lhs, rhs) = self.pop_2_check()?;
-
-					if let Object::Number(l) = lhs {
-						if let Object::Number(r) = rhs {
-							if r == 0.0 {
-								return Err(RuntimeErr("Trying to divide by 0".into()));
-							}
-
-							self.stack.push(Object::Number(l / r));
-						}
-					}
-				}
-
-				Instruction::EqualEqual => {
-					let (lhs, rhs) = self.pop_2_check()?;
-
-					if let Object::Number(l) = lhs {
-						if let Object::Number(r) = rhs {
-							self.stack.push(Object::Boolean(l == r));
-						}
-					}
-				}
-
-				Instruction::NotEqual => {
-					let (lhs, rhs) = self.pop_2_check()?;
-
-					if let Object::Number(l) = lhs {
-						if let Object::Number(r) = rhs {
-							self.stack.push(Object::Boolean(l != r));
-						}
-					}
-				}
-
-				Instruction::GetGlobal => {
-					let slot = self.get_short();
-					self.stack.push(self.stack[slot as usize].clone());
-				}
-				
-				Instruction::SetGlobal => {
-					let slot = self.get_short();
-					self.stack[slot as usize] = (*self.peek()).clone();
-				}
-				
-				Instruction::GetLocal => {
-					let slot = self.get_short();
-					self.stack.push(self.stack[
-						self.frames.last().unwrap().stack_start as usize + slot as usize
-						].clone()
-					);
-				}
-				
-				Instruction::SetLocal => {
-					let slot = self.get_short();
-					self.stack[
-						self.frames.last().unwrap().stack_start as usize + slot as usize
-					] = (*self.peek()).clone();
-				}
-
-				Instruction::Jump => {
-					let location = self.get_short() as usize;
-					self.set_ip(location);
-					continue;
-				}
-
-				Instruction::JumpNot => {
-					let top = self.drop()?;
-					let loc = self.get_short();
-
-					if !matches!(top, Object::Boolean(_)) {
-						return Err(RuntimeErr(
-							"Cannot use non-boolean in condition".into()
-						));
-					}
-
-					if let Object::Boolean(v) = top {
-						if !v {
-							self.set_ip(loc as usize);
-							continue;
-						}
-					}
-				}
-
-				Instruction::GetFn => {
-					let location = self.get_long();
-					self.push(Object::Function(location));
-				},
-
-				Instruction::CallLocal => {
-					let arg_count = self.get_byte();
-					let distance = self.ip_distance() as u32;
-					let func = self.peek();
-
-					if let Object::Function(meta_id) = *func {
-						let meta = &self.env.functions[meta_id as usize];
-
-						if arg_count != meta.arg_count {
-							return Err(RuntimeErr(format!(
-								"Trying to call function {} with {} args, but received {}",
-								meta.identifier, arg_count, meta.arg_count,
-							)));
-						}
-
-						self.frames.push(CallFrame::new(
-							Some(meta_id),
-							distance,
-							self.stack.len() as u32,
-						));
-						self.set_ip(meta.location as usize);
-					} else {
-						return Err(RuntimeErr(
-							"Cannot call non-function".into()
-						));
-					}
-					continue;
-				},
-				
-				Instruction::Call => {
-					let meta_id = self.get_long();
-					let distance = self.ip_distance() as u32;
-					let meta = &self.env.functions[meta_id as usize];
-					self.check_function_args_count(meta.arg_count)?;
-					
-					self.frames.push(CallFrame::new(
-						Some(meta_id),
-						distance,
-						self.stack.len() as u32,
-					));
-					self.set_ip(meta.location as usize);
-					continue;
-				},
-
-				Instruction::CallNative => {
-					let args = self.get_byte();
-					let loc = self.get_long();
-					self.check_function_args_count(args)?;
-
-					if let ConstantValue::Func(f) = self.env.constants[loc as usize].clone() {
-						if let Function::Native { param_count: _, function, .. } = f {
-							let distance = self.ip_distance() as u32;
-							self.frames.push(CallFrame::new(
-								// TODO: Add a flag for native function
-								None,
-								distance,
-								self.stack.len() as u32 - args as u32,
-							));
-
-							function(self, args)?;
-
-							_ = self.frames.pop();
-						}
-					}
-				},
-
-				Instruction::TypeCheck => {
-					let item = self.drop()?;
-					let type_id = self.get_byte();
-					self.push(Object::Boolean(self.get_type_match(&item, type_id)));
-				},
-
-				Instruction::TypeCheckAssert => {
-					let type_id = self.get_byte();
-					let item = self.peek();
-
-					if !self.get_type_match(&item, type_id) {
-						return Err(RuntimeErr(format!(
-							"Expected type {} but received {}",
-							get_type_name(type_id),
-							item.get_type_name(),
-						)));
-					}
-				},
-
-				Instruction::ReturnNone => {
-					let frame = self.frames.pop().unwrap();
-					self.set_ip(frame.return_to as usize);
-
-					// Remove all end values, except return
-					self.stack.drain(frame.stack_start as usize..self.stack.len());
-					self.stack.push(Object::None);
-				},
-
-				Instruction::Return => {
-					let frame = self.frames.pop().unwrap();
-					self.set_ip(frame.return_to as usize);
-						
-					// Remove all end values, except return
-					self.stack.drain(frame.stack_start as usize..self.stack.len()-1);
-				},
-
-				Instruction::None => self.push(Object::None),
-				Instruction::True => self.push(Object::Boolean(true)),
-				Instruction::False => self.push(Object::Boolean(false)),
-
-				Instruction::NoOp => {},
-
-				_ => todo!(
-					"Unimplemented instruction in VM '{:?}'",
-					self.get_instruction()
-				),
+			if self.had_error {
+				return Err(RuntimeErr("Error occured".into()));
 			}
-
-			self.inc();
-		}
-
-		if self.had_error {
-			return Err(RuntimeErr("Error occured".into()));
 		}
 		Ok(())
 	}
@@ -481,7 +517,6 @@ impl VM {
 	fn dump_stack_trace(&self) {
 		println!("=== Stack Trace ===");
 		self.frames.iter()
-			.rev()
 			.for_each(|frame| {
 				if let Some(id) = frame.identifier {
 					println!("at {}()", self.env.functions[id as usize].identifier);
@@ -492,12 +527,16 @@ impl VM {
 	}
 
 	fn check_function_args_count(&self, args: u8) -> Result<(), RuntimeErr> {
-		if args as usize > self.stack.len() - self.frames.last().unwrap().stack_start as usize {
-			return Err(RuntimeErr(format!(
-				"Native Function requires {} arguments, but received {}",
-				args,
-				self.stack.len(),
-			)));
+		if let Some(frame) = self.frames.last() {
+			if args as usize > self.stack.len() - frame.stack_start as usize {
+				return Err(RuntimeErr(format!(
+					"Native Function requires {} arguments, but received {}",
+					args,
+					self.stack.len(),
+				)));
+			}
+		} else {
+			return Err(RuntimeErr("Frame does not exist".into()));
 		}
 		
 		Ok(())

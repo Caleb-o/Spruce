@@ -205,7 +205,7 @@ impl Environment {
 	}
 
 	// Print out the environment
-	pub fn dump(&self) {
+	pub(crate) fn dump(&mut self) {
 		println!("=== {} Constants ===", self.constants.len());
 		for (index, constant) in self.constants.iter().enumerate() {
 			println!("{:0>3}  \"{}\"", index, constant);
@@ -226,58 +226,62 @@ impl Environment {
 			let instruction = self.code[offset];
 			print!("{:0>4}  ", offset);
 			
-			offset = match num::FromPrimitive::from_u8(instruction).unwrap() {
-				Instruction::Add => simple_instruction("ADD", offset),
-				Instruction::Sub => simple_instruction("SUB", offset),
-				Instruction::Mul => simple_instruction("MUL", offset),
-				Instruction::Div => simple_instruction("DIV", offset),
-				Instruction::EqualEqual => simple_instruction("EQUAL_EQUAL", offset),
-				Instruction::NotEqual => simple_instruction("NOT_EQUAL", offset),
+			offset = self.print_instruction(
+				offset,
+				num::FromPrimitive::from_u8(instruction).unwrap()
+			);
+		}
+	}
 
-				Instruction::Negate => simple_instruction("NEGATE", offset),
+	pub(crate) fn print_instruction(&mut self, offset: usize, instruction: Instruction) -> usize {
+		match instruction {
+			Instruction::Add => simple_instruction("ADD", offset),
+			Instruction::Sub => simple_instruction("SUB", offset),
+			Instruction::Mul => simple_instruction("MUL", offset),
+			Instruction::Div => simple_instruction("DIV", offset),
+			Instruction::EqualEqual => simple_instruction("EQUAL_EQUAL", offset),
+			Instruction::NotEqual => simple_instruction("NOT_EQUAL", offset),
 
-				Instruction::Greater => simple_instruction("GREATE", offset),
-				Instruction::GreaterEqual => simple_instruction("GREATER_EQUAL", offset),
-				Instruction::Less => simple_instruction("LESS", offset),
-				Instruction::LessEqual => simple_instruction("LESS_EQUAL", offset),
+			Instruction::Negate => simple_instruction("NEGATE", offset),
 
-				Instruction::SetLocal => short_location_instruction("SET_LOCAL", offset, &self),
-				Instruction::GetLocal => short_location_instruction("GET_LOCAL", offset, &self),
-				
-				Instruction::SetGlobal => short_location_instruction("SET_GLOBAL", offset, &self),
-				Instruction::GetGlobal => short_location_instruction("GET_GLOBAL", offset, &self),
+			Instruction::Greater => simple_instruction("GREATE", offset),
+			Instruction::GreaterEqual => simple_instruction("GREATER_EQUAL", offset),
+			Instruction::Less => simple_instruction("LESS", offset),
+			Instruction::LessEqual => simple_instruction("LESS_EQUAL", offset),
 
-				Instruction::Constant => constant_instruction("CONSTANT", offset, &self),
-				Instruction::ConstantLong => long_constant_instruction("CONSTANT_LONG", offset, &self),
+			Instruction::SetLocal => short_location_instruction("SET_LOCAL", offset, &self),
+			Instruction::GetLocal => short_location_instruction("GET_LOCAL", offset, &self),
+			
+			Instruction::SetGlobal => short_location_instruction("SET_GLOBAL", offset, &self),
+			Instruction::GetGlobal => short_location_instruction("GET_GLOBAL", offset, &self),
 
-				Instruction::Jump => short_location_instruction("JUMP", offset, &self),
-				Instruction::JumpNot => short_location_instruction("JUMP_NOT", offset, &self),
+			Instruction::Constant => constant_instruction("CONSTANT", offset, &self),
+			Instruction::ConstantLong => long_constant_instruction("CONSTANT_LONG", offset, &self),
 
-				Instruction::BuildList => simple_instruction("BUILD_LIST", offset),
-				Instruction::GetFn => call_instruction("GET_FN", offset, &self),
-				Instruction::Call => call_instruction("CALL", offset, &self),
-				Instruction::CallLocal => call_local_instruction("CALL_LOCAL", offset, &self),
-				Instruction::CallNative => native_call_instruction("NATIVE_CALL", offset, &self),
-				Instruction::ReturnNone => simple_instruction("RETURN_NONE", offset),
-				Instruction::Return => simple_instruction("RETURN", offset),
-				Instruction::Halt => simple_instruction("HALT", offset),
+			Instruction::Jump => short_location_instruction("JUMP", offset, &self),
+			Instruction::JumpNot => short_location_instruction("JUMP_NOT", offset, &self),
 
-				Instruction::TypeCheck => type_instruction("TYPE_CHECK", offset, &self),
-				Instruction::TypeCheckAssert => type_instruction("TYPE_CHECK_ASRT", offset, &self),
+			Instruction::BuildList => simple_instruction("BUILD_LIST", offset),
+			Instruction::GetFn => call_instruction("GET_FN", offset, &self),
+			Instruction::Call => call_instruction("CALL", offset, &self),
+			Instruction::CallLocal => call_local_instruction("CALL_LOCAL", offset, &self),
+			Instruction::CallNative => native_call_instruction("NATIVE_CALL", offset, &self),
+			Instruction::ReturnNone => simple_instruction("RETURN_NONE", offset),
+			Instruction::Return => simple_instruction("RETURN", offset),
+			Instruction::Halt => simple_instruction("HALT", offset),
 
-				Instruction::None => simple_instruction("NONE", offset),
-				Instruction::True => simple_instruction("TRUE", offset),
-				Instruction::False => simple_instruction("FALSE", offset),
-				Instruction::NoOp => simple_instruction("NO_OP", offset),
+			Instruction::TypeCheck => type_instruction("TYPE_CHECK", offset, &self),
+			Instruction::TypeCheckAssert => type_instruction("TYPE_CHECK_ASRT", offset, &self),
 
-				_ => {
-					let instruction: Instruction = num::FromPrimitive::from_u8(instruction).unwrap();
-					todo!(
-						"Unimplemented Debug Instruction '{:?}'", 
-						instruction
-					)
-				},
-			}
+			Instruction::None => simple_instruction("NONE", offset),
+			Instruction::True => simple_instruction("TRUE", offset),
+			Instruction::False => simple_instruction("FALSE", offset),
+			Instruction::NoOp => simple_instruction("NO_OP", offset),
+
+			_ => todo!(
+					"Unimplemented Debug Instruction '{:?}'", 
+					instruction
+				),
 		}
 	}
 }

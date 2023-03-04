@@ -309,6 +309,10 @@ impl Compiler {
 			)));
 		}
 
+		self.pop_scope();
+		_ = self.register_local(&identifier, false, Some(env.functions.len() as u32));
+		self.push_scope();
+
 		// Register locals from parameters
 		if let Some(ref params) = parameters {
 			for (idx, (identifier, type_name)) in params.iter().enumerate() {
@@ -331,8 +335,6 @@ impl Compiler {
 			},
 			position
 		));
-
-		_ = self.register_local(&identifier, false, Some(env.functions.len() as u32 - 1));
 
 		self.functable.push(Function::User {
 			meta_id: env.functions.len() as u32 - 1,
@@ -810,7 +812,7 @@ impl Compiler {
 		let identifier = self.current;
 		self.consume(TokenKind::Identifier, "Expected identifier after 'var'/'val'")?;
 
-		_ = self.register_local(&identifier, mutable, None);
+		let local = self.register_local(&identifier, mutable, None).unwrap();
 
 		// Produce the expression
 		if self.current.kind == TokenKind::Equal {
@@ -819,6 +821,14 @@ impl Compiler {
 		} else {
 			env.add_op(Instruction::None);
 		}
+
+		if self.table.is_global() {
+			env.add_op(Instruction::SetGlobal);
+		} else {
+			env.add_op(Instruction::SetLocal);
+		}
+
+		(local as u16).to_be_bytes().into_iter().for_each(|b| env.add_opb(b));
 
 		Ok(())
 	}
@@ -968,9 +978,7 @@ impl Compiler {
 			Some(parameters)
 		} else {None};
 
-		self.pop_scope();
 		self.register_function(identifier, start_loc, parameters, env)?;
-		self.push_scope();
 		
 		let after_params = env.op_here();
 		self.body(env, false)?;
