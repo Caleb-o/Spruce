@@ -69,5 +69,5 @@ pub struct Token {
 	pub span: Span,
 	pub kind: TokenKind,
 	pub line: u32,
-	pub column: u32,
+	pub column: u16,
 }

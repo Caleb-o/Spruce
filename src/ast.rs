@@ -9,20 +9,21 @@ pub enum AstData {
     Literal,
     Identifier,
     ListLiteral(Vec<Box<Ast>>),
+    ExpressionStatement(Box<Ast>),
 
     BinaryOp { lhs: Box<Ast>, rhs: Box<Ast> },
     UnaryOp { rhs: Box<Ast> },
     LogicalOp { lhs: Box<Ast>, rhs: Box<Ast> },
 
-    Parameter { type_name: Option<Box<Ast>>, },
+    Parameter { type_name: Option<Token> },
     Function { anonymous: bool, parameters: Option<Vec<Box<Ast>>>, body: Box<Ast> },
-    FunctionCall { arguments: Vec<Box<Ast>> },
+    FunctionCall { lhs: Box<Ast>, arguments: Vec<Box<Ast>> },
 
     VarDeclaration { is_mutable: bool, expression: Option<Box<Ast>> },
-    VarAssign(Box<Ast>),
+    VarAssign { lhs: Box<Ast>, expression: Box<Ast> },
 
     IfStatement { condition: Box<Ast>, true_body: Box<Ast>, false_body: Option<Box<Ast>> },
-    ForStatement { variable: Option<Box<Ast>>, condition: Box<Ast>, increment: Option<Box<Ast>> },
+    ForStatement { variable: Option<Box<Ast>>, condition: Box<Ast>, increment: Option<Box<Ast>>, body: Box<Ast> },
     DoWhileStatement { body: Box<Ast>, condition: Box<Ast> },
     TrailingIfStatement { statement: Box<Ast>, condition: Box<Ast> },
 
@@ -34,6 +35,13 @@ pub enum AstData {
 }
 
 impl Ast {
+    pub fn new_body(token: Token, statements: Vec<Box<Ast>>) -> Box<Self> {
+        Box::new(Ast {
+            token,
+            data: AstData::Body(statements),
+        })
+    }
+
     pub fn new_literal(token: Token) -> Box<Self> {
         Box::new(Ast { 
             token,
@@ -41,10 +49,125 @@ impl Ast {
         })
     }
 
+    pub fn new_list_literal(token: Token, values: Vec<Box<Ast>>) -> Box<Self> {
+        Box::new(Ast {
+            token,
+            data: AstData::ListLiteral(values),
+        })
+    }
+
     pub fn new_identifier(token: Token) -> Box<Self> {
         Box::new(Ast { 
             token,
             data: AstData::Identifier,
+        })
+    }
+
+    pub fn new_var_decl(token: Token, is_mutable: bool, expression: Option<Box<Ast>>) -> Box<Self> {
+        Box::new(Ast {
+            token,
+            data: AstData::VarDeclaration { is_mutable, expression },
+        })
+    }
+
+    pub fn new_var_assign(token: Token, lhs: Box<Ast>, expression: Box<Ast>) -> Box<Self> {
+        Box::new(Ast {
+            token,
+            data: AstData::VarAssign { lhs, expression },
+        })
+    }
+
+    pub fn new_function(token: Token, anonymous: bool, parameters: Option<Vec<Box<Ast>>>, body: Box<Ast>) -> Box<Self> {
+        Box::new(Ast {
+            token,
+            data: AstData::Function { anonymous, parameters, body },
+        })
+    }
+
+    pub fn new_expr_statement(expression: Box<Ast>) -> Box<Self> {
+        Box::new(Ast {
+            token: expression.token,
+            data: AstData::ExpressionStatement(expression),
+        })
+    }
+
+    pub fn new_parameter(token: Token, type_name: Option<Token>) -> Box<Self> {
+        Box::new(Ast {
+            token,
+            data: AstData::Parameter { type_name },
+        })
+    }
+
+    pub fn new_return(token: Token, expression: Option<Box<Ast>>) -> Box<Self> {
+        Box::new(Ast {
+            token,
+            data: AstData::Return(expression),
+        })
+    }
+
+    pub fn new_if_statement(
+        token: Token,
+        condition: Box<Ast>,
+        true_body: Box<Ast>,
+        false_body: Option<Box<Ast>>
+    ) -> Box<Self> {
+        Box::new(Ast {
+            token,
+            data: AstData::IfStatement { condition, true_body, false_body },
+        })
+    }
+
+    pub fn new_for_statement(
+        token: Token,
+        variable: Option<Box<Ast>>,
+        condition: Box<Ast>,
+        increment: Option<Box<Ast>>,
+        body: Box<Ast>,
+    ) -> Box<Self> {
+        Box::new(Ast {
+            token,
+            data: AstData::ForStatement { 
+                variable,
+                condition,
+                increment,
+                body
+            },
+        })
+    }
+
+    pub fn new_do_while_statement(
+        token: Token,
+        body: Box<Ast>,
+        condition: Box<Ast>
+    ) -> Box<Self> {
+        Box::new(Ast {
+            token,
+            data: AstData::DoWhileStatement { body, condition },
+        })
+    }
+
+    pub fn new_trailing_if(
+        token: Token,
+        statement: Box<Ast>,
+        condition: Box<Ast>,
+    ) -> Box<Self> {
+        Box::new(Ast {
+            token,
+            data: AstData::TrailingIfStatement { 
+                statement,
+                condition
+            }
+        })
+    }
+
+    pub fn new_function_call(
+        token: Token,
+        lhs: Box<Ast>,
+        arguments: Vec<Box<Ast>>,
+    ) -> Box<Self> {
+        Box::new(Ast {
+            token,
+            data: AstData::FunctionCall { lhs, arguments },
         })
     }
 

@@ -14,6 +14,7 @@ mod stepper;
 use std::env;
 use compiler::Compiler;
 use environment::Environment;
+use parser::Parser;
 use stepper::Stepper;
 use vm::VM;
 
@@ -41,9 +42,25 @@ fn main() {
             }
         }
         "r" | "run" => {
-            match compile(true, &args[2],) {
-                Ok(e) => VM::new(e).run(),
-                Err(e) => eprintln!("{e}"),
+            let program = match Parser::new(true, &args[2]) {
+                Ok(mut p) => match p.run() {
+                    Ok(p) => Some(p),
+                    Err(e) => {
+                        eprintln!("{e}");
+                        None
+                    }
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    None
+                }
+            };
+            // match compile(true, &args[2]) {
+            //     Ok(e) => VM::new(e).run(),
+            //     Err(e) => eprintln!("{e}"),
+            // }
+            if let Some(_) = program {
+                println!("OK!");
             }
         }
         _ => {
