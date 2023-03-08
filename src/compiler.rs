@@ -428,15 +428,6 @@ impl Compiler {
         Ok(())
     }
 
-    // fn index(&mut self, env: &mut Box<Environment>) -> Result<(), CompilerErr> {
-    //     self.consume(TokenKind::LSquare, "Expect '[' after expression to index")?;
-    //     self.expression(env)?;
-    //     self.consume(TokenKind::RSquare, "Expect ']' after index expression")?;
-        
-    //     env.add_op(Instruction::IndexGet);
-    //     Ok(())
-    // }
-
     fn literal(&mut self, env: &mut Box<Environment>, node: &Box<Ast>) -> Result<(), CompilerErr> {
         let lexeme = node.token.span;
 
@@ -814,6 +805,29 @@ impl Compiler {
         Ok(())
     }
 
+    fn index_getter(&mut self, env: &mut Box<Environment>, node: &Box<Ast>) -> Result<(), CompilerErr> {
+        if let AstData::IndexGetter { expression, index } = &node.data {
+            self.visit(env, expression)?;
+            self.visit(env, index)?;
+            env.add_op(Instruction::IndexGet);
+        }
+        Ok(())
+    }
+
+    fn index_setter(&mut self, env: &mut Box<Environment>, node: &Box<Ast>) -> Result<(), CompilerErr> {
+        if let AstData::IndexSetter { expression, rhs } = &node.data {
+            if let AstData::IndexGetter { expression, index } = &expression.data {
+                self.visit(env, expression)?;
+                self.visit(env, index)?;
+            }
+            
+            self.visit(env, rhs)?;
+            
+            env.add_op(Instruction::IndexSet);
+        }
+        Ok(())
+    }
+
     fn visit(&mut self, env: &mut Box<Environment>, node: &Box<Ast>) -> Result<(), CompilerErr> {
         match node.data {
             AstData::Literal => self.literal(env, node)?,
@@ -837,6 +851,8 @@ impl Compiler {
             AstData::DoWhileStatement {..} => self.do_while_statement(env, node)?,
             AstData::TrailingIfStatement {..} => self.trailing_if(env, node)?,
             AstData::ExpressionStatement(_) => self.expression_statement(env, node)?,
+            AstData::IndexGetter {..} => self.index_getter(env, node)?,
+            AstData::IndexSetter {..} => self.index_setter(env, node)?,
 
             _ => return Err(self.error(format!("Unknown node: {:#?}", *node))),
         }

@@ -377,6 +377,58 @@ impl VM {
 				}
 			}
 
+			Instruction::IndexSet => {
+				let value = self.drop()?;
+				let indexer = self.drop()?;
+				let item = self.peek_mut();
+
+				match indexer {
+					Object::Number(idx) => {
+						match item {
+							Object::String(ref mut v) => {
+								let index = idx as usize;
+								if index < v.len() {
+									if let Object::String(ref s) = value {
+										v.insert_str(index, s);
+									} else {
+										return Err(RuntimeErr(format!(
+											"Cannot insert '{}' into string '{}'",
+											value, item
+										)))
+									}
+								} else {
+									return Err(RuntimeErr(format!(
+										"Index out of bounds {} into item of {}",
+										index, v.len()
+									)))
+								}
+							}
+
+							Object::List(ref mut v) => {
+								let index = idx as usize;
+								if index < v.len() {
+									v[index] = Box::new(value);
+								} else {
+									return Err(RuntimeErr(format!(
+										"Index out of bounds {} into item of {}",
+										index, v.len()
+									)))
+								}
+							}
+
+							_ => return Err(RuntimeErr(format!(
+								"Cannot index {} with numeric value {}",
+								item, idx
+							)))
+						}
+					}
+					_ => return Err(RuntimeErr(format!(
+						"Cannot index {} with non-indexer value {}",
+						item, indexer
+					)))
+				}
+			}
+
 			Instruction::GetGlobal => {
 				let slot = self.get_short();
 				self.stack.push(self.stack[slot as usize].clone());
@@ -632,7 +684,7 @@ impl VM {
 		}
 		
 		Err(RuntimeErr(format!(
-			"Value types do not match or are not integers '{}' != '{}'",
+			"Value types do not match '{}' != '{}'",
 			lhs, rhs,
 		)))
 	}
@@ -644,7 +696,7 @@ impl VM {
 		}
 		
 		Err(RuntimeErr(format!(
-			"Value types do not match or are not integers '{}' != '{}'",
+			"Value types do not match '{}' != '{}'",
 			lhs, rhs,
 		)))
 	}

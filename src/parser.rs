@@ -106,9 +106,10 @@ impl Parser {
     fn call(&mut self) -> Result<Box<Ast>, ParserErr> {
         let mut node = self.primary()?;
 
-        while self.is_any_of(&[TokenKind::LParen]) {
+        while self.is_any_of(&[TokenKind::LParen, TokenKind::LSquare]) {
         	node = match self.current.kind {
                 TokenKind::LParen => self.function_call(node)?,
+                TokenKind::LSquare => self.index(node)?,
                 _ => unreachable!(),
             }
         }
@@ -223,7 +224,11 @@ impl Parser {
 
         while self.current.kind == TokenKind::Equal {
             self.consume_here();
-            node = Ast::new_var_assign(node.token, node, self.expression()?);
+            node = match node.data {
+                AstData::Identifier => Ast::new_var_assign(node.token, node, self.expression()?),
+                AstData::IndexGetter {..} => Ast::new_index_setter(node.token, node, self.expression()?),
+                _ => unreachable!(),
+            }
         }
 
         Ok(node)
@@ -269,6 +274,14 @@ impl Parser {
         
         self.consume(TokenKind::RParen, "Expect ')' after argument list")?;
         Ok(Ast::new_function_call(lhs.token, lhs, arguments))
+    }
+
+    fn index(&mut self, expression: Box<Ast>) -> Result<Box<Ast>, ParserErr> {
+        self.consume(TokenKind::LSquare, "Expect '[' after expression to index")?;
+        let index = self.expression()?;
+        self.consume(TokenKind::RSquare, "Expect ']' after index expression")?;
+        
+        Ok(Ast::new_index_getter(expression.token, expression, index))
     }
 
     fn if_statement(&mut self) -> Result<Box<Ast>, ParserErr> {

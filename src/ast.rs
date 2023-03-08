@@ -209,4 +209,18 @@ impl Ast {
             data: AstData::LogicalOp { lhs, rhs },
         })
     }
+
+    pub fn new_index_getter(token: Token, expression: Box<Ast>, index: Box<Ast>) -> Box<Self> {
+        Box::new(Ast {
+            token,
+            data: AstData::IndexGetter { expression, index }
+        })
+    }
+
+    pub fn new_index_setter(token: Token, expression: Box<Ast>, rhs: Box<Ast>) -> Box<Self> {
+        Box::new(Ast {
+            token,
+            data: AstData::IndexSetter { expression, rhs }
+        })
+    }
 }
