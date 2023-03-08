@@ -11,7 +11,7 @@ mod compiler;
 mod vm;
 mod stepper;
 
-use std::env;
+use std::{env, fs, rc::Rc};
 use compiler::Compiler;
 use environment::Environment;
 use parser::Parser;
@@ -42,25 +42,14 @@ fn main() {
             }
         }
         "r" | "run" => {
-            let program = match Parser::new(true, &args[2]) {
-                Ok(mut p) => match p.run() {
-                    Ok(p) => Some(p),
-                    Err(e) => {
-                        eprintln!("{e}");
-                        None
-                    }
+            if let Ok(ref source) = fs::read_to_string(&args[2]) {
+                match compile(false, source) {
+                    Ok(e) => VM::new(e).run(),
+                    _ => println!("FAIL!"),
                 }
-                Err(e) => {
-                    eprintln!("{e}");
-                    None
-                }
-            };
-            // match compile(true, &args[2]) {
-            //     Ok(e) => VM::new(e).run(),
-            //     Err(e) => eprintln!("{e}"),
-            // }
-            if let Some(_) = program {
-                println!("OK!");
+            } else {
+                eprintln!("Could not load file '{}'", args[2]);
+                return;
             }
         }
         _ => {
@@ -71,12 +60,24 @@ fn main() {
 }
 
 fn compile(is_file: bool, source: &String) -> Result<Box<Environment>, String> {
-    let mut compiler = match Compiler::new(is_file, &source) {
+    let source = if is_file {
+        match fs::read_to_string(source) {
+            Ok(s) => Rc::new(s),
+            Err(e) => return Err(e.to_string()),
+        }
+    } else { Rc::new(source.clone()) };
+    
+    let mut parser = match Parser::new(Rc::clone(&source)) {
         Ok(c) => c,
         Err(e) => return Err(e.to_string()),
     };
-
-    match compiler.run() {
+    let program = match parser.run() {
+        Ok(p) => p,
+        Err(e) => return Err(e.to_string()),
+    };
+    
+    let mut compiler = Compiler::new(source);
+    match compiler.run(program) {
         Ok(env) => Ok(env),
         Err(e) => Err(e.0),
     }

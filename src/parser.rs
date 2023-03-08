@@ -1,4 +1,4 @@
-use std::{io::Error, fmt::Display};
+use std::{io::Error, fmt::Display, rc::Rc};
 
 use crate::{token::{Token, TokenKind}, lexer::Lexer, ast::{Ast, AstData}};
 
@@ -21,8 +21,8 @@ impl Display for ParserErr {
 }
 
 impl Parser {
-    pub fn new(is_file: bool, source: &str) -> Result<Self, Error> {
-        let mut lexer = Lexer::new(is_file, source)?;
+    pub fn new(source: Rc<String>) -> Result<Self, Error> {
+        let mut lexer = Lexer::new(source)?;
         let token = lexer.next();
 
         Ok(Self {
@@ -120,8 +120,9 @@ impl Parser {
         if self.is_any_of(&[TokenKind::Minus, TokenKind::Bang]) {
             match self.current.kind {
                 TokenKind::Minus | TokenKind::Bang => {
+                    let token = self.current;
                     self.consume_here();
-                    return self.call();
+                    return Ok(Ast::new_unary_op(token, self.call()?));
                 },
                 _ => unreachable!(),
             }
@@ -138,7 +139,7 @@ impl Parser {
                 TokenKind::Star | TokenKind::Slash => {
                     let token = self.current;
                     self.consume_here();
-                    node = Ast::new_unary_op(token, self.unary()?);
+                    node = Ast::new_binary_op(token, node, self.unary()?);
                 }
     
                 _ => break,

@@ -9,6 +9,8 @@ pub struct Local {
 	pub func: Option<u32>,
 }
 
+const GLOBAL: u16 = 0;
+
 impl Local {
     pub fn is_global(&self) -> bool {
         self.depth == 0
@@ -72,10 +74,10 @@ impl SymTable {
     }
 
     fn find_position(&self) -> u16 {
-        if self.depth > 1 {
-            self.find_local_position()
+        if self.depth > GLOBAL {
+            self.find_local_count()
         } else {
-            self.find_global_position()
+            self.find_global_count()
         }
     }
 
@@ -92,12 +94,12 @@ impl SymTable {
 			})
     }
 
-    fn find_local_position(&self) -> u16 {
+    fn find_local_count(&self) -> u16 {
 		self.locals
 			.iter()
 			.rev()
 			.fold(0, |acc, l| {
-				if l.depth > 1 {
+				if l.depth > GLOBAL {
 					acc + 1
 				} else {
                     acc
@@ -105,11 +107,11 @@ impl SymTable {
 			})
     }
 
-	fn find_global_position(&self) -> u16 {
+	fn find_global_count(&self) -> u16 {
 		self.locals
 			.iter()
 			.fold(0, |acc, l| {
-				if l.depth == 1 {
+				if l.depth == GLOBAL {
                     acc + 1
 				} else {
                     acc

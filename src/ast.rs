@@ -1,10 +1,12 @@
 use crate::token::Token;
 
+#[derive(Debug)]
 pub struct Ast {
     pub token: Token,
     pub data: AstData,
 }
 
+#[derive(Debug)]
 pub enum AstData {
     Literal,
     Identifier,

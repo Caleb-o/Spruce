@@ -1,18 +1,17 @@
-use std::{fs, io::Error};
+use std::{io::Error, rc::Rc};
 
 use crate::token::{Token, TokenKind, Span};
 
 #[derive(Debug)]
 pub struct Lexer {
-	pub source: String,
+	pub source: Rc<String>,
 	line: u32,
 	column: u16,
 	pos: usize,
 }
 
 impl Lexer {
-	pub fn new(is_file: bool, source: &str) -> Result<Self, Error> {
-		let source = if is_file { fs::read_to_string(source)? } else { source.into() };
+	pub fn new(source: Rc<String>) -> Result<Self, Error> {
 		Ok(Self {
 			source,
 			line: 1,
@@ -83,21 +82,6 @@ impl Lexer {
 				.nth(self.pos)
 				.unwrap(),
 		}
-	}
-
-	// Hack to get the next token, then reset state
-	pub fn peek_type(&mut self) -> TokenKind {
-		let col = self.column;
-		let line = self.line;
-		let pos = self.pos;
-
-		let token = self.next();
-
-		self.column = col;
-		self.line = line;
-		self.pos = pos;
-
-		token.kind
 	}
 
 	fn make_token(

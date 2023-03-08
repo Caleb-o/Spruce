@@ -151,6 +151,7 @@ impl VM {
 	
 	#[inline]	
 	pub(crate) fn run_instruction(&mut self, code: Instruction) -> Result<(), RuntimeErr> {
+		// println!("CODE :: {} {:?}", code as u8, code);
 		match code {
 			Instruction::Pop => _ = self.drop()?,
 
