@@ -252,9 +252,7 @@ impl Compiler {
                 None
             }
 
-            None => {
-                Some(self.table.new_local(token.span, mutable, func) as usize)
-            }
+            None => Some(self.table.new_local(token.span, mutable, func) as usize),
         }
     }
 
@@ -552,11 +550,11 @@ impl Compiler {
                 if let Some(func) = &local.func {
                     env.add_get_fn(*func);
                 } else {
-                    if local.is_global() {
-                        env.add_local(Instruction::GetGlobal, local.position);
-                    } else {
-                        env.add_local(Instruction::GetLocal, local.position);
-                    }
+                    env.add_local(if local.is_global()
+                        { Instruction::GetGlobal }
+                        else { Instruction::GetLocal },
+                        local.position
+                    );
                 }
             },
 
@@ -665,11 +663,11 @@ impl Compiler {
                 None => env.add_op(Instruction::None),
             }
     
-            if self.table.is_global() {
-                env.add_op(Instruction::SetGlobal);
+            env.add_op(if self.table.is_global() {
+                Instruction::SetGlobal
             } else {
-                env.add_op(Instruction::SetLocal);
-            }
+                Instruction::SetLocal
+            });
     
             (local as u16).to_be_bytes().into_iter().for_each(|b| env.add_opb(b));
         }
@@ -694,11 +692,11 @@ impl Compiler {
                             &identifier
                         );
                     } else {
-                        if local.is_global() {
-                            env.add_local(Instruction::SetGlobal, local.position);
-                        } else {
-                            env.add_local(Instruction::SetLocal, local.position);
-                        }
+                        env.add_local(if local.is_global()
+                            { Instruction::SetGlobal }
+                            else { Instruction::SetLocal },
+                            local.position
+                        );
                     }
                 }
                 None => {

@@ -29,11 +29,7 @@ enum SpruceCli {
     #[command(short_flag='r')]
     Run(RunArgs),
     #[command(short_flag='s')]
-    Step { 
-        path: String,
-        #[clap(default_value_t=false, short, long)]
-        script_mode: bool
-    },
+    Step(RunArgs),
 }
 
 #[derive(clap::Args)]
@@ -46,7 +42,7 @@ struct RunArgs {
 
 fn main() {
     match SpruceCli::parse() {
-        SpruceCli::Run(args) | SpruceCli::Dump(args) => {
+        SpruceCli::Run(args) => {
             if let Ok(source) = fs::read_to_string(&args.path) {
                 match compile(source, args.script_mode) {
                     Ok(env) => VM::new(env).run(),
@@ -56,14 +52,24 @@ fn main() {
                 eprintln!("Could not load file '{}'", args.path);
             }
         }
-        SpruceCli::Step { path, script_mode } => {
-            if let Ok(source) = fs::read_to_string(&path) {
-                match compile(source, script_mode) {
+        SpruceCli::Dump(args) => {
+            if let Ok(source) = fs::read_to_string(&args.path) {
+                match compile(source, args.script_mode) {
+                    Ok(mut env) => env.dump(),
+                    Err(e) => eprintln!("{e}"),
+                }
+            } else {
+                eprintln!("Could not load file '{}'", args.path);
+            }
+        }
+        SpruceCli::Step(args) => {
+            if let Ok(source) = fs::read_to_string(&args.path) {
+                match compile(source, args.script_mode) {
                     Ok(e) => Stepper::new(e).run(),
                     Err(e) => eprintln!("{e}"),
                 }
             } else {
-                eprintln!("Could not load file '{}'", path);
+                eprintln!("Could not load file '{}'", args.path);
             }
         }
     }

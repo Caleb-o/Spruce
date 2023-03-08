@@ -9,7 +9,7 @@ pub struct Local {
 	pub func: Option<u32>,
 }
 
-const GLOBAL: u16 = 0;
+const GLOBAL_DEPTH: u16 = 0;
 
 impl Local {
     pub fn is_global(&self) -> bool {
@@ -32,7 +32,7 @@ impl SymTable {
 	}
 
 	pub fn is_global(&self) -> bool {
-		self.depth == 1
+		self.depth == GLOBAL_DEPTH
 	}
 
 	pub fn close_scope(&mut self) {
@@ -48,7 +48,7 @@ impl SymTable {
 		mutable: bool,
 		func: Option<u32>,
 	) -> u16 {
-        let position = self.find_position();
+        let position = self.find_count();
 		self.locals.push(Local { 
 			identifier,
 			depth: self.depth,
@@ -73,8 +73,8 @@ impl SymTable {
         None
     }
 
-    fn find_position(&self) -> u16 {
-        if self.depth > GLOBAL {
+    fn find_count(&self) -> u16 {
+        if self.depth > GLOBAL_DEPTH {
             self.find_local_count()
         } else {
             self.find_global_count()
@@ -99,7 +99,7 @@ impl SymTable {
 			.iter()
 			.rev()
 			.fold(0, |acc, l| {
-				if l.depth > GLOBAL {
+				if l.depth > GLOBAL_DEPTH {
 					acc + 1
 				} else {
                     acc
@@ -111,7 +111,7 @@ impl SymTable {
 		self.locals
 			.iter()
 			.fold(0, |acc, l| {
-				if l.depth == GLOBAL {
+				if l.func.is_none() && l.depth == GLOBAL_DEPTH {
                     acc + 1
 				} else {
                     acc
