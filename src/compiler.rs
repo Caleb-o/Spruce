@@ -766,7 +766,11 @@ impl Compiler {
                 self.register_function(identifier, start_loc, parameters, env)?;
             }
             
-            self.body(env, body, false)?;
+            match &body.data {
+                AstData::Return(_) => self.visit(env, body)?,
+                AstData::Body(_) => self.body(env, body, false)?,
+                _ => unreachable!(),
+            }
             self.pop_scope();
             
             // Don't generate pointless returns

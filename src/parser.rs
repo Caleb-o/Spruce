@@ -87,7 +87,7 @@ impl Parser {
             },
 
             TokenKind::LSquare => self.list_literal(),
-            TokenKind::Function => self.anon_function(),
+            TokenKind::Function => self.function(true),
 
             TokenKind::Identifier => {
                 let token = self.current;
@@ -394,38 +394,13 @@ impl Parser {
         Ok(Ast::new_parameter(param_name, type_name))
     }
 
-    fn anon_function(&mut self) -> Result<Box<Ast>, ParserErr> {
-        let token = self.current;
-        self.consume_here();
-
-        let parameters = if self.current.kind == TokenKind::LParen {
-            let mut parameters = Vec::new();
-            self.consume(TokenKind::LParen, "Expect '(' at the start of parameter list")?;
-
-            // Consume paarameter list
-            // TODO: Underscore to add unnamed parameter
-            if self.current.kind != TokenKind::RParen {
-                parameters.push(self.consume_parameter()?);
-                
-                while self.current.kind == TokenKind::Comma {
-                    self.consume_here();
-                    parameters.push(self.consume_parameter()?);
-                }
-            }
-            
-            self.consume(TokenKind::RParen, "Expect ')' after function parameter list")?;
-            
-            Some(parameters)
-        } else {None};
-
-        Ok(Ast::new_function(token, true, parameters, self.body()?))
-    }
-
-    fn function(&mut self) -> Result<Box<Ast>, ParserErr> {
+    fn function(&mut self, is_anonymous: bool) -> Result<Box<Ast>, ParserErr> {
         self.consume_here();
 
         let identifier = self.current;
-        self.consume(TokenKind::Identifier, "Expected identifier after 'fn'")?;
+        if !is_anonymous {
+            self.consume(TokenKind::Identifier, "Expected identifier after 'fn'")?;
+        }
 
         let parameters = if self.current.kind == TokenKind::LParen {
             let mut parameters = Vec::new();
@@ -446,8 +421,15 @@ impl Parser {
             Some(parameters)
         } else {None};
 
+        let body = if self.current.kind == TokenKind::Equal {
+            let token = self.current;
+            self.consume_here();
+            Ast::new_return(token, Some(self.expression()?))
+        } else {
+            self.body()?
+        };
 
-        Ok(Ast::new_function(identifier, false, parameters, self.body()?))
+        Ok(Ast::new_function(identifier, is_anonymous, parameters, body))
     }
 
     fn var_declaration(&mut self) -> Result<Box<Ast>, ParserErr> {
@@ -473,7 +455,7 @@ impl Parser {
 
         while self.current.kind != TokenKind::EndOfFile {
             match self.current.kind {
-                TokenKind::Function => statements.push(self.function()?),
+                TokenKind::Function => statements.push(self.function(false)?),
                 TokenKind::Var | TokenKind::Val => {
                     statements.push(self.var_declaration()?);
                     self.consume(TokenKind::SemiColon, "Expect ';' after statement")?;

@@ -44,8 +44,8 @@ fn main() {
         "r" | "run" => {
             if let Ok(ref source) = fs::read_to_string(&args[2]) {
                 match compile(false, source) {
-                    Ok(e) => VM::new(e).run(),
-                    _ => println!("FAIL!"),
+                    Ok(env) => VM::new(env).run(),
+                    Err(e) => eprintln!("{e}"),
                 }
             } else {
                 eprintln!("Could not load file '{}'", args[2]);
