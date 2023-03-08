@@ -286,13 +286,21 @@ impl Parser {
         Ok(Ast::new_index_getter(expression.token, expression, index))
     }
 
+    fn single_statement_block(&mut self) -> Result<Box<Ast>, ParserErr> {
+        match self.current.kind {
+            TokenKind::If => self.if_statement(),
+            TokenKind::For => self.for_statement(),
+            TokenKind::Do => self.do_while_statement(),
+            _ => self.body(),
+        }
+    }
+
     fn if_statement(&mut self) -> Result<Box<Ast>, ParserErr> {
         let token = self.current;
         self.consume_here();
 
         let condition = self.expression()?;
-        // TODO: Allow single statements
-        let true_body = self.body()?;
+        let true_body = self.single_statement_block()?;
         let mut false_body = None;
 
         if self.current.kind == TokenKind::Else {
@@ -328,14 +336,14 @@ impl Parser {
             increment = Some(self.expression()?);
         }
 
-        Ok(Ast::new_for_statement(token, variable, condition, increment, self.body()?))
+        Ok(Ast::new_for_statement(token, variable, condition, increment, self.single_statement_block()?))
     }
 
     fn do_while_statement(&mut self) -> Result<Box<Ast>, ParserErr> {
         let token = self.current;
         self.consume_here();
 
-        let body = self.body()?;
+        let body = self.single_statement_block()?;
 
         self.consume(TokenKind::While, "Expect 'while' after do block")?;
         let condition = self.expression()?;
@@ -362,6 +370,7 @@ impl Parser {
             TokenKind::Do => self.do_while_statement()?,
             TokenKind::Var | TokenKind::Val => self.var_declaration()?,
             TokenKind::Return => self.return_statement()?,
+            TokenKind::LCurly => self.body()?,
             _ => Ast::new_expr_statement(self.expression()?),
         };
 
@@ -373,7 +382,7 @@ impl Parser {
         }
 
         match node.data {
-            AstData::IfStatement {..} | AstData::ForStatement {..} => {}
+            AstData::IfStatement {..} | AstData::ForStatement {..} | AstData::Body(_) => {}
             _ => self.consume(TokenKind::SemiColon, "Expect ';' after statement")?,
         }
         

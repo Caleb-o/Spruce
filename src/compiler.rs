@@ -337,17 +337,29 @@ impl Compiler {
         if let AstData::FunctionCall { lhs, arguments } = &node.data {
             let identifier = node.token;
 
-            match lhs.data {
+            let anonymous = match lhs.data {
                 // FIXME: Change how identifier works, now that we visit lhs
-                AstData::Identifier => {},
-                _ => self.visit(env, &lhs)?,
-            }
+                AstData::Identifier => false,
+                AstData::Function { .. } => {
+                    self.visit(env, &lhs)?;
+                    true
+                },
+                _ => {
+                    self.visit(env, &lhs)?;
+                    false
+                },
+            };
             
             let arg_count = arguments.len() as u8;
             let mut fnerr: Option<(String, u8)> = None;
 
             for arg in arguments {
                 self.visit(env, &arg)?;
+            }
+
+            if anonymous {
+                env.add_local_call(arg_count);
+                return Ok(());
             }
 
             match self.find_function(identifier.span) {
