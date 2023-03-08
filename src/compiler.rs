@@ -70,19 +70,21 @@ impl Compiler {
         }
     }
 
-    pub fn run(&mut self, program: Box<Ast>) -> Result<Box<Environment>, CompilerErr> {
+    pub fn run(&mut self, program: Box<Ast>, script_mode: bool) -> Result<Box<Environment>, CompilerErr> {
         let mut env = Box::new(Environment::new());
         nativefns::register_native_functions(self, &mut env);
 
         self.body(&mut env, &program, false)?;
 
-        match self.find_function_str("main") {
-            Some(func) => {
-                if let Function::User { meta_id, .. } = func {
-                    env.add_call(*meta_id);
+        if !script_mode {
+            match self.find_function_str("main") {
+                Some(func) => {
+                    if let Function::User { meta_id, .. } = func {
+                        env.add_call(*meta_id);
+                    }
                 }
+                None => return Err(self.error("Cannot find function 'main'".into())),
             }
-            None => return Err(self.error("Cannot find function 'main'".into())),
         }
 
         env.add_op(Instruction::Halt);

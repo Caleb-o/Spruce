@@ -29,7 +29,11 @@ enum SpruceCli {
     #[command(short_flag='r')]
     Run(RunArgs),
     #[command(short_flag='s')]
-    Step { path: String },
+    Step { 
+        path: String,
+        #[clap(default_value_t=false, short, long)]
+        script_mode: bool
+    },
 }
 
 #[derive(clap::Args)]
@@ -44,7 +48,7 @@ fn main() {
     match SpruceCli::parse() {
         SpruceCli::Run(args) | SpruceCli::Dump(args) => {
             if let Ok(source) = fs::read_to_string(&args.path) {
-                match compile(source) {
+                match compile(source, args.script_mode) {
                     Ok(env) => VM::new(env).run(),
                     Err(e) => eprintln!("{e}"),
                 }
@@ -52,9 +56,9 @@ fn main() {
                 eprintln!("Could not load file '{}'", args.path);
             }
         }
-        SpruceCli::Step { path } => {
+        SpruceCli::Step { path, script_mode } => {
             if let Ok(source) = fs::read_to_string(&path) {
-                match compile(source) {
+                match compile(source, script_mode) {
                     Ok(e) => Stepper::new(e).run(),
                     Err(e) => eprintln!("{e}"),
                 }
@@ -65,9 +69,9 @@ fn main() {
     }
 }
 
-fn compile(source: String) -> Result<Box<Environment>, String> {
+fn compile(source: String, script_mode: bool) -> Result<Box<Environment>, String> {
     let source = Rc::new(source);
-    let mut parser = match Parser::new(Rc::clone(&source)) {
+    let mut parser = match Parser::new(Rc::clone(&source), script_mode) {
         Ok(c) => c,
         Err(e) => return Err(e.to_string()),
     };
@@ -77,7 +81,7 @@ fn compile(source: String) -> Result<Box<Environment>, String> {
     };
     
     let mut compiler = Compiler::new(source);
-    match compiler.run(program) {
+    match compiler.run(program, script_mode) {
         Ok(env) => Ok(env),
         Err(e) => Err(e.0),
     }

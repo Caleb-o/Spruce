@@ -5,6 +5,7 @@ use crate::{token::{Token, TokenKind}, lexer::Lexer, ast::{Ast, AstData}};
 pub struct Parser {
     lexer: Lexer,
     current: Token,
+    script_mode: bool,
     had_error: bool,
 }
 
@@ -21,13 +22,14 @@ impl Display for ParserErr {
 }
 
 impl Parser {
-    pub fn new(source: Rc<String>) -> Result<Self, Error> {
+    pub fn new(source: Rc<String>, script_mode: bool) -> Result<Self, Error> {
         let mut lexer = Lexer::new(source)?;
         let token = lexer.next();
 
         Ok(Self {
             lexer,
             current: token,
+            script_mode,
             had_error: false,
         })
     }
@@ -474,10 +476,14 @@ impl Parser {
                     self.consume(TokenKind::SemiColon, "Expect ';' after statement")?;
                 },
                 _ => {
-                    return Err(self.error(format!(
-                        "Unknown item in outer scope {:?}",
-                        self.current.kind
-                    )));
+                    if self.script_mode {
+                        statements.push(self.statement()?);
+                    } else {
+                        return Err(self.error(format!(
+                            "Unknown item in outer scope {:?}",
+                            self.current.kind
+                        )));
+                    }
                 }
             }
         }
