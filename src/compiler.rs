@@ -754,6 +754,14 @@ impl Compiler {
         Ok(())
     }
 
+    fn type_check(&mut self, env: &mut Box<Environment>, node: &Box<Ast>) -> Result<(), CompilerErr> {
+        if let AstData::TypeCheck { is_assert, expression } = &node.data {
+            self.visit(env, expression)?;
+            self.check_valid_type(env, &node.token, *is_assert)?;
+        }
+        Ok(())
+    }
+
     fn function(&mut self, env: &mut Box<Environment>, node: &Box<Ast>) -> Result<(), CompilerErr> {
         if let AstData::Function { anonymous, parameters, body } = &node.data {
             let identifier = node.token;
@@ -820,6 +828,7 @@ impl Compiler {
             AstData::VarAssign {..} => self.var_assign(env, node)?,
             AstData::Return(_) => self.return_statement(env, node)?,
             AstData::Body(_) => self.body(env, node, true)?,
+            AstData::TypeCheck {..} => self.type_check(env, node)?,
 
             AstData::Function {..} => self.function(env, node)?,
             AstData::FunctionCall {..} => self.function_call(env, node)?,
@@ -837,7 +846,7 @@ impl Compiler {
 
     fn check_type(type_name: &str) -> Option<u8> {
         match type_name {
-            "none" => Some(0),
+            "any" => Some(0),
             "number" => Some(1),
             "string" => Some(2),
             "bool" => Some(3),

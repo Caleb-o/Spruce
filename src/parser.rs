@@ -205,15 +205,15 @@ impl Parser {
     }
 
     fn type_equality(&mut self) -> Result<Box<Ast>, ParserErr> {
-        let node = self.equality()?;
+        let mut node = self.equality()?;
 
-        // if self.is_any_of(&[TokenKind::Is, TokenKind::Ensure]) {
-        // 	let is_asrt = self.current.kind == TokenKind::Ensure;
-        // 	self.consume_here();
-        // 	let type_id = self.current;
-        // 	self.consume(TokenKind::Identifier, "Expect identifier after is/ensure")?;
-        // 	self.check_valid_type(env, &type_id, is_asrt)?;
-        // }
+        if self.is_any_of(&[TokenKind::Is, TokenKind::Ensure]) {
+        	let is_assert = self.current.kind == TokenKind::Ensure;
+        	self.consume_here();
+        	let type_id = self.current;
+        	self.consume(TokenKind::Identifier, "Expect identifier after is/ensure")?;
+            node = Ast::new_type_check(is_assert, node, type_id);
+        }
 
         Ok(node)
     }

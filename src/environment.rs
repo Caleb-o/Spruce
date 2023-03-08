@@ -381,7 +381,7 @@ fn build_function(name: &str, offset: usize, env: &Environment) -> usize {
 
 pub fn get_type_name(type_id: u8) -> &'static str {
 	match type_id {
-		0 => "none",
+		0 => "any",
 		1 => "number",
 		2 => "string",
 		3 => "bool",

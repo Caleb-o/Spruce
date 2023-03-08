@@ -681,7 +681,7 @@ impl VM {
 
 	fn get_type_match(&self, item: &Object, type_id: u8) -> bool {
 		match type_id {
-			0 => matches!(item, Object::None),
+			0 => true,
 			1 => matches!(item, Object::Number(_)),
 			2 => matches!(item, Object::String(_)),
 			3 => matches!(item, Object::Boolean(_)),
