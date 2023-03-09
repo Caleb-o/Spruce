@@ -10,11 +10,13 @@ mod symtable;
 mod compiler;
 mod vm;
 mod stepper;
+mod source;
 
 use std::{fs, rc::Rc};
 use compiler::Compiler;
 use environment::Environment;
 use parser::Parser;
+use source::Source;
 use stepper::Stepper;
 use vm::VM;
 
@@ -44,7 +46,7 @@ fn main() {
     match SpruceCli::parse() {
         SpruceCli::Run(args) => {
             if let Ok(source) = fs::read_to_string(&args.path) {
-                match compile(source, args.script_mode) {
+                match compile(args.path, source, args.script_mode) {
                     Ok(env) => VM::new(env).run(),
                     Err(e) => eprintln!("{e}"),
                 }
@@ -54,7 +56,7 @@ fn main() {
         }
         SpruceCli::Dump(args) => {
             if let Ok(source) = fs::read_to_string(&args.path) {
-                match compile(source, args.script_mode) {
+                match compile(args.path, source, args.script_mode) {
                     Ok(mut env) => env.dump(),
                     Err(e) => eprintln!("{e}"),
                 }
@@ -64,7 +66,7 @@ fn main() {
         }
         SpruceCli::Step(args) => {
             if let Ok(source) = fs::read_to_string(&args.path) {
-                match compile(source, args.script_mode) {
+                match compile(args.path, source, args.script_mode) {
                     Ok(e) => Stepper::new(e).run(),
                     Err(e) => eprintln!("{e}"),
                 }
@@ -75,9 +77,9 @@ fn main() {
     }
 }
 
-fn compile(source: String, script_mode: bool) -> Result<Box<Environment>, String> {
-    let source = Rc::new(source);
-    let mut parser = match Parser::new(Rc::clone(&source), script_mode) {
+fn compile(file_path: String, source: String, script_mode: bool) -> Result<Box<Environment>, String> {
+    let source = Rc::new(Source::new(file_path, source));
+    let mut parser = match Parser::new(&source, script_mode) {
         Ok(c) => c,
         Err(e) => return Err(e.to_string()),
     };

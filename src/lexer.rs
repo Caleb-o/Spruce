@@ -1,19 +1,18 @@
 use std::{io::Error, rc::Rc};
 
-use crate::token::{Token, TokenKind, Span};
+use crate::{token::{Token, TokenKind, Span}, source::Source};
 
-#[derive(Debug)]
 pub struct Lexer {
-	pub source: Rc<String>,
+	pub source: Rc<Source>,
 	line: u32,
 	column: u16,
 	pos: usize,
 }
 
 impl Lexer {
-	pub fn new(source: Rc<String>) -> Result<Self, Error> {
+	pub fn new(source: &Rc<Source>) -> Result<Self, Error> {
 		Ok(Self {
-			source,
+			source: Rc::clone(source),
 			line: 1,
 			column: 1,
 			pos: 0,
@@ -26,7 +25,7 @@ impl Lexer {
 		if self.is_at_end() {
 			return self.make_token(
 				TokenKind::EndOfFile,
-				Span::new(self.pos, 0),
+				Span::new(self.pos, 0, Rc::clone(&self.source)),
 				self.column
 			);
 		}
@@ -68,7 +67,7 @@ impl Lexer {
 			
 			_ => self.make_token(
 					TokenKind::Error,
-					Span::new(self.pos, self.pos),
+					Span::new(self.pos, self.pos, Rc::clone(&self.source)),
 					self.column
 				),
 		}
@@ -77,7 +76,7 @@ impl Lexer {
 	pub fn peek(&self) -> char {
 		match self.is_at_end() {
 			true => '\0',
-			false => self.source
+			false => self.source.content
 				.chars()
 				.nth(self.pos)
 				.unwrap(),
@@ -98,7 +97,7 @@ impl Lexer {
 		kind: TokenKind,
 	) -> Token {
 		self.advance();
-		Token { span: Span::new(self.pos - 1, 1), kind, line: self.line, column: self.column - 1 }
+		Token { span: Span::new(self.pos - 1, 1, Rc::clone(&self.source)), kind, line: self.line, column: self.column - 1 }
 	}
 
 	fn make_char_token_matches(
@@ -111,16 +110,16 @@ impl Lexer {
 
 		if self.peek() == next {
 			self.advance();
-			return Token { span: Span::new(self.pos - 2, 2), kind: other, line: self.line, column: self.column - 2 }
+			return Token { span: Span::new(self.pos - 2, 2, Rc::clone(&self.source)), kind: other, line: self.line, column: self.column - 2 }
 		}
 
-		Token { span: Span::new(self.pos - 1, 1), kind, line: self.line, column: self.column - 1 }
+		Token { span: Span::new(self.pos - 1, 1, Rc::clone(&self.source)), kind, line: self.line, column: self.column - 1 }
 	}
 
 	fn check_if_matches(&self, start: usize, len: usize, potential: &[(&'static str, TokenKind)]) -> TokenKind {
 		for (rest, kind) in potential {
 			let rlen = rest.len();
-			if len - 1 == rlen && &self.source[start + 1..start + len] == *rest {
+			if len - 1 == rlen && &self.source.content[start + 1..start + len] == *rest {
 				return *kind;
 			}
 		}
@@ -129,7 +128,7 @@ impl Lexer {
 	}
 
 	fn get_identifier_type(&self, start: usize, len: usize) -> TokenKind {
-		let lexeme = &self.source[start..start + len];
+		let lexeme = &self.source.content[start..start + len];
 		
 		// Fixme: chars.nth seems dumb here
 		match lexeme.chars().nth(0).unwrap() {
@@ -174,7 +173,7 @@ impl Lexer {
 
 		self.make_token(
 			kind,
-			Span::new(pos, self.pos - pos),
+			Span::new(pos, self.pos - pos, Rc::clone(&self.source)),
 			column,
 		)
 	}
@@ -193,7 +192,7 @@ impl Lexer {
 
 		self.make_token(
 			TokenKind::String,
-			Span::new(pos, self.pos - pos - 1),
+			Span::new(pos, self.pos - pos - 1, Rc::clone(&self.source)),
 			column,
 		)
 	}
@@ -219,7 +218,7 @@ impl Lexer {
 				if is_float {
 					return self.make_token(
 						TokenKind::Error,
-						Span::new(self.pos, self.pos),
+						Span::new(self.pos, self.pos, Rc::clone(&self.source)),
 						self.column
 					);
 				}
@@ -229,13 +228,13 @@ impl Lexer {
 
 		self.make_token(
 			TokenKind::Number,
-			Span::new(pos, self.pos - pos),
+			Span::new(pos, self.pos - pos, Rc::clone(&self.source)),
 			column,
 		)
 	}
 
 	fn is_at_end(&self) -> bool {
-		self.pos >= self.source.len()
+		self.pos >= self.source.content.len()
 	}
 
 	fn advance(&mut self) {

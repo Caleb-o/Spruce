@@ -1,19 +1,25 @@
-#[derive(Debug, Clone, Copy)]
+use std::rc::Rc;
+
+use crate::source::Source;
+
+#[derive(Debug, Clone)]
 pub struct Span {
 	pub start: usize,
 	pub len: usize,
+	pub source: Rc<Source>,
 }
 
 impl Span {
-	pub fn new(start: usize, len: usize) -> Self {
+	pub fn new(start: usize, len: usize, source: Rc<Source>) -> Self {
 		Span {
 			start,
 			len,
+			source,
 		}
 	}
 	
-	pub fn slice_from<'a>(&'a self, source: &'a str) -> &'a str {
-		&source[self.start..self.start + self.len]
+	pub fn slice_source<'a>(&'a self) -> &'a str {
+		&self.source.content[self.start..self.start + self.len]
 	}
 	
 	pub fn compare(&self, other: &Span, source: &str) -> bool {
@@ -24,7 +30,7 @@ impl Span {
 			return false;
 		}
 
-		self.slice_from(source) == other.slice_from(source)
+		self.slice_source() == other.slice_source()
 	}
 
 	pub fn compare_str(&self, string: &str, source: &str) -> bool {
@@ -34,7 +40,7 @@ impl Span {
 			return false;
 		}
 
-		self.slice_from(source) == string
+		self.slice_source() == string
 	}
 }
 
@@ -64,7 +70,7 @@ pub enum TokenKind {
 	Error,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Token {
 	pub span: Span,
 	pub kind: TokenKind,

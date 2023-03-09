@@ -90,7 +90,7 @@ impl Ast {
 
     pub fn new_expr_statement(expression: Box<Ast>) -> Box<Self> {
         Box::new(Ast {
-            token: expression.token,
+            token: expression.token.clone(),
             data: AstData::ExpressionStatement(expression),
         })
     }

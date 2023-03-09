@@ -1,6 +1,6 @@
 use std::{fmt::Display, rc::Rc};
 
-use crate::{token::{Span, Token, TokenKind}, environment::{Environment, ConstantValue, FunctionMeta}, instructions::{Instruction, ParamKind}, nativefns::{self, NativeFunction}, symtable::SymTable, ast::{Ast, AstData}, object::Object};
+use crate::{token::{Span, Token, TokenKind}, environment::{Environment, ConstantValue, FunctionMeta}, instructions::{Instruction, ParamKind}, nativefns::{self, NativeFunction}, symtable::SymTable, ast::{Ast, AstData}, object::Object, source::Source};
 
 #[derive(Debug, Clone)]
 struct LookAhead {
@@ -45,7 +45,7 @@ impl Function {
 
 pub struct Compiler {
     had_error: bool,
-    source: Rc<String>,
+    source: Rc<Source>,
     unresolved: Vec<LookAhead>,
     table: SymTable,
     functable: Vec<Function>,
@@ -60,7 +60,7 @@ impl Display for CompilerErr {
 }
 
 impl Compiler {
-    pub fn new(source: Rc<String>) -> Self {
+    pub fn new(source: Rc<Source>) -> Self {
         Self {
             had_error: false,
             source,
@@ -134,7 +134,7 @@ impl Compiler {
         let mut unresolved = Vec::new();
 
         for lookahead in self.unresolved.iter() {
-            match self.find_function(lookahead.token.span) {
+            match self.find_function(&lookahead.token.span) {
                 Some(ref mut func) => {
                     // Cannot resolve native calls, since they're part of the compiler
                     if let Function::User { meta_id, empty, ..} = func {
@@ -142,7 +142,7 @@ impl Compiler {
                         if *empty {
                             self.warning(format!(
                                     "Calling empty function '{}'",
-                                    lookahead.token.span.slice_from(&self.source)
+                                    lookahead.token.span.slice_source()
                                 ),
                                 &lookahead.token
                             );
@@ -151,7 +151,7 @@ impl Compiler {
                         let func = &env.functions[*meta_id as usize];
                         // Correct function ID, but arity does not match
                         if func.arg_count != lookahead.args {
-                            unresolved.push((lookahead.token, func.arg_count, lookahead.args));
+                            unresolved.push((lookahead.token.clone(), func.arg_count, lookahead.args));
                             continue;
                         }
 
@@ -165,13 +165,13 @@ impl Compiler {
                         }
                     }
 
-                None => unresolved.push((lookahead.token, 0, lookahead.args)),
+                None => unresolved.push((lookahead.token.clone(), 0, lookahead.args)),
             }
         }
 
         // Identifiers that were still not found
         for (token, params, args) in unresolved {
-            let id = token.span.slice_from(&self.source).to_string();
+            let id = token.span.slice_source().to_string();
 
             if params != args {
                 self.error_no_exit(format!(
@@ -216,14 +216,14 @@ impl Compiler {
 
     fn find_function_str(&self, id: &str) -> Option<&Function> {
         for func in &self.functable {
-            match *func {
+            match func {
                 Function::User { meta_id: _, span,  .. } => {
-                    if span.compare_str(id, &self.source) {
+                    if span.compare_str(id, &self.source.content) {
                         return Some(func);
                     }
                 }
                 Function::Native { identifier, .. } => {
-                    if id == identifier {
+                    if id == *identifier {
                         return Some(func);
                     }
                 }
@@ -233,51 +233,51 @@ impl Compiler {
         None
     }
 
-    fn find_function(&self, span: Span) -> Option<&Function> {
-        self.find_function_str(span.slice_from(&self.source))
+    fn find_function(&self, span: &Span) -> Option<&Function> {
+        self.find_function_str(span.slice_source())
     }
 
     fn register_local(&mut self, token: &Token, mutable: bool, func: Option<u32>) -> Option<usize> {
-        let local = self.table.find_local(&self.source, &token.span, false);
+        let local = self.table.find_local(&self.source.content, &token.span, false);
 
         match local {
             Some(local) => {
                 // We aren't allowed to overwrite, it is an error
                 self.error_no_exit(format!(
                         "Local with identifier '{}' already exists in scope",
-                        local.identifier.slice_from(&self.source),
+                        local.identifier.slice_source(),
                     ),
                     token
                 );
                 None
             }
 
-            None => Some(self.table.new_local(token.span, mutable, func) as usize),
+            None => Some(self.table.new_local(token.clone().span, mutable, func) as usize),
         }
     }
 
     fn register_function(
         &mut self,
-        identifier: Token,
+        identifier: &Token,
         position: u32,
         parameters: &Option<Vec<Box<Ast>>>,
         env: &mut Box<Environment>,
     ) -> Result<(), CompilerErr>
     {
-        let func = self.find_function(identifier.span);
+        let func = self.find_function(&identifier.span);
 
         // Function already exists
         if func.is_some() {
             self.error_no_exit(
                 format!(
                     "Function with identifier '{}' already exists",
-                    identifier.span.slice_from(&self.source)
+                    identifier.span.slice_source()
                 ),
                 &identifier
             );
             return Err(CompilerErr(format!(
                 "Function with identifier '{}' already exists",
-                identifier.span.slice_from(&self.source)
+                identifier.span.slice_source()
             )));
         }
 
@@ -307,14 +307,14 @@ impl Compiler {
         }
 
         env.functions.push(FunctionMeta::new(
-            identifier.span.slice_from(&self.source).to_string(),
+            identifier.span.slice_source().to_string(),
             param_count,
             position
         ));
 
         self.functable.push(Function::User {
             meta_id: env.functions.len() as u32 - 1,
-            span: identifier.span,
+            span: identifier.clone().span,
             parameters: param_count,
             empty: false
         });
@@ -322,11 +322,11 @@ impl Compiler {
         Ok(())
     }
 
-    fn mark_function_empty(&mut self, id: Span) {
+    fn mark_function_empty(&mut self, id: &Span) {
         for func in &mut self.functable {
             // Cannot mark native functions as empty
             if let Function::User { span, .. } = func {
-                if span.compare(&id, &self.source) {
+                if span.compare(&id, &self.source.content) {
                     func.mark_empty();
                 }
             }
@@ -335,7 +335,7 @@ impl Compiler {
 
     fn function_call(&mut self, env: &mut Box<Environment>, node: &Box<Ast>) -> Result<(), CompilerErr> {
         if let AstData::FunctionCall { lhs, arguments } = &node.data {
-            let identifier = node.token;
+            let identifier = &node.token;
 
             let anonymous = match lhs.data {
                 // FIXME: Change how identifier works, now that we visit lhs
@@ -362,29 +362,29 @@ impl Compiler {
                 return Ok(());
             }
 
-            match self.find_function(identifier.span) {
+            match self.find_function(&identifier.span) {
                 Some(func) => {
                     if !func.is_empty() {
                         // Only generate the call if the function is not empty
-                        match *func {
+                        match func {
                             Function::User { meta_id, span, ..} => {
-                                let func = &env.functions[meta_id as usize];
-                                let id = span.slice_from(&self.source).to_string();
+                                let func = &env.functions[*meta_id as usize];
+                                let id = span.slice_source().to_string();
 
                                 if func.arg_count != arg_count {
                                     fnerr = Some((id, func.arg_count));
                                 }
     
-                                env.add_call(meta_id);
+                                env.add_call(*meta_id);
                             }
                             Function::Native { identifier, param_count, .. } => {
                                 if let ParamKind::Count(c) = param_count {
-                                    if c != arg_count {
-                                        fnerr = Some((identifier.to_string(), c));
+                                    if *c != arg_count {
+                                        fnerr = Some((identifier.to_string(), *c));
                                     }
     
                                     env.add_call_native(
-                                        c,
+                                        *c,
                                         env.find_constant_func_loc(&identifier) as u32,
                                     );
                                 } else {
@@ -397,9 +397,10 @@ impl Compiler {
                             }
                         }
                     } else {
+                        let token = identifier.clone();
                         self.warning(format!(
                                 "Calling empty function '{}'",
-                                identifier.span.slice_from(&self.source)
+                                token.span.slice_source()
                             ),
                             &identifier
                         );
@@ -407,7 +408,7 @@ impl Compiler {
                 }
     
                 None => {
-                    if let Some(_) = self.table.find_local(&self.source, &identifier.span, true) {
+                    if let Some(_) = self.table.find_local(&self.source.content, &identifier.clone().span, true) {
                         env.add_local_call(arg_count);
                     } else {
                         // Push the call to a stack of unresolved calls
@@ -416,7 +417,7 @@ impl Compiler {
                         env.add_call(0);
         
                         self.unresolved.push(LookAhead {
-                            token: identifier,
+                            token: identifier.clone(),
                             args: arg_count,
                             position,
                         });
@@ -441,12 +442,12 @@ impl Compiler {
     }
 
     fn literal(&mut self, env: &mut Box<Environment>, node: &Box<Ast>) -> Result<(), CompilerErr> {
-        let lexeme = node.token.span;
+        let lexeme = &node.token.span;
 
         match node.token.kind {
             TokenKind::Number => {
                 env.add_constant(Object::Number(
-                    self.source[lexeme.start..lexeme.start + lexeme.len]
+                    self.source.content[lexeme.start..lexeme.start + lexeme.len]
                         .parse::<f32>()
                         .unwrap()
                 ));
@@ -455,7 +456,7 @@ impl Compiler {
             TokenKind::String => {
                 env.add_constant(Object::String(
                     String::from(
-                        &self.source[lexeme.start..lexeme.start + lexeme.len]
+                        &self.source.content[lexeme.start..lexeme.start + lexeme.len]
                     )
                 ));
             }
@@ -555,9 +556,9 @@ impl Compiler {
     }
 
     fn identifier(&mut self, env: &mut Box<Environment>, node: &Box<Ast>) {
-        let identifier = node.token;
+        let identifier = &node.token;
 
-        match self.table.find_local(&self.source, &identifier.span, true) {
+        match self.table.find_local(&self.source.content, &identifier.span, true) {
             Some(local) => {
                 if let Some(func) = &local.func {
                     env.add_get_fn(*func);
@@ -572,7 +573,7 @@ impl Compiler {
 
             None => self.error_no_exit(format!(
                     "Identifier '{}' does not exist",
-                    identifier.span.slice_from(&self.source),
+                    identifier.span.slice_source(),
                 ),
                 &identifier.clone()
             ),
@@ -632,7 +633,7 @@ impl Compiler {
         type_id: &Token,
         is_asrt: bool
     ) -> Result<(), CompilerErr> {
-        let type_name = type_id.span.slice_from(&self.source);
+        let type_name = type_id.span.slice_source();
         match Compiler::check_type(type_name) {
             Some(id) => {
                 if is_asrt {
@@ -665,7 +666,7 @@ impl Compiler {
     }
 
     fn var_declaration(&mut self, env: &mut Box<Environment>, var_decl: &Box<Ast>) -> Result<(), CompilerErr> {
-        let identifier = var_decl.token;
+        let identifier = &var_decl.token;
         if let AstData::VarDeclaration { is_mutable, expression } = &var_decl.data {
             let local = self.register_local(&identifier, *is_mutable, None).unwrap();
     
@@ -689,17 +690,17 @@ impl Compiler {
 
     fn var_assign(&mut self, env: &mut Box<Environment>, node: &Box<Ast>) -> Result<(), CompilerErr> {
         if let AstData::VarAssign { lhs, expression } = &node.data {
-            let identifier = node.token;
+            let identifier = &node.token;
 
             self.visit(env, &lhs)?;
             self.visit(env, &expression)?;
 
-            match self.table.find_local(&self.source, &identifier.span, true) {
+            match self.table.find_local(&self.source.content, &identifier.span, true) {
                 Some(local) => {
                     if !local.mutable {
                         self.error_no_exit(format!(
                                 "Cannot re-assign an immutable value '{}'",
-                                identifier.span.slice_from(&self.source),
+                                identifier.span.slice_source(),
                             ),
                             &identifier
                         );
@@ -714,7 +715,7 @@ impl Compiler {
                 None => {
                     self.error_no_exit(format!(
                             "Cannot assign to variable '{}' as it does not exist",
-                            identifier.span.slice_from(&self.source),
+                            identifier.span.slice_source(),
                         ),
                         &identifier
                     );
@@ -767,7 +768,7 @@ impl Compiler {
 
     fn function(&mut self, env: &mut Box<Environment>, node: &Box<Ast>) -> Result<(), CompilerErr> {
         if let AstData::Function { anonymous, parameters, body } = &node.data {
-            let identifier = node.token;
+            let identifier = &node.token;
             self.push_scope();
 
             let jmp = env.add_jump_op(false);
@@ -787,7 +788,7 @@ impl Compiler {
             // Don't generate pointless returns
             if let AstData::Body(ref statements) = &body.data {
                 if statements.len() == 0 {
-                    self.mark_function_empty(identifier.span);
+                    self.mark_function_empty(&identifier.span);
                     env.add_op(Instruction::ReturnNone);
                 } else if !matches!(statements.last().unwrap().data, AstData::Return(_)) {
                     env.add_op(Instruction::ReturnNone);

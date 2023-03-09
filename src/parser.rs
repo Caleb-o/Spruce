@@ -1,6 +1,6 @@
 use std::{io::Error, fmt::Display, rc::Rc};
 
-use crate::{token::{Token, TokenKind}, lexer::Lexer, ast::{Ast, AstData}};
+use crate::{token::{Token, TokenKind}, lexer::Lexer, ast::{Ast, AstData}, source::Source};
 
 pub struct Parser {
     lexer: Lexer,
@@ -22,7 +22,7 @@ impl Display for ParserErr {
 }
 
 impl Parser {
-    pub fn new(source: Rc<String>, script_mode: bool) -> Result<Self, Error> {
+    pub fn new(source: &Rc<Source>, script_mode: bool) -> Result<Self, Error> {
         let mut lexer = Lexer::new(source)?;
         let token = lexer.next();
 
@@ -76,7 +76,7 @@ impl Parser {
         match self.current.kind {
             TokenKind::Number | TokenKind::String | TokenKind::None
             | TokenKind::True | TokenKind::False => {
-                let token = self.current;
+                let token = self.current.clone();
                 self.consume_here();
                 Ok(Ast::new_literal(token))
             }
@@ -92,7 +92,7 @@ impl Parser {
             TokenKind::Function => self.function(true),
 
             TokenKind::Identifier => {
-                let token = self.current;
+                let token = self.current.clone();
                 self.consume_here();
                 Ok(Ast::new_identifier(token))
             },
@@ -100,7 +100,7 @@ impl Parser {
             _ => Err(self.error(format!(
                 "Unexpected instruction found {:?} '{}'",
                 self.current.kind,
-                self.current.span.slice_from(&self.lexer.source),
+                self.current.span.slice_source(),
             ))),
         }
     }
@@ -123,7 +123,7 @@ impl Parser {
         if self.is_any_of(&[TokenKind::Minus, TokenKind::Bang]) {
             match self.current.kind {
                 TokenKind::Minus | TokenKind::Bang => {
-                    let token = self.current;
+                    let token = self.current.clone();
                     self.consume_here();
                     return Ok(Ast::new_unary_op(token, self.call()?));
                 },
@@ -140,7 +140,7 @@ impl Parser {
         loop {
             match self.current.kind {
                 TokenKind::Star | TokenKind::Slash => {
-                    let token = self.current;
+                    let token = self.current.clone();
                     self.consume_here();
                     node = Ast::new_binary_op(token, node, self.unary()?);
                 }
@@ -158,7 +158,7 @@ impl Parser {
         loop {
             match self.current.kind {
                 TokenKind::Plus | TokenKind::Minus => {
-                    let token = self.current;
+                    let token = self.current.clone();
                     self.consume_here();
                     node = Ast::new_binary_op(token, node, self.factor()?);
                 }
@@ -177,7 +177,7 @@ impl Parser {
             match self.current.kind {
                 TokenKind::Greater |TokenKind::Less
                 | TokenKind::GreaterEqual | TokenKind::LessEqual => {
-                    let token = self.current;
+                    let token = self.current.clone();
                     self.consume_here();
                     node = Ast::new_logical_op(token, node, self.term()?);
                 }
@@ -195,7 +195,7 @@ impl Parser {
         loop {
             match self.current.kind {
                 TokenKind::EqualEqual | TokenKind::NotEqual => {
-                    let token = self.current;
+                    let token = self.current.clone();
                     self.consume_here();
                     node = Ast::new_binary_op(token, node, self.comparison()?);
                 }
@@ -213,7 +213,7 @@ impl Parser {
         if self.is_any_of(&[TokenKind::Is, TokenKind::Ensure]) {
         	let is_assert = self.current.kind == TokenKind::Ensure;
         	self.consume_here();
-        	let type_id = self.current;
+        	let type_id = self.current.clone();
         	self.consume(TokenKind::Identifier, "Expect identifier after is/ensure")?;
             node = Ast::new_type_check(is_assert, node, type_id);
         }
@@ -227,8 +227,8 @@ impl Parser {
         while self.current.kind == TokenKind::Equal {
             self.consume_here();
             node = match node.data {
-                AstData::Identifier => Ast::new_var_assign(node.token, node, self.expression()?),
-                AstData::IndexGetter {..} => Ast::new_index_setter(node.token, node, self.expression()?),
+                AstData::Identifier => Ast::new_var_assign(node.token.clone(), node, self.expression()?),
+                AstData::IndexGetter {..} => Ast::new_index_setter(node.token.clone(), node, self.expression()?),
                 _ => unreachable!(),
             }
         }
@@ -241,7 +241,7 @@ impl Parser {
     }
 
     fn list_literal(&mut self) -> Result<Box<Ast>, ParserErr> {
-        let token = self.current;
+        let token = self.current.clone();
         self.consume_here();
 
         let mut values = Vec::new();
@@ -275,7 +275,7 @@ impl Parser {
         }
         
         self.consume(TokenKind::RParen, "Expect ')' after argument list")?;
-        Ok(Ast::new_function_call(lhs.token, lhs, arguments))
+        Ok(Ast::new_function_call(lhs.token.clone(), lhs, arguments))
     }
 
     fn index(&mut self, expression: Box<Ast>) -> Result<Box<Ast>, ParserErr> {
@@ -283,7 +283,7 @@ impl Parser {
         let index = self.expression()?;
         self.consume(TokenKind::RSquare, "Expect ']' after index expression")?;
         
-        Ok(Ast::new_index_getter(expression.token, expression, index))
+        Ok(Ast::new_index_getter(expression.token.clone(), expression, index))
     }
 
     fn single_statement_block(&mut self) -> Result<Box<Ast>, ParserErr> {
@@ -296,7 +296,7 @@ impl Parser {
     }
 
     fn if_statement(&mut self) -> Result<Box<Ast>, ParserErr> {
-        let token = self.current;
+        let token = self.current.clone();
         self.consume_here();
 
         let condition = self.expression()?;
@@ -317,7 +317,7 @@ impl Parser {
     }
 
     fn for_statement(&mut self) -> Result<Box<Ast>, ParserErr> {
-        let token = self.current;
+        let token = self.current.clone();
         self.consume_here();
         
         let mut variable = None;
@@ -340,7 +340,7 @@ impl Parser {
     }
 
     fn do_while_statement(&mut self) -> Result<Box<Ast>, ParserErr> {
-        let token = self.current;
+        let token = self.current.clone();
         self.consume_here();
 
         let body = self.single_statement_block()?;
@@ -352,7 +352,7 @@ impl Parser {
     }
 
     fn return_statement(&mut self) -> Result<Box<Ast>, ParserErr> {
-        let token = self.current;
+        let token = self.current.clone();
         self.consume_here();
         let mut expression = None;
 
@@ -376,7 +376,7 @@ impl Parser {
 
         // Trailing if statement
         if self.current.kind == TokenKind::If {
-            let token = self.current;
+            let token = self.current.clone();
             self.consume_here();
             node = Ast::new_trailing_if(token, node, self.expression()?);
         }
@@ -390,7 +390,7 @@ impl Parser {
     }
 
     fn body(&mut self) -> Result<Box<Ast>, ParserErr> {
-        let token = self.current;
+        let token = self.current.clone();
         self.consume(TokenKind::LCurly, "Expect '{' to start block body")?;
         let mut statements = Vec::new();
 
@@ -405,13 +405,13 @@ impl Parser {
 
     #[inline]
     fn consume_parameter(&mut self) -> Result<Box<Ast>, ParserErr> {
-        let param_name = self.current;
+        let param_name = self.current.clone();
         let mut type_name = None;
         self.consume(TokenKind::Identifier, "Expected identifier in parameter list")?;
 
         if self.current.kind == TokenKind::Colon {
             self.consume_here();
-            type_name = Some(self.current);
+            type_name = Some(self.current.clone());
             self.consume(TokenKind::Identifier, "Expected type name after identifier")?;
         }
 
@@ -421,7 +421,7 @@ impl Parser {
     fn function(&mut self, is_anonymous: bool) -> Result<Box<Ast>, ParserErr> {
         self.consume_here();
 
-        let identifier = self.current;
+        let identifier = self.current.clone();
         if !is_anonymous {
             self.consume(TokenKind::Identifier, "Expected identifier after 'fn'")?;
         }
@@ -446,7 +446,7 @@ impl Parser {
         } else {None};
 
         let body = if self.current.kind == TokenKind::Equal {
-            let token = self.current;
+            let token = self.current.clone();
             self.consume_here();
             Ast::new_return(token, Some(self.expression()?))
         } else {
@@ -460,7 +460,7 @@ impl Parser {
         let is_mutable = self.current.kind == TokenKind::Var;
         self.consume_here();
 
-        let identifier = self.current;
+        let identifier = self.current.clone();
         self.consume(TokenKind::Identifier, "Expected identifier after 'var'/'val'")?;
 
         // Produce the expression
@@ -474,7 +474,7 @@ impl Parser {
     }
 
     fn outer_statements(&mut self) -> Result<Box<Ast>, ParserErr> {
-        let token = self.current;
+        let token = self.current.clone();
         let mut statements = Vec::new();
 
         while self.current.kind != TokenKind::EndOfFile {
