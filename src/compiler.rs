@@ -235,6 +235,7 @@ impl Compiler {
         None
     }
 
+    #[inline]
     fn find_function(&self, span: &Span) -> Option<&Function> {
         self.find_function_str(span.slice_source())
     }

@@ -18,11 +18,13 @@ impl Span {
 		}
 	}
 	
+	#[inline]
 	pub fn slice_source<'a>(&'a self) -> &'a str {
 		&self.source.content[self.start..self.start + self.len]
 	}
 	
 	pub fn compare(&self, other: &Span, source: &str) -> bool {
+		// TODO: Reconsider the use of aend/bend
 		let aend = self.start + self.len;
 		let bend = other.start + other.len;
 
