@@ -79,10 +79,12 @@ fn main() {
 
 fn compile(file_path: String, source: String, script_mode: bool) -> Result<Box<Environment>, String> {
     let source = Rc::new(Source::new(file_path, source));
+
     let mut parser = match Parser::new(&source, script_mode) {
         Ok(c) => c,
         Err(e) => return Err(e.to_string()),
     };
+
     let program = match parser.run() {
         Ok(p) => p,
         Err(e) => return Err(e.to_string()),
