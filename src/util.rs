@@ -23,7 +23,7 @@ pub fn compile_source(file_path: String, source: String, script_mode: bool) -> R
     let mut compiler = Compiler::new(source);
     match compiler.run(program, script_mode) {
         Ok(env) => {
-            println!("\x1b[32mFinished\x1b[0m Compilation took {:.3} seconds", timer.elapsed().as_secs_f32());
+            println!("\x1b[32mFinished\x1b[0m compilation in {:.3} seconds", timer.elapsed().as_secs_f32());
             Ok(env)
         },
         Err(e) => Err(e.into()),

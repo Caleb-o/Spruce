@@ -344,14 +344,12 @@ impl Compiler {
 
     fn function_call(&mut self, env: &mut Box<Environment>, node: &Box<Ast>) -> Result<(), CompilerErr> {
         if let AstData::FunctionCall { lhs, arguments } = &node.data {
-            let identifier = &node.token;
-
-            let anonymous = match lhs.data {
+            let (identifier, anonymous) = match lhs.data {
                 // FIXME: Change how identifier works, now that we visit lhs
                 AstData::Identifier => {
                     if let None = self.find_function(&lhs.token.span) {
                         match self.table.find_local(&lhs.token.span, true) {
-                            Some(local) => local.func.is_none(),
+                            Some(local) => (Some(lhs.token.clone()), local.func.is_none()),
                             None => {
                                 self.error_no_exit(format!(
                                         "Unknown identifier found '{}'",
@@ -359,20 +357,20 @@ impl Compiler {
                                     ), 
                                     &lhs.token
                                 );
-                                false
+                                (Some(lhs.token.clone()), false)
                             }
                         }
                     } else {
-                        false
+                        (Some(lhs.token.clone()), false)
                     }
                 },
                 AstData::Function { anonymous, .. } => {
                     self.visit(env, &lhs)?;
-                    anonymous
+                    (Some(lhs.token.clone()), anonymous)
                 },
                 _ => {
                     self.visit(env, &lhs)?;
-                    false
+                    (None, false)
                 },
             };
             
@@ -394,79 +392,84 @@ impl Compiler {
                 return Ok(());
             }
 
-            match self.find_function(&identifier.span) {
-                Some(func) => {
-                    if !func.is_empty() {
-                        // Only generate the call if the function is not empty
-                        match func {
-                            Function::User { meta_id, span, ..} => {
-                                let func = &env.functions[*meta_id as usize];
-                                let id = span.slice_source().to_string();
-
-                                if func.arg_count != arg_count {
-                                    fnerr = Some((id, func.arg_count));
-                                }
+            if let Some(identifier) = identifier {
+                match self.find_function(&identifier.span) {
+                    Some(func) => {
+                        if !func.is_empty() {
+                            // Only generate the call if the function is not empty
+                            match func {
+                                Function::User { meta_id, span, ..} => {
+                                    let func = &env.functions[*meta_id as usize];
+                                    let id = span.slice_source().to_string();
     
-                                env.add_call(*meta_id);
-                            }
-                            Function::Native { identifier, param_count, .. } => {
-                                if let ParamKind::Count(c) = param_count {
-                                    if *c != arg_count {
-                                        fnerr = Some((identifier.to_string(), *c));
+                                    if func.arg_count != arg_count {
+                                        fnerr = Some((id, func.arg_count));
                                     }
-    
-                                    env.add_call_native(
-                                        *c,
-                                        env.find_constant_func_loc(&identifier) as u32,
-                                    );
-                                } else {
-                                    // Add call with N arguments
-                                    env.add_call_native(
-                                        arg_count,
-                                        env.find_constant_func_loc(&identifier) as u32,
-                                    );
+        
+                                    env.add_call(*meta_id);
+                                }
+                                Function::Native { identifier, param_count, .. } => {
+                                    if let ParamKind::Count(c) = param_count {
+                                        if *c != arg_count {
+                                            fnerr = Some((identifier.to_string(), *c));
+                                        }
+        
+                                        env.add_call_native(
+                                            *c,
+                                            env.find_constant_func_loc(&identifier) as u32,
+                                        );
+                                    } else {
+                                        // Add call with N arguments
+                                        env.add_call_native(
+                                            arg_count,
+                                            env.find_constant_func_loc(&identifier) as u32,
+                                        );
+                                    }
                                 }
                             }
+                        } else {
+                            let token = identifier.clone();
+                            self.warning(format!(
+                                    "Calling empty function '{}'",
+                                    token.span.slice_source()
+                                ),
+                                &identifier
+                            );
                         }
-                    } else {
-                        let token = identifier.clone();
-                        self.warning(format!(
-                                "Calling empty function '{}'",
-                                token.span.slice_source()
-                            ),
-                            &identifier
-                        );
                     }
-                }
-    
-                None => {
-                    if let Some(_) = self.table.find_local(&identifier.clone().span, true) {
-                        env.add_local_call(arg_count);
-                    } else {
-                        // Push the call to a stack of unresolved calls
-                        // They will be filled in at the end, if they exist
-                        let position = env.op_here() as u32;
-                        env.add_call(0);
         
-                        self.unresolved.push(LookAhead {
-                            token: identifier.clone(),
-                            args: arg_count,
-                            position,
-                        });
-    
+                    None => {
+                        if let Some(_) = self.table.find_local(&identifier.clone().span, true) {
+                            env.add_local_call(arg_count);
+                        } else {
+                            // Push the call to a stack of unresolved calls
+                            // They will be filled in at the end, if they exist
+                            let position = env.op_here() as u32;
+                            env.add_call(0);
+            
+                            self.unresolved.push(LookAhead {
+                                token: identifier.clone(),
+                                args: arg_count,
+                                position,
+                            });
+        
+                        }
                     }
                 }
-            }
-    
-            // Display error if it occured
-            if fnerr.is_some() {
-                let fnerr = fnerr.unwrap();
-                self.error_no_exit(format!(
-                        "Function '{}' expected {} argument(s), but received {arg_count}",
-                        fnerr.0, fnerr.1,
-                    ),
-                    &identifier
-                );
+
+                // Display error if it occured
+                if fnerr.is_some() {
+                    let fnerr = fnerr.unwrap();
+                    self.error_no_exit(format!(
+                            "Function '{}' expected {} argument(s), but received {arg_count}",
+                            fnerr.0, fnerr.1,
+                        ),
+                        &identifier
+                    );
+                }
+            } else {
+                // Assume another call
+                env.add_local_call(arg_count);
             }
         }
         

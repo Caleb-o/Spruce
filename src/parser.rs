@@ -267,6 +267,7 @@ impl Parser {
     }
 
     fn function_call(&mut self, lhs: Box<Ast>) -> Result<Box<Ast>, ParserErr> {
+        let token = self.current.clone();
         self.consume(TokenKind::LParen, "Expect '(' after function identifier")?;
         
         // We track arguments, since native functions can have N..Any parameters
@@ -281,7 +282,7 @@ impl Parser {
         }
         
         self.consume(TokenKind::RParen, "Expect ')' after argument list")?;
-        Ok(Ast::new_function_call(lhs.token.clone(), lhs, arguments))
+        Ok(Ast::new_function_call(token, lhs, arguments))
     }
 
     fn index(&mut self, expression: Box<Ast>) -> Result<Box<Ast>, ParserErr> {
