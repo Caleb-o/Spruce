@@ -817,6 +817,9 @@ impl Compiler {
                 self.evaluate_params(parameters, env)?;
             } else {
                 self.register_function(identifier, start_loc, parameters, env)?;
+                if !self.table.is_global() {
+                    self.table.mark_depth_limit();
+                }
             }
             
             match &body.data {
