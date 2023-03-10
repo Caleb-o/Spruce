@@ -546,27 +546,18 @@ impl Compiler {
     
             // Evaluate condition
             let start = env.op_here() as u32;
-            
             self.visit(env, &condition)?;
-    
+            
             let before_block = env.add_jump_op(true);
-            let before_iter = if let Some(increment) = increment {
-                let before_iter = env.add_jump_op(false);
-                let after_jmp = env.op_here();
-                self.visit(env, &increment)?;
-                
-                let after_pos = env.add_jump_op(false);
-                env.patch_jump_op_to(after_pos as usize, start);
-                
-                env.patch_jump_op(before_iter);
-    
-                after_jmp as u32
-            } else {start as u32};
-    
             self.visit(env, &body)?;
+    
+            if let Some(increment) = increment {
+                self.visit(env, increment)?;
+            }
+            
             // Return back before the condition to re-evaluate
             let jmp = env.add_jump_op(false);
-            env.patch_jump_op_to(jmp as usize, before_iter);
+            env.patch_jump_op_to(jmp as usize, start);
     
             env.patch_jump_op(before_block);
             
@@ -914,10 +905,11 @@ impl Compiler {
     fn check_type(type_name: &str) -> Option<u8> {
         match type_name {
             "any" => Some(0),
-            "number" => Some(1),
-            "string" => Some(2),
-            "bool" => Some(3),
-            "list" => Some(4),
+            "none" => Some(1),
+            "number" => Some(2),
+            "string" => Some(3),
+            "bool" => Some(4),
+            "list" => Some(5),
             _ => None,
         }
     }

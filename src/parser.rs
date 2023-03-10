@@ -214,7 +214,15 @@ impl Parser {
         	let is_assert = self.current.kind == TokenKind::Ensure;
         	self.consume_here();
         	let type_id = self.current.clone();
-        	self.consume(TokenKind::Identifier, "Expect identifier after is/ensure")?;
+            match self.current.kind {
+                TokenKind::Identifier | TokenKind::None => self.consume_here(),
+                _ => {
+                    self.consume(TokenKind::Identifier, &format!(
+                        "Expect identifier after is/ensure, but found '{}'",
+                        type_id.span.slice_source()
+                    ))?;
+                }
+            }
             node = Ast::new_type_check(is_assert, node, type_id);
         }
 
@@ -365,7 +373,15 @@ impl Parser {
 
     fn statement(&mut self) -> Result<Box<Ast>, ParserErr> {
         let mut node = match self.current.kind {
-            TokenKind::Function => self.function()?,
+            TokenKind::Function => {
+                let func = self.function()?;
+                if let AstData::Function { body, .. } = &func.data {
+                    if let AstData::Return(_) = &body.data {
+                        self.consume(TokenKind::SemiColon, "Expect ';' after statement")?;
+                    }
+                }
+                func
+            }
             TokenKind::If => self.if_statement()?,
             TokenKind::For => self.for_statement()?,
             TokenKind::Do => self.do_while_statement()?,
@@ -383,7 +399,7 @@ impl Parser {
         }
 
         match node.data {
-            AstData::IfStatement {..} | AstData::ForStatement {..} | AstData::Body(_) => {}
+            AstData::Function {..} | AstData::IfStatement {..} | AstData::ForStatement {..} | AstData::Body(_) => {}
             _ => self.consume(TokenKind::SemiColon, "Expect ';' after statement")?,
         }
         
@@ -413,7 +429,11 @@ impl Parser {
         if self.current.kind == TokenKind::Colon {
             self.consume_here();
             type_name = Some(self.current.clone());
-            self.consume(TokenKind::Identifier, "Expected type name after identifier")?;
+            match self.current.kind {
+                TokenKind::Identifier | TokenKind::None => self.consume_here(),
+                _ => self.consume(TokenKind::Identifier, "Expected type name after identifier")?,
+            }
+            self.consume(TokenKind::Identifier, "")?;
         }
 
         Ok(Ast::new_parameter(param_name, type_name))
@@ -496,8 +516,13 @@ impl Parser {
         while self.current.kind != TokenKind::EndOfFile {
             match self.current.kind {
                 TokenKind::Function => {
-                    statements.push(self.function()?);
-                    self.consume(TokenKind::SemiColon, "Expect ';' after statement")?;
+                    let func = self.function()?;
+                    if let AstData::Function { body, .. } = &func.data {
+                        if let AstData::Return(_) = &body.data {
+                            self.consume(TokenKind::SemiColon, "Expect ';' after statement")?;
+                        }
+                    }
+                    statements.push(func);
                 }
                 TokenKind::Var | TokenKind::Val => {
                     statements.push(self.var_declaration()?);

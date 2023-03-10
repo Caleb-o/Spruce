@@ -89,7 +89,7 @@ impl Stepper {
             match io::stdin().read_line(buffer) {
                 Ok(_) => {
                     match &buffer.trim()[0..] {
-                        "f" | "forward" => return Operation::StepForward,
+                        "f" | "forward" | "" => return Operation::StepForward,
                         "b" | "back" => return Operation::StepBack,
                         "r" | "reset" => return Operation::Reset,
                         "d" | "dump" => return Operation::Dump,

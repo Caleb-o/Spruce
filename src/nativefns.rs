@@ -1,4 +1,4 @@
-use std::{rc::Rc, time::Duration, thread, fs};
+use std::rc::Rc;
 
 use crate::{compiler::Compiler, environment::Environment, instructions::ParamKind, object::Object, vm::{RuntimeErr, VM}};
 
@@ -37,34 +37,6 @@ pub fn register_native_functions(compiler: &mut Compiler, env: &mut Box<Environm
         Ok(())
     }));
 
-    compiler.add_fn(env, "sleep", ParamKind::Count(1), false, Rc::new(|vm, _| {
-        if let Object::Number(n) = vm.drop()? {
-            thread::sleep(Duration::from_millis(n as u64));
-        }
-        vm.push(Object::None);
-        Ok(())
-    }));
-
-    compiler.add_fn(env, "read_file", ParamKind::Count(1), true, Rc::new(|vm, _| {
-        if let Object::String(s) = vm.drop()? {
-            match fs::read_to_string(s) {
-                Ok(content) => {
-                    vm.push(Object::String(content));
-                    vm.push(Object::Boolean(true));
-                },
-                Err(_) => {
-                    vm.push(Object::None);
-                    vm.push(Object::Boolean(false));
-                },
-            }
-        } else {
-            vm.warning(format!("read_file expected a string but received {}", vm.peek()));
-            vm.push(Object::None);
-        }
-
-        Ok(())
-    }));
-
     compiler.add_fn(env, "len", ParamKind::Count(1), true, Rc::new(|vm, _args| {
         match vm.drop()? {
             Object::String(s) => vm.push(Object::Number(s.len() as f32)),
@@ -75,20 +47,6 @@ pub fn register_native_functions(compiler: &mut Compiler, env: &mut Box<Environm
             },
         }
 
-        Ok(())
-    }));
-
-    compiler.add_fn(env, "dbg_stack_size", ParamKind::Count(0), false, Rc::new(|vm, _args| {
-        println!("Stack size {}", vm.stack_size());
-        vm.push(Object::None);
-        Ok(())
-    }));
-
-    compiler.add_fn(env, "dbg_stack_print", ParamKind::Count(0), false, Rc::new(|vm, _args| {
-        for (index, item) in vm.get_stack().iter().enumerate() {
-            println!("{index:0>4} {item}");
-        }
-        vm.push(Object::None);
         Ok(())
     }));
 }

@@ -59,11 +59,6 @@ impl VM {
 	}
 
 	#[inline]
-	pub fn get_stack(&self) -> &Vec<Object> {
-		&self.stack
-	}
-
-	#[inline]
 	pub fn drop(&mut self) -> Result<Object, RuntimeErr> {
 		match self.stack.pop() {
 			Some(o) => Ok(o),
@@ -486,9 +481,9 @@ impl VM {
 			Instruction::CallLocal => {
 				let args = self.get_byte();
 				let distance = self.ip_distance() as u32;
-				let func = self.drop()?;
+				let func = self.peek();
 
-				match func {
+				match *func {
 					Object::Function(meta_id) => {
 						let meta = &self.env.functions[meta_id as usize];
 	
@@ -519,7 +514,8 @@ impl VM {
 						self.frames.push(CallFrame::new(
 							None,
 							distance,
-							self.stack.len() as u32 - args as u32,
+							// -1 since we peek the function value now, instead of pop
+							self.stack.len() as u32 - args as u32 - 1,
 						));
 						self.set_ip(location as usize);
 						return Ok(());
@@ -643,7 +639,7 @@ impl VM {
 				if let Some(id) = frame.identifier {
 					println!("at {}()", self.env.functions[id as usize].identifier);
 				} else {
-					println!("at func()");
+					println!("at <anon>()");
 				}
 			});
 	}
@@ -732,10 +728,11 @@ impl VM {
 	fn get_type_match(&self, item: &Object, type_id: u8) -> bool {
 		match type_id {
 			0 => true,
-			1 => matches!(item, Object::Number(_)),
-			2 => matches!(item, Object::String(_)),
-			3 => matches!(item, Object::Boolean(_)),
-			4 => matches!(item, Object::List(_)),
+			1 => matches!(item, Object::None),
+			2 => matches!(item, Object::Number(_)),
+			3 => matches!(item, Object::String(_)),
+			4 => matches!(item, Object::Boolean(_)),
+			5 => matches!(item, Object::List(_)),
 			_ => false,
 		}
 	}
