@@ -50,6 +50,7 @@ impl Span {
 #[repr(u8)]
 pub enum TokenKind {
 	Plus, Minus, Star, Slash,
+	PlusEqual, MinusEqual, StarEqual, SlashEqual,
 	Equal, EqualEqual, Bang, NotEqual,
 	Greater, GreaterEqual, Less, LessEqual,
 	

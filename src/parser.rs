@@ -230,12 +230,27 @@ impl Parser {
     fn assignment(&mut self) -> Result<Box<Ast>, ParserErr> {
         let mut node = self.type_equality()?;
 
-        while self.current.kind == TokenKind::Equal {
-            self.consume_here();
-            node = match node.data {
-                AstData::Identifier => Ast::new_var_assign(node.token.clone(), node, self.expression()?),
-                AstData::IndexGetter {..} => Ast::new_index_setter(node.token.clone(), node, self.expression()?),
-                _ => unreachable!(),
+        loop {
+            node = match self.current.kind {
+                TokenKind::Equal => {
+                    self.consume_here();
+                    match node.data {
+                        AstData::Identifier => Ast::new_var_assign(node.token.clone(), node, self.expression()?),
+                        AstData::IndexGetter {..} => Ast::new_index_setter(node.token.clone(), node, self.expression()?),
+                        _ => unreachable!(),
+                    }
+                }
+
+                TokenKind::PlusEqual | TokenKind::MinusEqual
+                | TokenKind::StarEqual | TokenKind::SlashEqual => {
+                    let operator = self.current.clone();
+                    self.consume_here();
+                    match node.data {
+                        AstData::Identifier => Ast::new_var_assign_equal(node.token.clone(), operator, node, self.expression()?),
+                        _ => unreachable!(),
+                    }
+                }
+                _ => break,
             }
         }
 

@@ -25,6 +25,7 @@ pub enum AstData {
 
     VarDeclaration { is_mutable: bool, expression: Option<Box<Ast>> },
     VarAssign { lhs: Box<Ast>, expression: Box<Ast> },
+    VarAssignEqual { operator: Token, lhs: Box<Ast>, expression: Box<Ast> },
 
     IfStatement { condition: Box<Ast>, true_body: Box<Ast>, false_body: Option<Box<Ast>> },
     ForStatement { variable: Option<Box<Ast>>, condition: Box<Ast>, increment: Option<Box<Ast>>, body: Box<Ast> },
@@ -91,6 +92,13 @@ impl Ast {
         Box::new(Self {
             token,
             data: AstData::VarAssign { lhs, expression },
+        })
+    }
+
+    pub fn new_var_assign_equal(token: Token, operator: Token, lhs: Box<Ast>, expression: Box<Ast>) -> Box<Self> {
+        Box::new(Self {
+            token,
+            data: AstData::VarAssignEqual { operator, lhs, expression },
         })
     }
 

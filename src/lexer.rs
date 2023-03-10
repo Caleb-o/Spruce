@@ -44,10 +44,10 @@ impl Lexer {
 			'"' => self.read_string('"'),
 			'\'' => self.read_string('\''),
 
-			'+' => self.make_char_token(TokenKind::Plus),
-			'-' => self.make_char_token(TokenKind::Minus),
-			'*' => self.make_char_token(TokenKind::Star),
-			'/' => self.make_char_token(TokenKind::Slash),
+			'+' => self.make_char_token_matches(TokenKind::Plus, '=', TokenKind::PlusEqual),
+			'-' => self.make_char_token_matches(TokenKind::Minus, '=', TokenKind::MinusEqual),
+			'*' => self.make_char_token_matches(TokenKind::Star, '=', TokenKind::StarEqual),
+			'/' => self.make_char_token_matches(TokenKind::Slash, '=', TokenKind::SlashEqual),
 
 			'=' => self.make_char_token_matches(TokenKind::Equal, '=', TokenKind::EqualEqual),
 			'>' => self.make_char_token_matches(TokenKind::Greater, '=', TokenKind::GreaterEqual),

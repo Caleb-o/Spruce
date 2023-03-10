@@ -776,6 +776,54 @@ impl Compiler {
         Ok(())
     }
 
+    fn var_assign_equal(&mut self, env: &mut Box<Environment>, node: &Box<Ast>) -> Result<(), CompilerErr> {
+        if let AstData::VarAssignEqual { operator, lhs, expression } = &node.data {
+            let identifier = &node.token;
+
+            self.visit(env, &lhs)?;
+            self.visit(env, &expression)?;
+
+            match self.table.find_local(&identifier.span, true) {
+                Some(local) => {
+                    if !local.mutable {
+                        self.error_no_exit(format!(
+                                "Cannot re-assign an immutable value '{}'",
+                                identifier.span.slice_source(),
+                            ),
+                            &identifier
+                        );
+                    } else {
+                        match operator.kind {
+                            TokenKind::PlusEqual    => env.add_op(Instruction::Add),
+                            TokenKind::MinusEqual   => env.add_op(Instruction::Sub),
+                            TokenKind::StarEqual    => env.add_op(Instruction::Mul),
+                            TokenKind::SlashEqual   => env.add_op(Instruction::Div),
+                            _ => unreachable!(),
+                        }
+
+                        env.add_local(if local.is_global()
+                            { Instruction::SetGlobal }
+                            else { Instruction::SetLocal },
+                            local.position
+                        );
+
+                        // env.add_op(Instruction::Pop);
+                    }
+                }
+                None => {
+                    self.error_no_exit(format!(
+                            "Cannot assign to variable '{}' as it does not exist or is not in the correct context",
+                            identifier.span.slice_source(),
+                        ),
+                        &identifier
+                    );
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     fn return_statement(&mut self, env: &mut Box<Environment>, node: &Box<Ast>) -> Result<(), CompilerErr> {
         if let AstData::Return(expr) = &node.data {
             match expr {
@@ -925,6 +973,7 @@ impl Compiler {
             
             AstData::VarDeclaration {..} => self.var_declaration(env, node)?,
             AstData::VarAssign {..} => self.var_assign(env, node)?,
+            AstData::VarAssignEqual {..} => self.var_assign_equal(env, node)?,
             AstData::Return(_) => self.return_statement(env, node)?,
             AstData::Body(_) => self.body(env, node, true)?,
             AstData::TypeCheck {..} => self.type_check(env, node)?,
