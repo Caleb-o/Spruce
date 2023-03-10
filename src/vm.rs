@@ -476,7 +476,7 @@ impl VM {
 			Instruction::GetFn => {
 				let location = self.get_long();
 				self.push(Object::Function(location));
-			},
+			}
 
 			Instruction::CallLocal => {
 				let args = self.get_byte();
@@ -526,7 +526,7 @@ impl VM {
 						func.get_type_name()
 					))),
 				}
-			},
+			}
 			
 			Instruction::Call => {
 				let meta_id = self.get_long();
@@ -541,7 +541,7 @@ impl VM {
 				));
 				self.set_ip(meta.location as usize);
 				return Ok(());
-			},
+			}
 
 			Instruction::CallNative => {
 				let args = self.get_byte();
@@ -563,13 +563,13 @@ impl VM {
 						_ = self.frames.pop();
 					}
 				}
-			},
+			}
 
 			Instruction::TypeCheck => {
 				let item = self.drop()?;
 				let type_id = self.get_byte();
 				self.push(Object::Boolean(self.get_type_match(&item, type_id)));
-			},
+			}
 
 			Instruction::TypeCheckAssert => {
 				let type_id = self.get_byte();
@@ -582,7 +582,7 @@ impl VM {
 						item.get_type_name(),
 					)));
 				}
-			},
+			}
 
 			Instruction::ReturnNone => {
 				let frame = self.frames.pop().unwrap();
@@ -591,7 +591,7 @@ impl VM {
 				// Remove all end values, except return
 				self.stack.drain(frame.stack_start as usize..self.stack.len());
 				self.stack.push(Object::None);
-			},
+			}
 
 			Instruction::Return => {
 				let frame = self.frames.pop().unwrap();
@@ -599,7 +599,7 @@ impl VM {
 					
 				// Remove all end values, except return
 				self.stack.drain(frame.stack_start as usize..self.stack.len()-1);
-			},
+			}
 
 			Instruction::None => self.push(Object::None),
 			Instruction::True => self.push(Object::Boolean(true)),

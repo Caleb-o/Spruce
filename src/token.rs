@@ -63,7 +63,7 @@ pub enum TokenKind {
 	Number, String, True, False, None,
 	
 	If, Else, For, Val, Var,
-	Do, While,
+	Do, While, Include,
 	Function, Struct, Is, Return,
 	Ensure, Identifier,
 	

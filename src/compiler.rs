@@ -1,4 +1,4 @@
-use std::{fmt::Display, rc::Rc};
+use std::rc::Rc;
 
 use crate::{token::{Span, Token, TokenKind}, environment::{Environment, ConstantValue, FunctionMeta}, instructions::{Instruction, ParamKind}, nativefns::{self, NativeFunction}, symtable::SymTable, ast::{Ast, AstData}, object::Object, source::Source};
 
@@ -51,12 +51,9 @@ pub struct Compiler {
     functable: Vec<Function>,
 }
 
-pub struct CompilerErr(pub String);
-
-impl Display for CompilerErr {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
+pub struct CompilerErr {
+    pub file_path: String,
+    pub message: String,
 }
 
 impl Compiler {
@@ -74,7 +71,7 @@ impl Compiler {
         let mut env = Box::new(Environment::new());
         nativefns::register_native_functions(self, &mut env);
 
-        self.body(&mut env, &program, false)?;
+        self.program(&mut env, &program)?;
 
         if !script_mode {
             match self.find_function_str("main") {
@@ -93,7 +90,7 @@ impl Compiler {
         self.resolve_function_calls(&mut env);
 
         if self.had_error {
-            return Err(CompilerErr("Error(s) occured".into()));
+            return Err(self.error("Error(s) occured".into()));
         }
 
         Ok(env)
@@ -118,6 +115,10 @@ impl Compiler {
 
         // Add to environment
         env.add_constant_function(ConstantValue::Func(function));
+    }
+
+    fn error(&mut self, message: String) -> CompilerErr {
+        CompilerErr { file_path: (*self.source.file_path).clone(), message }
     }
 
     #[inline]
@@ -187,11 +188,6 @@ impl Compiler {
                 );
             }
         }
-    }
-
-    // FIXME: Replace these logging functions with a logger
-    fn error(&self, msg: String) -> CompilerErr {
-        CompilerErr(format!("[\x1b[31mError\x1b[0m] {msg}"))
     }
 
     fn error_no_exit(&mut self, msg: String, token: &Token) {
@@ -278,7 +274,7 @@ impl Compiler {
                 ),
                 &identifier
             );
-            return Err(CompilerErr(format!(
+            return Err(self.error(format!(
                 "Function with identifier '{}' already exists",
                 identifier.span.slice_source()
             )));
@@ -541,15 +537,15 @@ impl Compiler {
             self.push_scope();
     
             if let Some(var_decl) = variable {
-                self.visit(env, &var_decl)?;
+                self.var_declaration(env, &var_decl)?;
             }
     
             // Evaluate condition
             let start = env.op_here() as u32;
-            self.visit(env, &condition)?;
+            self.visit(env, condition)?;
             
             let before_block = env.add_jump_op(true);
-            self.visit(env, &body)?;
+            self.visit(env, body)?;
     
             if let Some(increment) = increment {
                 self.visit(env, increment)?;
@@ -558,7 +554,6 @@ impl Compiler {
             // Return back before the condition to re-evaluate
             let jmp = env.add_jump_op(false);
             env.patch_jump_op_to(jmp as usize, start);
-    
             env.patch_jump_op(before_block);
             
             self.pop_scope();
@@ -765,6 +760,20 @@ impl Compiler {
 
         Ok(())
     }
+    
+    fn program(&mut self, env: &mut Box<Environment>, node: &Box<Ast>) -> Result<(), CompilerErr> {
+        let old_source = Rc::clone(&self.source);
+
+        if let AstData::Program { source, body } = &node.data {
+            self.source = Rc::clone(&source);
+            for node in body {
+                self.visit(env, node)?;
+            }
+        }
+
+        self.source = old_source;
+        Ok(())
+    }
 
     fn body(&mut self, env: &mut Box<Environment>, node: &Box<Ast>, new_scope: bool) -> Result<(), CompilerErr> {
         if let AstData::Body(ref statements) = &node.data {
@@ -895,6 +904,8 @@ impl Compiler {
             AstData::ExpressionStatement(_) => self.expression_statement(env, node)?,
             AstData::IndexGetter {..} => self.index_getter(env, node)?,
             AstData::IndexSetter {..} => self.index_setter(env, node)?,
+
+            AstData::Program {..} => self.program(env, node)?,
 
             _ => return Err(self.error(format!("Unknown node: {:#?}", *node))),
         }

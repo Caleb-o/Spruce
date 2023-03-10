@@ -1,6 +1,6 @@
-use std::{io::Error, fmt::Display, rc::Rc};
+use std::{rc::Rc, path::Path, fs, io::Error};
 
-use crate::{token::{Token, TokenKind}, lexer::Lexer, ast::{Ast, AstData}, source::Source};
+use crate::{token::{Token, TokenKind}, lexer::Lexer, ast::{Ast, AstData}, source::Source, util};
 
 pub struct Parser {
     lexer: Lexer,
@@ -9,16 +9,12 @@ pub struct Parser {
     had_error: bool,
 }
 
+#[derive(Debug)]
 pub struct ParserErr {
-    message: String,
-    line: u32,
-    column: u16,
-}
-
-impl Display for ParserErr {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} [{}:{}]", self.message, self.line, self.column)
-    }
+    pub file_path: String,
+    pub message: String,
+    pub line: u32,
+    pub column: u16,
 }
 
 impl Parser {
@@ -38,6 +34,7 @@ impl Parser {
         let program = self.outer_statements();
         if self.had_error {
             Err(ParserErr {
+                file_path: (*self.lexer.source.file_path).clone(),
                 message: "Encountered an error while parsing".into(),
                 line: self.current.line,
                 column: self.current.column,
@@ -47,9 +44,10 @@ impl Parser {
         }
     }
     
-    fn error(&self, msg: String) -> ParserErr {
+    fn error(&self, message: String) -> ParserErr {
         ParserErr {
-            message: format!("[\x1b[31mError\x1b[0m] {msg}"),
+            file_path: (*self.lexer.source.file_path).clone(),
+            message,
             line: self.current.line,
             column: self.current.column,
         }
@@ -298,7 +296,6 @@ impl Parser {
         match self.current.kind {
             TokenKind::If => self.if_statement(),
             TokenKind::For => self.for_statement(),
-            TokenKind::Do => self.do_while_statement(),
             _ => self.body(),
         }
     }
@@ -377,7 +374,7 @@ impl Parser {
                 let func = self.function()?;
                 if let AstData::Function { body, .. } = &func.data {
                     if let AstData::Return(_) = &body.data {
-                        self.consume(TokenKind::SemiColon, "Expect ';' after statement")?;
+                        self.consume(TokenKind::SemiColon, "Expect ';' after function statement")?;
                     }
                 }
                 func
@@ -481,6 +478,45 @@ impl Parser {
         Ok(Ast::new_function(token, true, parameters, body))
     }
 
+    fn include(&mut self) -> Result<Box<Ast>, ParserErr> {
+        self.consume_here();
+        match self.current.kind {
+            TokenKind::Identifier | TokenKind::String => {
+                let include = if self.current.kind == TokenKind::Identifier {
+                    todo!("Import standard library item");
+                } else {
+                    let include_path = Path::new(&*self.lexer.source.file_path).parent().unwrap();
+                    let include_path = include_path.join(self.current.span.slice_source());
+
+                    let include_str = String::from(include_path.to_str().unwrap());
+
+                    if !Path::exists(&include_path) {
+                        return Err(self.error(format!(
+                            "Include path does not exist '{}'",
+                            include_str.clone()
+                        )))
+                    }
+
+                    let source = fs::read_to_string(&include_path).unwrap();
+                    let program = match util::run_parser(include_str.clone(), source, self.script_mode) {
+                        Ok((_, program)) => program,
+                        Err(e) => return Err(self.error(format!("Could not parse '{}' because {}", include_str, e.message))),
+                    };
+
+                    program
+                };
+
+                self.consume_here();
+
+                Ok(include)
+            },
+            _ => Err(self.error(format!(
+                "Include expected string or identifier, but recieved '{}'",
+                self.current.span.slice_source()
+            ))),
+        }
+    }
+
     fn function(&mut self) -> Result<Box<Ast>, ParserErr> {
         self.consume_here();
 
@@ -515,18 +551,22 @@ impl Parser {
 
         while self.current.kind != TokenKind::EndOfFile {
             match self.current.kind {
+                TokenKind::Include => {
+                    statements.push(self.include()?);
+                    self.consume(TokenKind::SemiColon, "Expect ';' after include statement")?;
+                }
                 TokenKind::Function => {
                     let func = self.function()?;
                     if let AstData::Function { body, .. } = &func.data {
                         if let AstData::Return(_) = &body.data {
-                            self.consume(TokenKind::SemiColon, "Expect ';' after statement")?;
+                            self.consume(TokenKind::SemiColon, "Expect ';' after function statement")?;
                         }
                     }
                     statements.push(func);
                 }
                 TokenKind::Var | TokenKind::Val => {
                     statements.push(self.var_declaration()?);
-                    self.consume(TokenKind::SemiColon, "Expect ';' after statement")?;
+                    self.consume(TokenKind::SemiColon, "Expect ';' after variable statement")?;
                 }
                 _ => {
                     if self.script_mode {
@@ -541,6 +581,6 @@ impl Parser {
             }
         }
 
-        Ok(Ast::new_body(token, statements))
+        Ok(Ast::new_program(token, Rc::clone(&self.lexer.source), statements))
     }
 }
