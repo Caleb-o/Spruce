@@ -19,22 +19,42 @@ impl Local {
 
 pub struct SymTable {
 	depth: u16,
+	depth_limit: u16,
+	marked: bool,
 	locals: Vec<Local>,
 }
 
 impl SymTable {
 	pub fn new() -> Self {
-		Self { depth: 0, locals: Vec::new() }
+		Self { depth: 0, depth_limit: 0, marked: false, locals: Vec::new() }
 	}
 
+	#[inline]
 	pub fn new_scope(&mut self) {
 		self.depth += 1;
 	}
 
+	#[inline]
 	pub fn is_global(&self) -> bool {
 		self.depth == GLOBAL_DEPTH
 	}
 
+	#[inline]
+	pub fn mark_depth_limit(&mut self) {
+		if self.marked {
+			return;
+		}
+		self.marked = true;
+		self.depth_limit = self.depth;
+	}
+
+	#[inline]
+	pub fn reset_mark(&mut self) {
+		self.marked = false;
+		self.depth_limit = 0;
+	}
+
+	#[inline]
 	pub fn close_scope(&mut self) {
 		assert!(self.depth > 0);
         let start = self.count_scope() as usize;
@@ -61,7 +81,7 @@ impl SymTable {
 
     pub fn find_local(&self, span: &Span, anyscope: bool) -> Option<&Local> {
         for local in self.locals.iter().rev() {
-			if !anyscope && local.depth < self.depth {
+			if !anyscope || local.depth < self.depth_limit {
 				return None;
             }
 

@@ -596,7 +596,7 @@ impl Compiler {
             },
 
             None => self.error_no_exit(format!(
-                    "Identifier '{}' does not exist",
+                    "Identifier '{}' does not exist in the current context",
                     identifier.span.slice_source(),
                 ),
                 &identifier.clone()
@@ -738,7 +738,7 @@ impl Compiler {
                 }
                 None => {
                     self.error_no_exit(format!(
-                            "Cannot assign to variable '{}' as it does not exist",
+                            "Cannot assign to variable '{}' as it does not exist or is not in the correct context",
                             identifier.span.slice_source(),
                         ),
                         &identifier
@@ -813,6 +813,7 @@ impl Compiler {
             
             if *anonymous {
                 self.push_scope();
+                self.table.mark_depth_limit();
                 self.evaluate_params(parameters, env)?;
             } else {
                 self.register_function(identifier, start_loc, parameters, env)?;
@@ -824,6 +825,7 @@ impl Compiler {
                 _ => unreachable!(),
             }
             self.pop_scope();
+            self.table.reset_mark();
             
             // Don't generate pointless returns
             if let AstData::Body(ref statements) = &body.data {
