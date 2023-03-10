@@ -1,11 +1,11 @@
 use std::{rc::Rc, path::Path, fs, io::Error};
 
-use crate::{token::{Token, TokenKind}, lexer::Lexer, ast::{Ast, AstData}, source::Source, util};
+use crate::{token::{Token, TokenKind}, lexer::Lexer, ast::{Ast, AstData}, source::Source, util, RunArgs};
 
 pub struct Parser {
     lexer: Lexer,
     current: Token,
-    script_mode: bool,
+    args: RunArgs,
     had_error: bool,
 }
 
@@ -18,14 +18,14 @@ pub struct ParserErr {
 }
 
 impl Parser {
-    pub fn new(source: &Rc<Source>, script_mode: bool) -> Result<Self, Error> {
+    pub fn new(source: &Rc<Source>, args: RunArgs) -> Result<Self, Error> {
         let mut lexer = Lexer::new(source)?;
         let token = lexer.next();
 
         Ok(Self {
             lexer,
             current: token,
-            script_mode,
+            args,
             had_error: false,
         })
     }
@@ -499,7 +499,7 @@ impl Parser {
                     }
 
                     let source = fs::read_to_string(&include_path).unwrap();
-                    let program = match util::run_parser(include_str.clone(), source, self.script_mode) {
+                    let program = match util::run_parser(include_str.clone(), source, self.args.clone()) {
                         Ok((_, program)) => program,
                         Err(e) => return Err(self.error(format!("Could not parse '{}' because {}", include_str, e.message))),
                     };
@@ -570,7 +570,7 @@ impl Parser {
                     self.consume(TokenKind::SemiColon, "Expect ';' after variable statement")?;
                 }
                 _ => {
-                    if self.script_mode {
+                    if self.args.script_mode {
                         statements.push(self.statement()?);
                     } else {
                         return Err(self.error(format!(

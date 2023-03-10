@@ -29,44 +29,48 @@ enum SpruceCli {
     Step(RunArgs),
 }
 
-#[derive(clap::Args)]
+#[derive(clap::Args, Clone)]
 #[command(author, version, about, long_about = None)]
-struct RunArgs {
-    path: String,
+pub struct RunArgs {
+    pub file_path: String,
     #[clap(default_value_t=false, short, long)]
-    script_mode: bool,
+    pub script_mode: bool,
+    #[clap(default_value_t=false, short='g', long)]
+    pub no_global: bool,
+    #[clap(default_value_t=false, short='m', long)]
+    pub no_global_mut: bool,
 }
 
 fn main() {
     match SpruceCli::parse() {
         SpruceCli::Run(args) => {
-            if let Ok(source) = fs::read_to_string(&args.path) {
-                match util::compile_source(args.path, source, args.script_mode) {
+            if let Ok(source) = fs::read_to_string(&args.file_path) {
+                match util::compile_source(source, args) {
                     Ok(env) => VM::new(env).run(),
                     Err(e) => eprintln!("{e}"),
                 }
             } else {
-                eprintln!("Could not load file '{}'", args.path);
+                eprintln!("Could not load file '{}'", args.file_path);
             }
         }
         SpruceCli::Dump(args) => {
-            if let Ok(source) = fs::read_to_string(&args.path) {
-                match util::compile_source(args.path, source, args.script_mode) {
+            if let Ok(source) = fs::read_to_string(&args.file_path) {
+                match util::compile_source(source, args) {
                     Ok(mut env) => env.dump(),
                     Err(e) => eprintln!("{e}"),
                 }
             } else {
-                eprintln!("Could not load file '{}'", args.path);
+                eprintln!("Could not load file '{}'", args.file_path);
             }
         }
         SpruceCli::Step(args) => {
-            if let Ok(source) = fs::read_to_string(&args.path) {
-                match util::compile_source(args.path, source, args.script_mode) {
+            if let Ok(source) = fs::read_to_string(&args.file_path) {
+                match util::compile_source(source, args) {
                     Ok(e) => Stepper::new(e).run(),
                     Err(e) => eprintln!("{e}"),
                 }
             } else {
-                eprintln!("Could not load file '{}'", args.path);
+                eprintln!("Could not load file '{}'", args.file_path);
             }
         }
     }

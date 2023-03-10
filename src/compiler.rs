@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use crate::{token::{Span, Token, TokenKind}, environment::{Environment, ConstantValue, FunctionMeta}, instructions::{Instruction, ParamKind}, nativefns::{self, NativeFunction}, symtable::SymTable, ast::{Ast, AstData}, object::Object, source::Source};
+use crate::{token::{Span, Token, TokenKind}, environment::{Environment, ConstantValue, FunctionMeta}, instructions::{Instruction, ParamKind}, nativefns::{self, NativeFunction}, symtable::SymTable, ast::{Ast, AstData}, object::Object, source::Source, RunArgs};
 
 #[derive(Debug, Clone)]
 struct LookAhead {
@@ -46,6 +46,7 @@ impl Function {
 pub struct Compiler {
     had_error: bool,
     source: Rc<Source>,
+    args: RunArgs,
     unresolved: Vec<LookAhead>,
     table: SymTable,
     functable: Vec<Function>,
@@ -57,23 +58,24 @@ pub struct CompilerErr {
 }
 
 impl Compiler {
-    pub fn new(source: Rc<Source>) -> Self {
+    pub fn new(source: Rc<Source>, args: RunArgs) -> Self {
         Self {
             had_error: false,
             source,
+            args,
             unresolved: Vec::new(),
             table: SymTable::new(),
             functable: Vec::new(),
         }
     }
 
-    pub fn run(&mut self, program: Box<Ast>, script_mode: bool) -> Result<Box<Environment>, CompilerErr> {
+    pub fn run(&mut self, program: Box<Ast>) -> Result<Box<Environment>, CompilerErr> {
         let mut env = Box::new(Environment::new());
         nativefns::register_native_functions(self, &mut env);
 
         self.program(&mut env, &program)?;
 
-        if !script_mode {
+        if !self.args.script_mode {
             match self.find_function_str("main") {
                 Some(func) => {
                     if let Function::User { meta_id, .. } = func {
@@ -693,6 +695,30 @@ impl Compiler {
         let identifier = &var_decl.token;
         if let AstData::VarDeclaration { is_mutable, expression } = &var_decl.data {
             let local = self.register_local(&identifier, *is_mutable, None).unwrap();
+
+            if self.table.is_global() {
+                // Check mutable
+                if self.args.no_global_mut && *is_mutable {
+                    self.error_no_exit(
+                        format!(
+                            "Cannot declare mutable variable '{}' in global scope, when the 'no-mutable' flag is set",
+                            identifier.span.slice_source()
+                        ),
+                        identifier
+                    );
+                }
+
+                // Check global
+                if self.args.no_global {
+                    self.error_no_exit(
+                        format!(
+                            "Cannot declare variable '{}' in global scope, when the 'no-global' flag is set",
+                            identifier.span.slice_source()
+                        ),
+                        identifier
+                    );
+                }
+            }
     
             // Produce the expression
             match expression {
