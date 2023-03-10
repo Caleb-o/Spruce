@@ -619,8 +619,6 @@ impl VM {
 
 		self.inc();
 
-		
-
 		Ok(())
 	}
 

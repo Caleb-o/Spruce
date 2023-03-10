@@ -241,7 +241,7 @@ impl Compiler {
     }
 
     fn register_local(&mut self, token: &Token, mutable: bool, func: Option<u32>) -> Option<usize> {
-        let local = self.table.find_local(&self.source.content, &token.span, false);
+        let local = self.table.find_local(&token.span, false);
 
         match local {
             Some(local) => {
@@ -284,15 +284,38 @@ impl Compiler {
             )));
         }
 
-        self.pop_scope();
         _ = self.register_local(&identifier, false, Some(env.functions.len() as u32));
+        
         self.push_scope();
+        self.evaluate_params(parameters, env)?;
 
         let param_count = match parameters {
             Some(ref p) => p.len() as u8,
             None => 0,
         };
 
+        env.functions.push(FunctionMeta::new(
+            identifier.span.slice_source().to_string(),
+            param_count,
+            position
+        ));
+
+        self.functable.push(Function::User {
+            meta_id: env.functions.len() as u32 - 1,
+            span: identifier.clone().span,
+            parameters: param_count,
+            empty: false
+        });
+
+        Ok(())
+    }
+
+    #[inline]
+    fn evaluate_params(
+        &mut self,
+        parameters: &Option<Vec<Box<Ast>>>,
+        env: &mut Box<Environment>
+    ) -> Result<(), CompilerErr> {
         // Register locals from parameters
         if let Some(ref params) = parameters {
             for (idx, param) in params.iter().enumerate() {
@@ -308,19 +331,6 @@ impl Compiler {
                 }
             }
         }
-
-        env.functions.push(FunctionMeta::new(
-            identifier.span.slice_source().to_string(),
-            param_count,
-            position
-        ));
-
-        self.functable.push(Function::User {
-            meta_id: env.functions.len() as u32 - 1,
-            span: identifier.clone().span,
-            parameters: param_count,
-            empty: false
-        });
 
         Ok(())
     }
@@ -342,10 +352,27 @@ impl Compiler {
 
             let anonymous = match lhs.data {
                 // FIXME: Change how identifier works, now that we visit lhs
-                AstData::Identifier => false,
-                AstData::Function { .. } => {
+                AstData::Identifier => {
+                    if let None = self.find_function(&lhs.token.span) {
+                        match self.table.find_local(&lhs.token.span, true) {
+                            Some(local) => local.func.is_none(),
+                            None => {
+                                self.error_no_exit(format!(
+                                        "Unknown identifier found '{}'",
+                                        lhs.token.span.slice_source()
+                                    ), 
+                                    &lhs.token
+                                );
+                                false
+                            }
+                        }
+                    } else {
+                        false
+                    }
+                },
+                AstData::Function { anonymous, .. } => {
                     self.visit(env, &lhs)?;
-                    true
+                    anonymous
                 },
                 _ => {
                     self.visit(env, &lhs)?;
@@ -361,6 +388,12 @@ impl Compiler {
             }
 
             if anonymous {
+                if let Some(local) = self.table.find_local(&lhs.token.span, true) {
+                    env.add_local(
+                        if local.is_global() {Instruction::GetGlobal} else {Instruction::GetLocal},
+                        local.position
+                    );
+                }
                 env.add_local_call(arg_count);
                 return Ok(());
             }
@@ -411,7 +444,7 @@ impl Compiler {
                 }
     
                 None => {
-                    if let Some(_) = self.table.find_local(&self.source.content, &identifier.clone().span, true) {
+                    if let Some(_) = self.table.find_local(&identifier.clone().span, true) {
                         env.add_local_call(arg_count);
                     } else {
                         // Push the call to a stack of unresolved calls
@@ -561,14 +594,13 @@ impl Compiler {
     fn identifier(&mut self, env: &mut Box<Environment>, node: &Box<Ast>) {
         let identifier = &node.token;
 
-        match self.table.find_local(&self.source.content, &identifier.span, true) {
+        match self.table.find_local(&identifier.span, true) {
             Some(local) => {
                 if let Some(func) = &local.func {
                     env.add_get_fn(*func);
                 } else {
-                    env.add_local(if local.is_global()
-                        { Instruction::GetGlobal }
-                        else { Instruction::GetLocal },
+                    env.add_local(
+                        if local.is_global() { Instruction::GetGlobal } else { Instruction::GetLocal },
                         local.position
                     );
                 }
@@ -698,7 +730,7 @@ impl Compiler {
             self.visit(env, &lhs)?;
             self.visit(env, &expression)?;
 
-            match self.table.find_local(&self.source.content, &identifier.span, true) {
+            match self.table.find_local(&identifier.span, true) {
                 Some(local) => {
                     if !local.mutable {
                         self.error_no_exit(format!(
@@ -772,17 +804,19 @@ impl Compiler {
     fn function(&mut self, env: &mut Box<Environment>, node: &Box<Ast>) -> Result<(), CompilerErr> {
         if let AstData::Function { anonymous, parameters, body } = &node.data {
             let identifier = &node.token;
-            self.push_scope();
-
+            
             let jmp = env.add_jump_op(false);
             let start_loc = env.op_here() as u32;
-
-            if !*anonymous {
+            
+            if *anonymous {
+                self.push_scope();
+                self.evaluate_params(parameters, env)?;
+            } else {
                 self.register_function(identifier, start_loc, parameters, env)?;
             }
             
             match &body.data {
-                AstData::Return(_) => self.visit(env, body)?,
+                AstData::Return(_) => self.return_statement(env, body)?,
                 AstData::Body(_) => self.body(env, body, false)?,
                 _ => unreachable!(),
             }
@@ -804,7 +838,8 @@ impl Compiler {
                 env.add_anon_fn(match *parameters {
                         Some(ref p) => p.len() as u8,
                         None => 0,
-                    }, start_loc
+                    },
+                    start_loc
                 );
             }
         };

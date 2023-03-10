@@ -48,13 +48,12 @@ impl Span {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(u8)]
-#[allow(unused)]
 pub enum TokenKind {
 	Plus, Minus, Star, Slash,
-	Equal, EqualEqual, Bang, Not, NotEqual,
+	Equal, EqualEqual, Bang, NotEqual,
 	Greater, GreaterEqual, Less, LessEqual,
 	
-	SemiColon, Colon, Comma,
+	Pipe, SemiColon, Colon, Comma,
 
 	LParen, RParen,
 	LSquare, RSquare,

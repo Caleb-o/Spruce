@@ -55,7 +55,7 @@ impl Parser {
         }
     }
 
-    fn consume(&mut self, expected: TokenKind, msg: &'static str) -> Result<(), ParserErr> {
+    fn consume(&mut self, expected: TokenKind, msg: &str) -> Result<(), ParserErr> {
         if self.current.kind == expected {
             self.current = self.lexer.next();
             return Ok(());
@@ -89,7 +89,7 @@ impl Parser {
             },
 
             TokenKind::LSquare => self.list_literal(),
-            TokenKind::Function => self.function(true),
+            TokenKind::Pipe => self.anon_function(),
 
             TokenKind::Identifier => {
                 let token = self.current.clone();
@@ -98,7 +98,7 @@ impl Parser {
             },
 
             _ => Err(self.error(format!(
-                "Unexpected instruction found {:?} '{}'",
+                "Unexpected token found {:?} '{}'",
                 self.current.kind,
                 self.current.span.slice_source(),
             ))),
@@ -365,6 +365,7 @@ impl Parser {
 
     fn statement(&mut self) -> Result<Box<Ast>, ParserErr> {
         let mut node = match self.current.kind {
+            TokenKind::Function => self.function()?,
             TokenKind::If => self.if_statement()?,
             TokenKind::For => self.for_statement()?,
             TokenKind::Do => self.do_while_statement()?,
@@ -418,21 +419,18 @@ impl Parser {
         Ok(Ast::new_parameter(param_name, type_name))
     }
 
-    fn function(&mut self, is_anonymous: bool) -> Result<Box<Ast>, ParserErr> {
-        self.consume_here();
-
-        let identifier = self.current.clone();
-        if !is_anonymous {
-            self.consume(TokenKind::Identifier, "Expected identifier after 'fn'")?;
-        }
-
-        let parameters = if self.current.kind == TokenKind::LParen {
+    fn collect_params_and_body(
+        &mut self,
+        left: TokenKind,
+        right: TokenKind
+    ) -> Result<(Option<Vec<Box<Ast>>>, Box<Ast>), ParserErr> {
+        let parameters = if self.current.kind == left {
             let mut parameters = Vec::new();
-            self.consume(TokenKind::LParen, "Expect '(' at the start of parameter list")?;
+            self.consume(left, &format!("Expect '{:?}' at the start of parameter list", left))?;
     
             // Consume paarameter list
             // TODO: Underscore to add unnamed parameter
-            if self.current.kind != TokenKind::RParen {
+            if self.current.kind != right {
                 parameters.push(self.consume_parameter()?);
                 
                 while self.current.kind == TokenKind::Comma {
@@ -441,7 +439,7 @@ impl Parser {
                 }
             }
             
-            self.consume(TokenKind::RParen, "Expect ')' after function parameter list")?;
+            self.consume(right, &format!("Expect '{:?}' after function parameter list", right))?;
             Some(parameters)
         } else {None};
 
@@ -453,7 +451,25 @@ impl Parser {
             self.body()?
         };
 
-        Ok(Ast::new_function(identifier, is_anonymous, parameters, body))
+        Ok((parameters, body))
+    }
+
+    fn anon_function(&mut self) -> Result<Box<Ast>, ParserErr> {
+        let token = self.current.clone();
+        let (parameters, body) = self.collect_params_and_body(TokenKind::Pipe, TokenKind::Pipe)?;
+
+        Ok(Ast::new_function(token, true, parameters, body))
+    }
+
+    fn function(&mut self) -> Result<Box<Ast>, ParserErr> {
+        self.consume_here();
+
+        let identifier = self.current.clone();
+        self.consume(TokenKind::Identifier, "Expected identifier after 'fn'")?;
+
+        let (parameters, body) = self.collect_params_and_body(TokenKind::LParen, TokenKind::RParen)?;
+
+        Ok(Ast::new_function(identifier, false, parameters, body))
     }
 
     fn var_declaration(&mut self) -> Result<Box<Ast>, ParserErr> {
@@ -479,11 +495,14 @@ impl Parser {
 
         while self.current.kind != TokenKind::EndOfFile {
             match self.current.kind {
-                TokenKind::Function => statements.push(self.function(false)?),
+                TokenKind::Function => {
+                    statements.push(self.function()?);
+                    self.consume(TokenKind::SemiColon, "Expect ';' after statement")?;
+                }
                 TokenKind::Var | TokenKind::Val => {
                     statements.push(self.var_declaration()?);
                     self.consume(TokenKind::SemiColon, "Expect ';' after statement")?;
-                },
+                }
                 _ => {
                     if self.script_mode {
                         statements.push(self.statement()?);

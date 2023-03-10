@@ -59,13 +59,13 @@ impl SymTable {
         position
 	}
 
-    pub fn find_local(&self, source: &String, span: &Span, anyscope: bool) -> Option<&Local> {
+    pub fn find_local(&self, span: &Span, anyscope: bool) -> Option<&Local> {
         for local in self.locals.iter().rev() {
 			if !anyscope && local.depth < self.depth {
 				return None;
             }
 
-            if local.identifier.compare(span, source) {
+            if local.identifier.compare(span, &span.source.content) {
                 return Some(local);
             }
         }
@@ -99,7 +99,7 @@ impl SymTable {
 			.iter()
 			.rev()
 			.fold(0, |acc, l| {
-				if l.depth > GLOBAL_DEPTH {
+				if l.func.is_none() && l.depth >= self.depth {
 					acc + 1
 				} else {
                     acc

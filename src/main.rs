@@ -26,11 +26,8 @@ use clap::Parser as ClapParser;
 #[command(name = "spruce")]
 #[command(bin_name = "spruce")]
 enum SpruceCli {
-    #[command(short_flag='d')]
     Dump(RunArgs),
-    #[command(short_flag='r')]
     Run(RunArgs),
-    #[command(short_flag='s')]
     Step(RunArgs),
 }
 
