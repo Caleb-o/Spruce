@@ -576,7 +576,7 @@ impl Compiler {
                 env.add_op(Instruction::EqualEqual);
 
                 let jmp = env.add_jump_op(true);
-                self.body(env, body, true)?;
+                self.visit(env, body)?;
                 let done_jmp = env.add_jump_op(false);
                 env.patch_jump_op(jmp);
 

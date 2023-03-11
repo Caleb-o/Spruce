@@ -273,6 +273,12 @@ impl Parser {
         self.assignment()
     }
 
+    fn expression_statement(&mut self) -> Result<Box<Ast>, ParserErr> {
+        let node = Ast::new_expr_statement(self.expression()?);
+        self.consume(TokenKind::SemiColon, "Expect ';' after expression statement")?;
+        Ok(node)
+    }
+
     fn list_literal(&mut self) -> Result<Box<Ast>, ParserErr> {
         let token = self.current.clone();
         self.consume_here();
@@ -433,7 +439,8 @@ impl Parser {
         };
 
         self.consume(TokenKind::Colon, "Expect ':' after switch case value")?;
-        Ok(Ast::new_switch_case(token, case, self.body()?))
+        Ok(Ast::new_switch_case(token, case, if self.current.kind == TokenKind::LCurly
+            { self.body()? } else { self.expression_statement()?}))
     }
 
     fn switch_statement(&mut self) -> Result<Box<Ast>, ParserErr> {
