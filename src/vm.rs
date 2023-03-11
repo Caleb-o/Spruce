@@ -471,6 +471,61 @@ impl VM {
 				}
 			}
 
+			Instruction::GetProperty => {
+				let identifier = self.drop()?;
+				let object = self.drop()?;
+
+				let identifier = match identifier {
+					Object::String(s) => s,
+					n @ _ => return Err(RuntimeErr(format!(
+						"Cannot index object with value '{n}'",
+					))),
+				};
+
+				match object {
+					Object::StringMap(ref map) => {
+						if !map.contains_key(&identifier) {
+							return Err(RuntimeErr(format!(
+								"Object {object} does not contain the field '{identifier}'",
+							)));
+						}
+
+						self.push(*map[&identifier].clone());
+					}
+					n @ _ => return Err(RuntimeErr(format!(
+						"Cannot index non-object with '{n}'",
+					))),
+				}
+			}
+
+			Instruction::SetProperty => {
+				let value = self.drop()?;
+				let identifier = self.drop()?;
+				let object = self.peek_mut();
+
+				let identifier = match identifier {
+					Object::String(s) => s,
+					n @ _ => return Err(RuntimeErr(format!(
+						"Cannot index object with value '{n}'",
+					))),
+				};
+
+				match object {
+					Object::StringMap(ref mut map) => {
+						if !map.contains_key(&identifier) {
+							return Err(RuntimeErr(format!(
+								"Object {object} does not contain the field '{identifier}'",
+							)));
+						}
+
+						map.insert(identifier, Box::new(value));
+					}
+					n @ _ => return Err(RuntimeErr(format!(
+						"Cannot index non-object with '{n}'",
+					))),
+				}
+			}
+
 			Instruction::GetGlobal => {
 				let slot = self.get_short();
 				self.stack.push(self.stack[slot as usize].clone());
@@ -780,6 +835,8 @@ impl VM {
 			3 => matches!(item, Object::String(_)),
 			4 => matches!(item, Object::Boolean(_)),
 			5 => matches!(item, Object::List(_)),
+			6 => matches!(item, Object::StringMap(_)),
+			7 => matches!(item, Object::Symbol(_)),
 			_ => false,
 		}
 	}

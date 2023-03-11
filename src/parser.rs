@@ -118,11 +118,12 @@ impl Parser {
     fn call(&mut self) -> Result<Box<Ast>, ParserErr> {
         let mut node = self.primary()?;
 
-        while self.is_any_of(&[TokenKind::LParen, TokenKind::LSquare]) {
+        loop {
         	node = match self.current.kind {
                 TokenKind::LParen => self.function_call(node)?,
                 TokenKind::LSquare => self.index(node)?,
-                _ => unreachable!(),
+                TokenKind::Dot => self.dot_property(node)?,
+                _ => break,
             }
         }
 
@@ -130,14 +131,14 @@ impl Parser {
     }
 
     fn unary(&mut self) -> Result<Box<Ast>, ParserErr> {
-        if self.is_any_of(&[TokenKind::Minus, TokenKind::Bang]) {
+        loop {
             match self.current.kind {
                 TokenKind::Minus | TokenKind::Bang => {
                     let token = self.current.clone();
                     self.consume_here();
                     return Ok(Ast::new_unary_op(token, self.call()?));
                 },
-                _ => unreachable!(),
+                _ => break,
             }
         }
 
@@ -249,6 +250,7 @@ impl Parser {
                     match node.data {
                         AstData::Identifier => Ast::new_var_assign(node.token.clone(), node, self.expression()?),
                         AstData::IndexGetter {..} => Ast::new_index_setter(node.token.clone(), node, self.expression()?),
+                        AstData::GetProperty {..} => Ast::new_property_setter(node.token.clone(), node, self.expression()?),
                         _ => unreachable!(),
                     }
                 }
@@ -363,6 +365,14 @@ impl Parser {
         self.consume(TokenKind::RSquare, "Expect ']' after index expression")?;
         
         Ok(Ast::new_index_getter(expression.token.clone(), expression, index))
+    }
+
+    fn dot_property(&mut self, lhs: Box<Ast>) -> Result<Box<Ast>, ParserErr> {
+        self.consume_here();
+
+        let identifier = self.current.clone();
+        self.consume(TokenKind::Identifier, "Expect identifier after '.'")?;
+        Ok(Ast::new_property_getter(identifier, lhs))
     }
 
     fn single_statement_block(&mut self) -> Result<Box<Ast>, ParserErr> {

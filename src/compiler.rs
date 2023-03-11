@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use crate::{token::{Span, Token, TokenKind}, environment::{Environment, ConstantValue, FunctionMeta}, instructions::{Instruction, ParamKind}, nativefns::{self, NativeFunction}, symtable::SymTable, ast::{Ast, AstData}, object::Object, source::Source, RunArgs};
+use crate::{token::{Span, Token, TokenKind}, environment::{Environment, ConstantValue, FunctionMeta}, instructions::{Instruction, ParamKind}, nativefns::{self, NativeFunction}, symtable::{SymTable, Local}, ast::{Ast, AstData}, object::Object, source::Source, RunArgs};
 
 #[derive(Debug, Clone)]
 struct LookAhead {
@@ -1082,6 +1082,52 @@ impl Compiler {
         Ok(())
     }
 
+    fn find_lhs_local(&self, lhs: &Box<Ast>) -> Option<&Local> {
+        match &lhs.data {
+            AstData::Identifier => {
+                if let Some(local) = self.table.find_local(&lhs.token.span, true) {
+                    return Some(local);
+                }
+            }
+            AstData::GetProperty { lhs } => {
+                return self.find_lhs_local(lhs);
+            }
+
+            _ => {},
+        }
+        None
+    }
+
+    fn get_property(&mut self, env: &mut Box<Environment>, node: &Box<Ast>) ->Result<(), CompilerErr> {
+        if let AstData::GetProperty { lhs } = &node.data {
+            self.visit(env, lhs)?;
+            env.add_constant(Object::String(node.token.span.slice_source().to_string()));
+            env.add_op(Instruction::GetProperty);
+        }
+        Ok(())
+    }
+
+    fn set_property(&mut self, env: &mut Box<Environment>, node: &Box<Ast>) ->Result<(), CompilerErr> {
+        if let AstData::SetProperty { lhs, expression } = &node.data {
+            match lhs.data {
+                AstData::GetProperty { ref lhs } => self.visit(env, lhs)?,
+                _ => self.visit(env, lhs)?,
+            }
+            env.add_constant(Object::String(node.token.span.slice_source().to_string()));
+            self.visit(env, expression)?;
+            env.add_op(Instruction::SetProperty);
+
+            // Hack to set object as new object
+            if let Some(local) = self.find_lhs_local(lhs) {
+                env.add_local(
+                    if local.is_global() {Instruction::SetGlobal} else {Instruction::SetLocal},
+                    local.position,
+                );
+            }
+        }
+        Ok(())
+    }
+
     fn index_getter(&mut self, env: &mut Box<Environment>, node: &Box<Ast>) -> Result<(), CompilerErr> {
         if let AstData::IndexGetter { expression, index } = &node.data {
             self.visit(env, expression)?;
@@ -1133,6 +1179,8 @@ impl Compiler {
             AstData::TrailingIfStatement {..} => self.trailing_if(env, node)?,
             AstData::SwitchStatement {..} => self.switch_statement(env, node)?,
             AstData::ExpressionStatement(_) => self.expression_statement(env, node)?,
+            AstData::GetProperty {..} => self.get_property(env, node)?,
+            AstData::SetProperty {..} => self.set_property(env, node)?,
             AstData::IndexGetter {..} => self.index_getter(env, node)?,
             AstData::IndexSetter {..} => self.index_setter(env, node)?,
 
@@ -1152,6 +1200,8 @@ impl Compiler {
             "string" => Some(3),
             "bool" => Some(4),
             "list" => Some(5),
+            "stringmap" => Some(6),
+            "symbol" => Some(7),
             _ => None,
         }
     }

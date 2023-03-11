@@ -61,6 +61,7 @@ impl Lexer {
 			'{' => self.make_char_token(TokenKind::LCurly),
 			'}' => self.make_char_token(TokenKind::RCurly),
 
+			'.' => self.make_char_token(TokenKind::Dot),
 			'@' => self.make_char_token(TokenKind::At),
 			'`' => self.make_char_token(TokenKind::Backtick),
 			'|' => self.make_char_token(TokenKind::Pipe),

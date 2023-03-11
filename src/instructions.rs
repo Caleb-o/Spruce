@@ -26,16 +26,19 @@ pub enum Instruction {
 	Constant,
 	ConstantLong,
 
-	GetLocal, // u16
 	SetLocal, // u16
+	GetLocal, // u16
 	
 	// Globals are just top-level
 	// They are not stored in a special location
-	GetGlobal, // u16
 	SetGlobal, // u16
+	GetGlobal, // u16
 
 	IndexSet,
 	IndexGet,
+
+	SetProperty,
+	GetProperty,
 
 	BuildFn, 		// paramc u8, location u32
 	BuildList, 		// u8

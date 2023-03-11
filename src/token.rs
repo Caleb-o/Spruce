@@ -54,7 +54,7 @@ pub enum TokenKind {
 	Equal, EqualEqual, Bang, NotEqual,
 	Greater, GreaterEqual, Less, LessEqual,
 	
-	Backtick, Pipe, SemiColon, Colon, Comma, At,
+	Backtick, Pipe, SemiColon, Colon, Comma, At, Dot,
 
 	LParen, RParen,
 	LSquare, RSquare,

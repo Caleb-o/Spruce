@@ -272,6 +272,9 @@ impl Environment {
 			
 			Instruction::SetGlobal => short_location_instruction("SET_GLOBAL", offset, &self),
 			Instruction::GetGlobal => short_location_instruction("GET_GLOBAL", offset, &self),
+
+			Instruction::SetProperty => simple_instruction("SET_PROPERTY", offset),
+			Instruction::GetProperty => simple_instruction("GET_PROPERTY", offset),
 			
 			Instruction::Constant => constant_instruction("CONSTANT", offset, &self),
 			Instruction::ConstantLong => long_constant_instruction("CONSTANT_LONG", offset, &self),

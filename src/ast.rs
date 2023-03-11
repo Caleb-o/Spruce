@@ -40,6 +40,9 @@ pub enum AstData {
     IndexGetter { expression: Box<Ast>, index: Box<Ast> },
     IndexSetter { expression: Box<Ast>, rhs: Box<Ast> },
 
+    SetProperty { lhs: Box<Ast>, expression: Box<Ast> },
+    GetProperty { lhs: Box<Ast> },
+
     SwitchStatement { condition: Box<Ast>, cases: Vec<Box<Ast>> },
     SwitchCase { case: Option<Box<Ast>>, body: Box<Ast> },
 
@@ -283,6 +286,20 @@ impl Ast {
         Box::new(Self {
             token,
             data: AstData::IndexSetter { expression, rhs }
+        })
+    }
+
+    pub fn new_property_getter(token: Token, lhs: Box<Ast>) -> Box<Self> {
+        Box::new(Self {
+            token,
+            data: AstData::GetProperty { lhs },
+        })
+    }
+
+    pub fn new_property_setter(token: Token, lhs: Box<Ast>, expression: Box<Ast>) -> Box<Self> {
+        Box::new(Self {
+            token,
+            data: AstData::SetProperty { lhs, expression },
         })
     }
 }
