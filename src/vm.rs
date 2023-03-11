@@ -655,8 +655,12 @@ impl VM {
 							self.stack.len() as u32 - args as u32,
 						));
 						
-						let args = &self.stack[self.stack.len() - args as usize..];
-						let item = match function(self, args) {
+						let frame = self.frames.last().unwrap();
+						let args = self.stack
+							.drain(frame.stack_start as usize..)
+							.collect::<Vec<Object>>();
+						
+						let item = match function(self, &args) {
 							Ok(item) => {
 								match item {
 									Some(i) => i,
@@ -666,8 +670,6 @@ impl VM {
 							Err(e) => return Err(e),
 						};
 						
-						let frame = self.frames.last().unwrap();
-						self.stack.drain(frame.stack_start as usize..);
 						self.push(item);
 						_ = self.frames.pop();
 					}
