@@ -49,11 +49,6 @@ impl VM {
 	}
 
 	#[inline]
-	pub fn stack_slice_from_call(&self) -> &[Object] {
-		&self.stack[self.frames.last().unwrap().stack_start as usize..]
-	}
-
-	#[inline]
 	pub fn stack_size(&self) -> usize {
 		self.stack.len()
 	}
@@ -659,9 +654,21 @@ impl VM {
 							distance,
 							self.stack.len() as u32 - args as u32,
 						));
-
-						function(self, args)?;
-
+						
+						let args = &self.stack[self.stack.len() - args as usize..];
+						let item = match function(self, args) {
+							Ok(item) => {
+								match item {
+									Some(i) => i,
+									None => Object::None,
+								}
+							}
+							Err(e) => return Err(e),
+						};
+						
+						let frame = self.frames.last().unwrap();
+						self.stack.drain(frame.stack_start as usize..);
+						self.push(item);
 						_ = self.frames.pop();
 					}
 				}

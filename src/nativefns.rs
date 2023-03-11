@@ -2,51 +2,53 @@ use std::rc::Rc;
 
 use crate::{compiler::Compiler, environment::Environment, instructions::ParamKind, object::Object, vm::{RuntimeErr, VM}};
 
-pub type NativeFunction = Rc<dyn Fn(&mut VM, u8) -> Result<(), RuntimeErr>>;
+pub type NativeFunction = Rc<dyn Fn(&VM, &[Object]) -> Result<Option<Object>, RuntimeErr>>;
 
 pub fn register_native_functions(compiler: &mut Compiler, env: &mut Box<Environment>) {
-    compiler.add_fn(env, "print", ParamKind::Any, false, Rc::new(|vm, args| {
-        vm.stack_slice_from_call()
+    compiler.add_fn(env, "print", ParamKind::Any, false, Rc::new(|_, args| {
+        args
             .iter()
             .for_each(|o| print!("{o}"));
-
-        (0..args).into_iter()
-            .for_each(|_| {vm.drop().unwrap();});
         
-            vm.push(Object::None);
-        Ok(())
+        Ok(None)
     }));
 
-    compiler.add_fn(env, "println", ParamKind::Any, false, Rc::new(|vm, args| {
-        vm.stack_slice_from_call()
+    compiler.add_fn(env, "println", ParamKind::Any, false, Rc::new(|_, args| {
+        args
             .iter()
             .for_each(|o| print!("{o}"));
-
-        (0..args).into_iter()
-            .for_each(|_| {vm.drop().unwrap();});
 
         println!();
 
-        vm.push(Object::None);
-        Ok(())
+        Ok(None)
+    }));
+
+    compiler.add_fn(env, "assert", ParamKind::Count(2), false, Rc::new(|_, args| {
+        if let Object::Boolean(condition) = &args[0] {
+            if let Object::String(message) = &args[1] {
+                if !condition {
+                    println!();
+                    return Err(RuntimeErr(format!("Assert: {message}")));
+                }
+            }
+        }
+
+        Ok(None)
     }));
 
     compiler.add_fn(env, "time", ParamKind::Count(0), true, Rc::new(|vm, _| {
         let t = vm.started.elapsed().as_micros() as f32;
-        vm.push(Object::Number(t));
-        Ok(())
+        Ok(Some(Object::Number(t)))
     }));
 
-    compiler.add_fn(env, "len", ParamKind::Count(1), true, Rc::new(|vm, _args| {
-        match vm.drop()? {
-            Object::String(s) => vm.push(Object::Number(s.len() as f32)),
-            Object::List(ref l) => vm.push(Object::Number(l.len() as f32)),
+    compiler.add_fn(env, "len", ParamKind::Count(1), true, Rc::new(|vm, args| {
+        match &args[0] {
+            Object::String(s) => Ok(Some(Object::Number(s.len() as f32))),
+            Object::List(ref l) => Ok(Some(Object::Number(l.len() as f32))),
             _ => {
                 vm.warning(format!("strlen expected a string but received {}", vm.peek()));
-                vm.push(Object::None);
+                Ok(None)
             },
         }
-
-        Ok(())
     }));
 }

@@ -996,6 +996,10 @@ impl Compiler {
         Ok(())
     }
 
+    fn std_include(&mut self, _env: &mut Box<Environment>, _node: &Box<Ast>) -> Result<(), CompilerErr> {
+        todo!("Std include in compiler");
+    }
+
     fn body(&mut self, env: &mut Box<Environment>, node: &Box<Ast>, new_scope: bool) -> Result<(), CompilerErr> {
         if let AstData::Body(ref statements) = &node.data {
             if new_scope {
@@ -1185,6 +1189,8 @@ impl Compiler {
             AstData::IndexSetter {..} => self.index_setter(env, node)?,
 
             AstData::Program {..} => self.program(env, node)?,
+            AstData::StdInclude => self.std_include(env, node)?,
+            AstData::Empty => {},
 
             _ => return Err(self.error(format!("Unknown node: {:#?}", *node))),
         }

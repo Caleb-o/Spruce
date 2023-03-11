@@ -1,4 +1,4 @@
-use std::{rc::Rc, path::Path, fs, io::Error};
+use std::{rc::Rc, path::Path, fs, io::Error, collections::HashSet};
 
 use crate::{token::{Token, TokenKind}, lexer::Lexer, ast::{Ast, AstData}, source::Source, util, RunArgs};
 
@@ -7,6 +7,7 @@ pub struct Parser {
     current: Token,
     args: RunArgs,
     had_error: bool,
+    included: HashSet<String>,
 }
 
 #[derive(Debug)]
@@ -27,6 +28,7 @@ impl Parser {
             current: token,
             args,
             had_error: false,
+            included: HashSet::new(),
         })
     }
 
@@ -600,19 +602,48 @@ impl Parser {
             TokenKind::Identifier | TokenKind::String => {
                 // TODO: Check if path is already included, can use std lib token
                 let include = if self.current.kind == TokenKind::Identifier {
-                    todo!("Import standard library item");
+                    let identifier = self.current.span.slice_source().to_string();
+                    if self.included.contains(&identifier) {
+                        let noop = Ast::new_empty(self.current.clone());
+                        self.consume_here();
+                        return Ok(noop);
+                    }
+                    self.included.insert(identifier);
+
+                    let token = self.current.clone();
+                    self.consume_here();
+ 
+                    Ast::new_std_include(token)
                 } else {
-                    let include_path = Path::new(&*self.lexer.source.file_path).parent().unwrap();
-                    let include_path = include_path.join(self.current.span.slice_source());
+                    let include_path = fs::canonicalize(
+                        Path::new(&*self.lexer.source.file_path)
+                            .parent().unwrap()
+                            .join(self.current.span.slice_source())
+                        );
 
-                    let include_str = String::from(include_path.to_str().unwrap());
+                    
+                    if let Err(_) = include_path {
+                        let mut path = Path::new(&*self.lexer.source.file_path)
+                            .parent().unwrap().to_str().unwrap().to_string();
+                        path.push('\\');
+                        path.push_str(self.current.span.slice_source());
 
-                    if !Path::exists(&include_path) {
                         return Err(self.error(format!(
                             "Include path does not exist '{}'",
-                            include_str.clone()
+                            path
                         )))
                     }
+                    
+                    let include_path = include_path.unwrap();
+                    let include_str = String::from(include_path.to_str().unwrap());
+
+                    if self.included.contains(&include_str) {
+                        let noop = Ast::new_empty(self.current.clone());
+                        self.consume_here();
+                        return Ok(noop);
+                    }
+
+                    self.included.insert(include_str.clone());
 
                     let source = fs::read_to_string(&include_path).unwrap();
                     let program = match util::run_parser(include_str.clone(), source, self.args.clone()) {

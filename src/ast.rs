@@ -48,10 +48,26 @@ pub enum AstData {
 
     Return(Option<Box<Ast>>),
     Body(Vec<Box<Ast>>),
+    StdInclude,
     Program { source: Rc<Source>, body: Vec<Box<Ast>> },
+    Empty,
 }
 
 impl Ast {
+    pub fn new_empty(token: Token) -> Box<Self> {
+        Box::new(Self {
+            token,
+            data: AstData::Empty,
+        })
+    }
+
+    pub fn new_std_include(token: Token) -> Box<Self> {
+        Box::new(Self {
+            token,
+            data: AstData::StdInclude,
+        })
+    }
+
     pub fn new_program(token: Token, source: Rc<Source>, body: Vec<Box<Ast>>) -> Box<Self> {
         Box::new(Self {
             token,
