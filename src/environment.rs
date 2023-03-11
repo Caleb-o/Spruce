@@ -284,7 +284,7 @@ impl Environment {
 			
 			Instruction::BuildFn => build_function("BUILD_FUNCTION", offset, &self),
 			Instruction::BuildSymbol => short_location_instruction("BUILD_SYMBOL", offset, &self),
-			Instruction::BuildList => simple_instruction("BUILD_LIST", offset),
+			Instruction::BuildList => byte_instruction("BUILD_LIST", offset, &self),
 			Instruction::BuildMap => byte_instruction("BUILD_MAP", offset, &self),
 			
 			Instruction::GetFn => call_instruction("GET_FN", offset, &self),

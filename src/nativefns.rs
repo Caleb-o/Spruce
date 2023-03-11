@@ -44,9 +44,10 @@ pub fn register_native_functions(compiler: &mut Compiler, env: &mut Box<Environm
     compiler.add_fn(env, "len", ParamKind::Count(1), true, Rc::new(|vm, args| {
         match &args[0] {
             Object::String(s) => Ok(Some(Object::Number(s.len() as f32))),
-            Object::List(ref l) => Ok(Some(Object::Number(l.len() as f32))),
+            Object::List(l) => Ok(Some(Object::Number(l.len() as f32))),
+            Object::StringMap(map) => Ok(Some(Object::Number(map.len() as f32))),
             _ => {
-                vm.warning(format!("strlen expected a string but received {}", vm.peek()));
+                vm.warning(format!("len expected a string but received {}", vm.peek()));
                 Ok(None)
             },
         }

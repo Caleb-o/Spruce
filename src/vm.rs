@@ -195,10 +195,9 @@ impl VM {
 				let count = self.get_byte();
 				let mut list = Vec::with_capacity(count as usize);
 
-				for _ in 0..count {
-					list.push(Box::new(self.drop()?));
+				for idx in 0..count {
+					list.push(Box::new(self.stack[self.stack.len() - 1 - idx as usize].clone()));
 				}
-				list.reverse();
 
 				self.push(Object::List(list));
 			}
@@ -659,7 +658,7 @@ impl VM {
 						let args = self.stack
 							.drain(frame.stack_start as usize..)
 							.collect::<Vec<Object>>();
-						
+
 						let item = match function(self, &args) {
 							Ok(item) => {
 								match item {

@@ -644,7 +644,7 @@ impl Compiler {
             self.push_scope();
     
             if let Some(var_decl) = variable {
-                self.var_declaration(env, &var_decl)?;
+                self.visit(env, &var_decl)?;
             }
     
             // Evaluate condition
@@ -652,7 +652,10 @@ impl Compiler {
             self.visit(env, condition)?;
             
             let before_block = env.add_jump_op(true);
-            self.visit(env, body)?;
+            match &body.data {
+                AstData::Body(_) => self.body(env, body, false)?,
+                _ => self.visit(env, body)?,
+            }
     
             if let Some(increment) = increment {
                 self.visit(env, increment)?;
@@ -827,9 +830,9 @@ impl Compiler {
     }
 
     fn var_declaration(&mut self, env: &mut Box<Environment>, var_decl: &Box<Ast>) -> Result<(), CompilerErr> {
-        let identifier = &var_decl.token;
         if let AstData::VarDeclaration { is_mutable, expression } = &var_decl.data {
-            let local = self.register_local(&identifier, *is_mutable, None).unwrap();
+            let identifier = &var_decl.token;
+            let local = self.register_local(identifier, *is_mutable, None).unwrap();
 
             if self.table.is_global() {
                 // Check mutable
@@ -1096,6 +1099,9 @@ impl Compiler {
             AstData::GetProperty { lhs } => {
                 return self.find_lhs_local(lhs);
             }
+            AstData::IndexGetter { expression, .. } => {
+                return self.find_lhs_local(expression);
+            }
 
             _ => {},
         }
@@ -1151,6 +1157,13 @@ impl Compiler {
             self.visit(env, rhs)?;
             
             env.add_op(Instruction::IndexSet);
+
+            if let Some(local) = self.find_lhs_local(&expression) {
+                env.add_local(
+                    if local.is_global() {Instruction::SetGlobal} else {Instruction::SetLocal},
+                    local.position,
+                );
+            }
         }
         Ok(())
     }
@@ -1172,7 +1185,7 @@ impl Compiler {
             AstData::VarAssign {..} => self.var_assign(env, node)?,
             AstData::VarAssignEqual {..} => self.var_assign_equal(env, node)?,
             AstData::Return(_) => self.return_statement(env, node)?,
-            AstData::Body(_) => self.body(env, node, true)?,
+            AstData::Body(_) => self.body(env, node, false)?,
             AstData::TypeCheck {..} => self.type_check(env, node)?,
 
             AstData::Function {..} => self.function(env, node)?,

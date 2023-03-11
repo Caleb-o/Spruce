@@ -117,7 +117,7 @@ impl SymTable {
 			.iter()
 			.rev()
 			.fold(0, |acc, l| {
-				if l.func.is_none() && l.depth >= self.depth {
+				if l.func.is_none() && l.depth >= self.depth_limit {
 					acc + 1
 				} else {
                     acc
