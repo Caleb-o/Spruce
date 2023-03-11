@@ -771,6 +771,15 @@ impl Compiler {
         Ok(())
     }
 
+    fn var_declarations(&mut self, env: &mut Box<Environment>, var_decls: &Box<Ast>) -> Result<(), CompilerErr> {
+        if let AstData::VarDeclarations(decls) = &var_decls.data {
+            for decl in decls {
+                self.var_declaration(env, decl)?;
+            }
+        }
+        Ok(())
+    }
+
     fn var_assign(&mut self, env: &mut Box<Environment>, node: &Box<Ast>) -> Result<(), CompilerErr> {
         if let AstData::VarAssign { lhs, expression } = &node.data {
             let identifier = &node.token;
@@ -1006,6 +1015,7 @@ impl Compiler {
             AstData::LogicalOp {..} => self.logical_op(env, node)?,
             
             AstData::VarDeclaration {..} => self.var_declaration(env, node)?,
+            AstData::VarDeclarations {..} => self.var_declarations(env, node)?,
             AstData::VarAssign {..} => self.var_assign(env, node)?,
             AstData::VarAssignEqual {..} => self.var_assign_equal(env, node)?,
             AstData::Return(_) => self.return_statement(env, node)?,

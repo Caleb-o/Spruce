@@ -559,17 +559,35 @@ impl Parser {
         let is_mutable = self.current.kind == TokenKind::Var;
         self.consume_here();
 
+        let mut decls = Vec::new();
+        
         let identifier = self.current.clone();
         self.consume(TokenKind::Identifier, "Expected identifier after 'var'/'val'")?;
-
+        
         // Produce the expression
         let mut expr = None;
         if self.current.kind == TokenKind::Equal {
             self.consume_here();
             expr = Some(self.expression()?);
         }
+        decls.push(Ast::new_var_decl(identifier, is_mutable, expr));
 
-        Ok(Ast::new_var_decl(identifier, is_mutable, expr))
+        while self.current.kind == TokenKind::Comma {
+            self.consume_here();
+
+            let identifier = self.current.clone();
+            self.consume(TokenKind::Identifier, "Expected identifier after 'var'/'val'")?;
+            
+            // Produce the expression
+            let mut expr = None;
+            if self.current.kind == TokenKind::Equal {
+                self.consume_here();
+                expr = Some(self.expression()?);
+            }
+            decls.push(Ast::new_var_decl(identifier, is_mutable, expr));
+        }
+
+        Ok(Ast::new_var_decls(decls))
     }
 
     fn outer_statements(&mut self) -> Result<Box<Ast>, ParserErr> {

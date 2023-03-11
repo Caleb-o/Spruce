@@ -25,6 +25,7 @@ pub enum AstData {
     FunctionCall { lhs: Box<Ast>, arguments: Vec<Box<Ast>> },
 
     VarDeclaration { is_mutable: bool, expression: Option<Box<Ast>> },
+    VarDeclarations(Vec<Box<Ast>>),
     VarAssign { lhs: Box<Ast>, expression: Box<Ast> },
     VarAssignEqual { operator: Token, lhs: Box<Ast>, expression: Box<Ast> },
 
@@ -93,6 +94,13 @@ impl Ast {
         Box::new(Self {
             token,
             data: AstData::VarDeclaration { is_mutable, expression },
+        })
+    }
+
+    pub fn new_var_decls(decls: Vec<Box<Ast>>) -> Box<Self> {
+        Box::new(Self {
+            token: decls[0].token.clone(),
+            data: AstData::VarDeclarations(decls),
         })
     }
 
