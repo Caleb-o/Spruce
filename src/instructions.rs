@@ -36,8 +36,9 @@ pub enum Instruction {
 	IndexSet,
 	IndexGet,
 
-	BuildFn, 	// paramc u8, location u32
-	BuildList, 	// u8
+	BuildFn, 		// paramc u8, location u32
+	BuildList, 		// u8
+	BuildSymbol, 	// u16
 
 	Jump,		// u16
 	JumpNot,	// u16

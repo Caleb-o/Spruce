@@ -207,6 +207,11 @@ impl VM {
 				self.push(Object::List(list));
 			}
 
+			Instruction::BuildSymbol => {
+				let value = self.get_short();
+				self.push(Object::Symbol(value));
+			}
+
 			Instruction::Greater => {
 				let size = self.stack_size() - 2;
 				let (lhs, rhs) = self.pop_peek_check()?;
@@ -311,20 +316,42 @@ impl VM {
 			Instruction::EqualEqual => {
 				let (lhs, rhs) = self.pop_2_check()?;
 
-				if let Object::Number(l) = lhs {
-					if let Object::Number(r) = rhs {
-						self.stack.push(Object::Boolean(l == r));
+				match lhs {
+					Object::Number(l) => {
+						if let Object::Number(r) = rhs {
+							self.stack.push(Object::Boolean(l == r));
+						}
 					}
+					Object::Symbol(l) => {
+						if let Object::Symbol(r) = rhs {
+							self.stack.push(Object::Boolean(l == r));
+						}
+					}
+					_ => return Err(RuntimeErr(format!(
+						"Cannot use {} in equality check",
+						lhs
+					))),
 				}
 			}
 
 			Instruction::NotEqual => {
 				let (lhs, rhs) = self.pop_2_check()?;
 
-				if let Object::Number(l) = lhs {
-					if let Object::Number(r) = rhs {
-						self.stack.push(Object::Boolean(l != r));
+				match lhs {
+					Object::Number(l) => {
+						if let Object::Number(r) = rhs {
+							self.stack.push(Object::Boolean(l != r));
+						}
 					}
+					Object::Symbol(l) => {
+						if let Object::Symbol(r) = rhs {
+							self.stack.push(Object::Boolean(l != r));
+						}
+					}
+					_ => return Err(RuntimeErr(format!(
+						"Cannot use {} in equality check",
+						lhs
+					))),
 				}
 			}
 

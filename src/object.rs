@@ -10,6 +10,7 @@ pub enum Object {
 	List(Vec<Box<Object>>),
 	Function(u32),
 	AnonFunction(u8, u32),
+	Symbol(u16),
 	// TODO: "Pointer" type, which holds its location in the stack
 	//		 If we want a complex/large type, we don't really want to
 	//		 duplicate it, especially if we want to mutate it.
@@ -25,6 +26,7 @@ impl Object {
     		Object::List(_) => "list",
     		Object::Function(_) => "function",
     		Object::AnonFunction(_, _) => "anon",
+			Object::Symbol(_) => "symbol",
 		}
 	}
 
@@ -81,6 +83,7 @@ impl Display for Object {
 			Object::AnonFunction(arg_count, location) => {
 				format!("fn<{arg_count}, {location}>")
 			}
+			Object::Symbol(value) => format!("Symbol<{value}>"),
 		})
     }
 }

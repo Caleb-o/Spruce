@@ -100,6 +100,11 @@ impl Environment {
 		location.to_be_bytes().into_iter().for_each(|b| self.code.push(b));
 	}
 
+	pub fn add_symbol(&mut self, value: u16) {
+		self.code.push(Instruction::BuildSymbol as u8);
+		value.to_be_bytes().into_iter().for_each(|b| self.code.push(b));
+	}
+
 	pub fn add_call_native(&mut self, args: u8, location: u32) {
 		self.code.push(Instruction::CallNative as u8);
 		self.code.push(args);
@@ -250,30 +255,31 @@ impl Environment {
 			Instruction::Div => simple_instruction("DIV", offset),
 			Instruction::EqualEqual => simple_instruction("EQUAL_EQUAL", offset),
 			Instruction::NotEqual => simple_instruction("NOT_EQUAL", offset),
-
+			
 			Instruction::Negate => simple_instruction("NEGATE", offset),
-
+			
 			Instruction::Greater => simple_instruction("GREATE", offset),
 			Instruction::GreaterEqual => simple_instruction("GREATER_EQUAL", offset),
 			Instruction::Less => simple_instruction("LESS", offset),
 			Instruction::LessEqual => simple_instruction("LESS_EQUAL", offset),
-
+			
 			Instruction::IndexGet => simple_instruction("INDEX_GET", offset),
 			Instruction::IndexSet => simple_instruction("INDEX_SET", offset),
-
+			
 			Instruction::SetLocal => short_location_instruction("SET_LOCAL", offset, &self),
 			Instruction::GetLocal => short_location_instruction("GET_LOCAL", offset, &self),
 			
 			Instruction::SetGlobal => short_location_instruction("SET_GLOBAL", offset, &self),
 			Instruction::GetGlobal => short_location_instruction("GET_GLOBAL", offset, &self),
-
+			
 			Instruction::Constant => constant_instruction("CONSTANT", offset, &self),
 			Instruction::ConstantLong => long_constant_instruction("CONSTANT_LONG", offset, &self),
-
+			
 			Instruction::Jump => short_location_instruction("JUMP", offset, &self),
 			Instruction::JumpNot => short_location_instruction("JUMP_NOT", offset, &self),
-
+			
 			Instruction::BuildFn => build_function("BUILD_FUNCTION", offset, &self),
+			Instruction::BuildSymbol => short_location_instruction("BUILD_SYMBOL", offset, &self),
 			Instruction::BuildList => simple_instruction("BUILD_LIST", offset),
 			
 			Instruction::GetFn => call_instruction("GET_FN", offset, &self),

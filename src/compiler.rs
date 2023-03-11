@@ -43,6 +43,27 @@ impl Function {
     }
 }
 
+struct Symbols {
+    table: Vec<Span>,
+}
+
+impl Symbols {
+    pub fn new() -> Self {
+        Self { table: Vec::new() }
+    }
+
+    pub fn find_or_add(&mut self, span: &Span) -> u16 {
+        for (idx, item) in self.table.iter().enumerate() {
+            if span.slice_source() == item.slice_source() {
+                return idx as u16;
+            }
+        }
+
+        self.table.push(span.clone());
+        self.table.len() as u16 - 1
+    }
+}
+
 pub struct Compiler {
     had_error: bool,
     source: Rc<Source>,
@@ -50,6 +71,7 @@ pub struct Compiler {
     unresolved: Vec<LookAhead>,
     table: SymTable,
     functable: Vec<Function>,
+    symbols: Symbols,
 }
 
 pub struct CompilerErr {
@@ -66,6 +88,7 @@ impl Compiler {
             unresolved: Vec::new(),
             table: SymTable::new(),
             functable: Vec::new(),
+            symbols: Symbols::new(),
         }
     }
 
@@ -507,6 +530,14 @@ impl Compiler {
         Ok(())
     }
 
+    fn symbol(&mut self, env: &mut Box<Environment>, node: &Box<Ast>) -> Result<(), CompilerErr> {
+        let identifier = &node.token.span;
+        let value = self.symbols.find_or_add(identifier);
+        env.add_symbol(value);
+
+        Ok(())
+    }
+
     fn if_statement(&mut self, env: &mut Box<Environment>, node: &Box<Ast>) -> Result<(), CompilerErr> {
         if let AstData::IfStatement { condition, true_body, false_body } = &node.data {
             self.visit(env, condition)?;
@@ -612,11 +643,13 @@ impl Compiler {
             self.visit(env, &rhs)?;
 
             match node.token.kind {
-                TokenKind::Plus =>      env.add_op(Instruction::Add),
-                TokenKind::Minus =>     env.add_op(Instruction::Sub),
-                TokenKind::Star =>      env.add_op(Instruction::Mul),
-                TokenKind::Slash =>     env.add_op(Instruction::Div),
-                _ => unreachable!(),
+                TokenKind::Plus =>          env.add_op(Instruction::Add),
+                TokenKind::Minus =>         env.add_op(Instruction::Sub),
+                TokenKind::Star =>          env.add_op(Instruction::Mul),
+                TokenKind::Slash =>         env.add_op(Instruction::Div),
+                TokenKind::EqualEqual =>    env.add_op(Instruction::EqualEqual),
+                TokenKind::NotEqual =>      env.add_op(Instruction::NotEqual),
+                _ => unreachable!("{}", node.token.span.slice_source()),
             }
         }
 
@@ -964,6 +997,7 @@ impl Compiler {
     fn visit(&mut self, env: &mut Box<Environment>, node: &Box<Ast>) -> Result<(), CompilerErr> {
         match node.data {
             AstData::Literal => self.literal(env, node)?,
+            AstData::SymbolLiteral => self.symbol(env, node)?,
             AstData::ListLiteral(_) => self.list_literal(env, node)?,
             AstData::Identifier => self.identifier(env, node),
             

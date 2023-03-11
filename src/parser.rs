@@ -70,6 +70,15 @@ impl Parser {
         kinds.iter().any(|k| self.current.kind == *k)
     }
 
+    fn symbol(&mut self) -> Result<Box<Ast>, ParserErr> {
+        self.consume_here();
+
+        let identifier = self.current.clone();
+        self.consume(TokenKind::Identifier, "Expect identifier after '`'")?;
+
+        Ok(Ast::new_symbol(identifier))
+    }
+
     fn primary(&mut self) -> Result<Box<Ast>, ParserErr> {
         match self.current.kind {
             TokenKind::Number | TokenKind::String | TokenKind::None
@@ -88,6 +97,7 @@ impl Parser {
 
             TokenKind::LSquare => self.list_literal(),
             TokenKind::Pipe => self.anon_function(),
+            TokenKind::Backtick => self.symbol(),
 
             TokenKind::Identifier => {
                 let token = self.current.clone();
@@ -498,6 +508,7 @@ impl Parser {
         self.consume_here();
         match self.current.kind {
             TokenKind::Identifier | TokenKind::String => {
+                // TODO: Check if path is already included, can use std lib token
                 let include = if self.current.kind == TokenKind::Identifier {
                     todo!("Import standard library item");
                 } else {

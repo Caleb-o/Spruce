@@ -10,8 +10,9 @@ pub struct Ast {
 
 #[derive(Debug)]
 pub enum AstData {
-    Literal,
     Identifier,
+    Literal,
+    SymbolLiteral,
     ListLiteral(Vec<Box<Ast>>),
     ExpressionStatement(Box<Ast>),
 
@@ -64,6 +65,13 @@ impl Ast {
         Box::new(Self { 
             token,
             data: AstData::Literal,
+        })
+    }
+
+    pub fn new_symbol(token: Token) -> Box<Self> {
+        Box::new(Self { 
+            token,
+            data: AstData::SymbolLiteral,
         })
     }
 
