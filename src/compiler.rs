@@ -582,7 +582,7 @@ impl Compiler {
 
                 return Ok((false, done_jmp));
             } else {
-                self.body(env, body, true)?;
+                self.visit(env, body)?;
                 return Ok((true, 0));
             }
         }
