@@ -1,4 +1,4 @@
-use std::{fmt::Display, time::Instant, mem::{transmute, discriminant}};
+use std::{fmt::Display, time::Instant, mem::{transmute, discriminant}, collections::HashMap};
 
 use crate::{environment::{Environment, ConstantValue, get_type_name}, object::Object, instructions::Instruction, compiler::Function};
 
@@ -210,6 +210,25 @@ impl VM {
 			Instruction::BuildSymbol => {
 				let value = self.get_short();
 				self.push(Object::Symbol(value));
+			}
+
+			Instruction::BuildMap => {
+				let count = self.get_byte();
+				let mut values = HashMap::new();
+
+				for _ in 0..count {
+					let value = self.drop()?;
+					let identifier = match self.drop()? {
+						Object::String(s) => s,
+						n @ _ => return Err(RuntimeErr(format!(
+							"Identifier '{n}' is not a string",
+						))),
+					};
+
+					values.insert(identifier, Box::new(value));
+				}
+
+				self.push(Object::StringMap(values));
 			}
 
 			Instruction::Greater => {

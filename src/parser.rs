@@ -59,6 +59,7 @@ impl Parser {
             return Ok(());
         }
 
+        println!("Current '{}'", self.current.span.slice_source());
         Err(self.error(String::from(msg)))
     }
 
@@ -96,6 +97,7 @@ impl Parser {
             },
 
             TokenKind::LSquare => self.list_literal(),
+            TokenKind::At => self.map_literal(),
             TokenKind::Pipe => self.anon_function(),
             TokenKind::Backtick => self.symbol(),
 
@@ -289,6 +291,45 @@ impl Parser {
         self.consume(TokenKind::RSquare, "Expect ']' after list literal arguments")?;
 
         Ok(Ast::new_list_literal(token, values))
+    }
+
+    fn map_literal(&mut self) -> Result<Box<Ast>, ParserErr> {
+        let token = self.current.clone();
+        self.consume_here();
+        self.consume(TokenKind::LCurly, "Expect '{' after '@' to start map literal")?;
+
+        let mut values = Vec::new();
+
+        if self.current.kind != TokenKind::RCurly {
+            let identifier = self.current.clone();
+            self.consume(TokenKind::Identifier, "Expect identifier as key in map")?;
+            let mut expr = None;
+
+            if self.current.kind == TokenKind::Colon {
+                self.consume_here();
+                expr = Some(self.expression()?);
+            }
+
+            values.push((identifier, expr));
+            
+            while self.current.kind == TokenKind::Comma {
+                self.consume_here();
+                let identifier = self.current.clone();
+                self.consume(TokenKind::Identifier, "Expect identifier as key in map")?;
+                let mut expr = None;
+
+                if self.current.kind == TokenKind::Colon {
+                    self.consume_here();
+                    expr = Some(self.expression()?);
+                }
+
+                values.push((identifier, expr));
+            }
+        }
+
+        self.consume(TokenKind::RCurly, "Expect '}' after map literal")?;
+
+        Ok(Ast::new_map_literal(token, values))
     }
 
     fn function_call(&mut self, lhs: Box<Ast>) -> Result<Box<Ast>, ParserErr> {

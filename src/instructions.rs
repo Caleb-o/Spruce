@@ -39,6 +39,7 @@ pub enum Instruction {
 	BuildFn, 		// paramc u8, location u32
 	BuildList, 		// u8
 	BuildSymbol, 	// u16
+	BuildMap, 		// u8
 
 	Jump,		// u16
 	JumpNot,	// u16

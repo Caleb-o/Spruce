@@ -13,6 +13,7 @@ pub enum AstData {
     Identifier,
     Literal,
     SymbolLiteral,
+    MapLiteral(Vec<(Token, Option<Box<Ast>>)>),
     ListLiteral(Vec<Box<Ast>>),
     ExpressionStatement(Box<Ast>),
 
@@ -73,6 +74,13 @@ impl Ast {
         Box::new(Self { 
             token,
             data: AstData::SymbolLiteral,
+        })
+    }
+
+    pub fn new_map_literal(token: Token, values: Vec<(Token, Option<Box<Ast>>)>) -> Box<Self> {
+        Box::new(Self {
+            token,
+            data: AstData::MapLiteral(values),
         })
     }
 

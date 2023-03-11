@@ -1,6 +1,5 @@
-use std::fmt::Display;
+use std::{fmt::Display, collections::HashMap};
 
-#[allow(unused)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Object {
 	None,
@@ -11,6 +10,7 @@ pub enum Object {
 	Function(u32),
 	AnonFunction(u8, u32),
 	Symbol(u16),
+	StringMap(HashMap<String, Box<Object>>),
 	// TODO: "Pointer" type, which holds its location in the stack
 	//		 If we want a complex/large type, we don't really want to
 	//		 duplicate it, especially if we want to mutate it.
@@ -27,6 +27,7 @@ impl Object {
     		Object::Function(_) => "function",
     		Object::AnonFunction(_, _) => "anon",
 			Object::Symbol(_) => "symbol",
+			Object::StringMap(_) => "stringmap",
 		}
 	}
 
@@ -51,6 +52,12 @@ impl Object {
 				}
 				false
 			},
+			Self::Symbol(ref v) => {
+				if let Self::Symbol(ref o) = other {
+					return *v == *o;
+				}
+				false
+			}
 			_ => false,
 		}
 	}
@@ -66,10 +73,10 @@ impl Display for Object {
 			Object::List(ref list) => {
 				let mut string = String::from("[");
 				
-				for i in 0..list.len() {
-					string.push_str(&format!("{}", list[i]));
+				for (idx, item) in list.iter().enumerate() {
+					string.push_str(&format!("{item}"));
 
-					if i < list.len() - 1 {
+					if idx < list.len() - 1 {
 						string.push_str(", ");
 					}
 				}
@@ -84,6 +91,20 @@ impl Display for Object {
 				format!("fn<{arg_count}, {location}>")
 			}
 			Object::Symbol(value) => format!("Symbol<{value}>"),
+			Object::StringMap(ref map) => {
+				let mut string = String::from("{");
+				
+				for (idx, (key, value)) in map.iter().enumerate() {
+					string.push_str(&format!("{key}: {value}"));
+
+					if idx < map.len() - 1 {
+						string.push_str(", ");
+					}
+				}
+
+				string.push('}');
+				string
+			}
 		})
     }
 }

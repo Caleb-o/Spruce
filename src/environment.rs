@@ -281,6 +281,7 @@ impl Environment {
 			Instruction::BuildFn => build_function("BUILD_FUNCTION", offset, &self),
 			Instruction::BuildSymbol => short_location_instruction("BUILD_SYMBOL", offset, &self),
 			Instruction::BuildList => simple_instruction("BUILD_LIST", offset),
+			Instruction::BuildMap => byte_instruction("BUILD_MAP", offset, &self),
 			
 			Instruction::GetFn => call_instruction("GET_FN", offset, &self),
 			Instruction::Call => call_instruction("CALL", offset, &self),
@@ -309,6 +310,12 @@ impl Environment {
 fn simple_instruction(name: &str, offset: usize) -> usize {
 	println!("{name}");
 	offset + 1
+}
+
+fn byte_instruction(name: &str, offset: usize, env: &Environment) -> usize {
+	let value = env.code[offset + 1];
+	println!("{name}<{value}>");
+	offset + 2
 }
 
 fn constant_instruction(name: &str, offset: usize, env: &Environment) -> usize {

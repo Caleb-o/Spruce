@@ -724,6 +724,37 @@ impl Compiler {
         Ok(())
     }
 
+    fn map_literal(&mut self, env: &mut Box<Environment>, node: &Box<Ast>) -> Result<(), CompilerErr> {
+        if let AstData::MapLiteral(values) = &node.data {
+            for (identifier, expr) in values {
+                env.add_constant(Object::String(identifier.span.slice_source().to_string()));
+
+                if let Some(expr) = expr {
+                    self.visit(env, expr)?;
+                } else {
+                    if let Some(local) = self.table.find_local(&identifier.span, true) {
+                        env.add_local(
+                            if local.is_global() {Instruction::GetGlobal} else {Instruction::GetLocal},
+                            local.position
+                        );
+                    } else {
+                        self.error_no_exit(format!(
+                                "Cannot find identifier '{}' to construct map literal",
+                                identifier.span.slice_source()
+                            ),
+                            identifier
+                        )
+                    }
+                }
+            }
+    
+            env.add_op(Instruction::BuildMap);
+            env.add_opb(values.len() as u8);
+        }
+
+        Ok(())
+    }
+
     fn var_declaration(&mut self, env: &mut Box<Environment>, var_decl: &Box<Ast>) -> Result<(), CompilerErr> {
         let identifier = &var_decl.token;
         if let AstData::VarDeclaration { is_mutable, expression } = &var_decl.data {
@@ -1008,6 +1039,7 @@ impl Compiler {
             AstData::Literal => self.literal(env, node)?,
             AstData::SymbolLiteral => self.symbol(env, node)?,
             AstData::ListLiteral(_) => self.list_literal(env, node)?,
+            AstData::MapLiteral(_) => self.map_literal(env, node)?,
             AstData::Identifier => self.identifier(env, node),
             
             AstData::BinaryOp {..} => self.binary_op(env, node)?,
