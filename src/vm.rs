@@ -149,6 +149,7 @@ impl VM {
 		// println!("CODE :: {} {:?}", code as u8, code);
 		match code {
 			Instruction::Pop => _ = self.drop()?,
+			Instruction::Peek => self.push(self.peek().clone()),
 
 			Instruction::Constant => {
 				let idx = self.get_byte();

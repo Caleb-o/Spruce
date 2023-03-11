@@ -21,6 +21,7 @@ impl Display for ParamKind {
 #[repr(u8)]
 pub enum Instruction {
 	Pop,
+	Peek,
 
 	Constant,
 	ConstantLong,

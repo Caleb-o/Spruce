@@ -40,6 +40,9 @@ pub enum AstData {
     IndexGetter { expression: Box<Ast>, index: Box<Ast> },
     IndexSetter { expression: Box<Ast>, rhs: Box<Ast> },
 
+    SwitchStatement { condition: Box<Ast>, cases: Vec<Box<Ast>> },
+    SwitchCase { case: Option<Box<Ast>>, body: Box<Ast> },
+
     Return(Option<Box<Ast>>),
     Body(Vec<Box<Ast>>),
     Program { source: Rc<Source>, body: Vec<Box<Ast>> },
@@ -231,6 +234,20 @@ impl Ast {
                 is_assert,
                 expression,
              },
+        })
+    }
+
+    pub fn new_switch_case(token: Token, case: Option<Box<Ast>>, body: Box<Ast>) -> Box<Self> {
+        Box::new(Self { 
+            token,
+            data: AstData::SwitchCase { case, body },
+        })
+    }
+
+    pub fn new_switch_statement(token: Token, condition: Box<Ast>, cases: Vec<Box<Ast>>) -> Box<Self> {
+        Box::new(Self { 
+            token,
+            data: AstData::SwitchStatement { condition, cases },
         })
     }
 

@@ -568,6 +568,77 @@ impl Compiler {
         Ok(())
     }
 
+    fn switch_case(&mut self, env: &mut Box<Environment>, node: &Box<Ast>) -> Result<(bool, u32), CompilerErr> {
+        if let AstData::SwitchCase { case, body } = &node.data {
+            if let Some(case) = case {
+                env.add_op(Instruction::Peek);
+                self.visit(env, case)?;
+                env.add_op(Instruction::EqualEqual);
+
+                let jmp = env.add_jump_op(true);
+                self.body(env, body, true)?;
+                let done_jmp = env.add_jump_op(false);
+                env.patch_jump_op(jmp);
+
+                return Ok((false, done_jmp));
+            } else {
+                self.body(env, body, true)?;
+                return Ok((true, 0));
+            }
+        }
+
+        unreachable!();
+    }
+
+    fn switch_statement(&mut self, env: &mut Box<Environment>, node: &Box<Ast>) -> Result<(), CompilerErr> {
+        if let AstData::SwitchStatement { condition, cases } = &node.data {
+            let mut has_default = false;
+            self.visit(env, condition)?;
+
+            let mut end_locs = Vec::new();
+            let mut default_case = None;
+
+            for switch_case in cases {
+                
+                if let AstData::SwitchCase { case, .. } = &switch_case.data {
+                    if let None = case {
+                        default_case = Some(switch_case);
+                        continue;
+                    }
+                }
+
+                if let Ok((is_else, loc)) = self.switch_case(env, switch_case) {
+                    if has_default && is_else {
+                        self.error_no_exit(
+                                "Trying to add multiple default branches to switch case".into()
+                            ,
+                            &node.token
+                        );
+                        continue;
+                    }
+                    if is_else {
+                        has_default = true;
+                        continue;
+                    }
+                    end_locs.push(loc);
+                }
+            }
+
+            // Pop condition value
+            env.add_op(Instruction::Pop);
+
+            if let Some(default_case) = default_case {
+                _ = self.switch_case(env, default_case);
+            }
+
+            for end in end_locs {
+                env.patch_jump_op(end);
+            }
+        }
+
+        Ok(())
+    }
+
     fn for_statement(&mut self, env: &mut Box<Environment>, node: &Box<Ast>) -> Result<(), CompilerErr> {
         if let AstData::ForStatement { variable, condition, increment, body } = &node.data {
             self.push_scope();
@@ -1060,6 +1131,7 @@ impl Compiler {
             AstData::ForStatement {..} => self.for_statement(env, node)?,
             AstData::DoWhileStatement {..} => self.do_while_statement(env, node)?,
             AstData::TrailingIfStatement {..} => self.trailing_if(env, node)?,
+            AstData::SwitchStatement {..} => self.switch_statement(env, node)?,
             AstData::ExpressionStatement(_) => self.expression_statement(env, node)?,
             AstData::IndexGetter {..} => self.index_getter(env, node)?,
             AstData::IndexSetter {..} => self.index_setter(env, node)?,

@@ -423,6 +423,36 @@ impl Parser {
         Ok(Ast::new_do_while_statement(token, body, condition))
     }
 
+    fn switch_case(&mut self) -> Result<Box<Ast>, ParserErr> {
+        let token = self.current.clone();
+        let case = if self.current.kind == TokenKind::Else {
+            self.consume_here();
+            None
+        } else {
+            Some(self.expression()?)
+        };
+
+        self.consume(TokenKind::Colon, "Expect ':' after switch case value")?;
+        Ok(Ast::new_switch_case(token, case, self.body()?))
+    }
+
+    fn switch_statement(&mut self) -> Result<Box<Ast>, ParserErr> {
+        let token = self.current.clone();
+        self.consume_here();
+
+        let condition = self.expression()?;
+        self.consume(TokenKind::LCurly, "Expect '{' after switch condition")?;
+
+        let mut cases = Vec::new();
+
+        while self.current.kind != TokenKind::RCurly {
+            cases.push(self.switch_case()?);
+        }
+
+        self.consume(TokenKind::RCurly, "Expect '}' after switch cases")?;
+        Ok(Ast::new_switch_statement(token, condition, cases))
+    }
+
     fn return_statement(&mut self) -> Result<Box<Ast>, ParserErr> {
         let token = self.current.clone();
         self.consume_here();
@@ -449,6 +479,7 @@ impl Parser {
             TokenKind::If => self.if_statement()?,
             TokenKind::For => self.for_statement()?,
             TokenKind::Do => self.do_while_statement()?,
+            TokenKind::Switch => self.switch_statement()?,
             TokenKind::Var | TokenKind::Val => self.var_declaration()?,
             TokenKind::Return => self.return_statement()?,
             TokenKind::LCurly => self.body()?,
@@ -463,7 +494,8 @@ impl Parser {
         }
 
         match node.data {
-            AstData::Function {..} | AstData::IfStatement {..} | AstData::ForStatement {..} | AstData::Body(_) => {}
+            AstData::SwitchStatement {..} | AstData::Function {..} | AstData::IfStatement {..}
+            | AstData::ForStatement {..} | AstData::Body(_) => {}
             _ => self.consume(TokenKind::SemiColon, "Expect ';' after statement")?,
         }
         
