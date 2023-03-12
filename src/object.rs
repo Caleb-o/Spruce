@@ -6,11 +6,12 @@ pub enum Object {
 	Number(f32),
 	String(String),
 	Boolean(bool),
-	List(Vec<Box<Object>>),
 	Function(u32),
 	AnonFunction(u8, u32),
 	Symbol(u16),
+	List(Vec<Box<Object>>),
 	StringMap(HashMap<String, Box<Object>>),
+	Ref(u32),
 	// TODO: "Pointer" type, which holds its location in the stack
 	//		 If we want a complex/large type, we don't really want to
 	//		 duplicate it, especially if we want to mutate it.
@@ -28,6 +29,7 @@ impl Object {
     		Object::AnonFunction(_, _) => "anon",
 			Object::Symbol(_) => "symbol",
 			Object::StringMap(_) => "stringmap",
+			Object::Ref(_) => "ref",
 		}
 	}
 
@@ -105,6 +107,7 @@ impl Display for Object {
 				string.push('}');
 				string
 			}
+			Object::Ref(id) => format!("Ref<{id}>"),
 		})
     }
 }

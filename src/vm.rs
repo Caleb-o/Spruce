@@ -1,4 +1,4 @@
-use std::{fmt::Display, time::Instant, mem::{transmute, discriminant}, collections::HashMap};
+use std::{fmt::Display, time::Instant, mem::{transmute, discriminant}, collections::HashMap, rc::Rc};
 
 use crate::{environment::{Environment, ConstantValue, get_type_name}, object::Object, instructions::Instruction, compiler::Function};
 
@@ -19,6 +19,8 @@ pub struct VM {
 	pub(crate) env: Box<Environment>,
 	pub(crate) ip: *mut u8,
 	pub(crate) stack: Vec<Object>,
+	// TODO: Custom heap that sits on a Vec, to reuse slots and to cleanup
+	pub(crate) heap: Vec<Rc<Object>>,
 	pub(crate) frames: Vec<CallFrame>,
 	pub(crate) started: Instant,
 	pub(crate) running: bool,
@@ -42,6 +44,7 @@ impl VM {
 			env,
 			ip,
 			stack: Vec::with_capacity(512),
+			heap: Vec::new(),
 			frames: Vec::with_capacity(64),
 			started: Instant::now(),
 			running: true,
@@ -76,6 +79,17 @@ impl VM {
 	#[inline]
 	pub fn push(&mut self, object: Object) {
 		self.stack.push(object);
+	}
+
+	pub fn push_heap(&mut self, object: Object) -> Result<(), RuntimeErr> {
+		self.push(Object::Ref(match object {
+			Object::List(_) | Object::StringMap(_) => self.heap.len() as u32,
+			_ => return Err(RuntimeErr(format!(
+				"Cannot push '{object}' to the heap"
+			))),
+		}));
+		self.heap.push(Rc::new(object));
+		Ok(())
 	}
 
 	#[inline]
@@ -192,14 +206,13 @@ impl VM {
 			}
 
 			Instruction::BuildList => {
-				let count = self.get_byte();
-				let mut list = Vec::with_capacity(count as usize);
+				let count = self.get_byte() as usize;
+				let list = self.stack
+					.iter().skip(self.stack.len() - count)
+					.map(|o| Box::new(o.clone()))
+					.collect::<Vec<Box<Object>>>();
 
-				for idx in 0..count {
-					list.push(Box::new(self.stack[self.stack.len() - 1 - idx as usize].clone()));
-				}
-
-				self.push(Object::List(list));
+				self.push_heap(Object::List(list))?;
 			}
 
 			Instruction::BuildSymbol => {
@@ -223,7 +236,7 @@ impl VM {
 					values.insert(identifier, Box::new(value));
 				}
 
-				self.push(Object::StringMap(values));
+				self.push_heap(Object::StringMap(values))?;
 			}
 
 			Instruction::Greater => {
@@ -373,95 +386,92 @@ impl VM {
 				let indexer = self.drop()?;
 				let item = self.drop()?;
 
-				match indexer {
-					Object::Number(idx) => {
-						match item {
-							Object::String(ref v) => {
-								let index = idx as usize;
-								if index < v.len() {
-									self.push(Object::String(String::from(&v[index..index + 1])));
-								} else {
-									return Err(RuntimeErr(format!(
-										"Index out of bounds {} into item of {}",
-										index, v.len()
-									)))
-								}
-							}
-
-							Object::List(ref v) => {
-								let index = idx as usize;
-								if index < v.len() {
-									self.push((*v[index]).clone());
-								} else {
-									return Err(RuntimeErr(format!(
-										"Index out of bounds {} into item of {}",
-										index, v.len()
-									)))
-								}
-							}
-
-							_ => return Err(RuntimeErr(format!(
-								"Cannot index {} with numeric value {}",
-								item, idx
-							)))
-						}
-					}
+				let n_index = match indexer {
+					Object::Number(n) => n as usize,
 					_ => return Err(RuntimeErr(format!(
-						"Cannot index {} with non-indexer value {}",
-						item, indexer
-					)))
+						"Cannot use '{indexer}' as an index"
+					))),
+				};
+
+				if let Object::Ref(item) = item {
+					match *self.heap[item as usize] {
+						Object::String(ref v) => {
+							if n_index < v.len() {
+								self.push(Object::String(String::from(&v[n_index..n_index + 1])));
+							} else {
+								return Err(RuntimeErr(format!(
+									"Index out of bounds {} into item of {}",
+									n_index, v.len()
+								)))
+							}
+						}
+
+						Object::List(ref v) => {
+							if n_index < v.len() {
+								self.push((*v[n_index]).clone());
+							} else {
+								return Err(RuntimeErr(format!(
+									"Index out of bounds {} into item of {}",
+									n_index, v.len()
+								)))
+							}
+						}
+
+						_ => return Err(RuntimeErr(format!(
+							"Cannot index into '{item}'"
+						))),
+					}
 				}
 			}
 
 			Instruction::IndexSet => {
 				let value = self.drop()?;
 				let indexer = self.drop()?;
-				let item = self.peek_mut();
+				let item = self.drop()?;
 
-				match indexer {
-					Object::Number(idx) => {
-						match item {
-							Object::String(ref mut v) => {
-								let index = idx as usize;
-								if index < v.len() {
-									if let Object::String(ref s) = value {
-										v.insert_str(index, s);
-									} else {
-										return Err(RuntimeErr(format!(
-											"Cannot insert '{}' into string '{}'",
-											value, item
-										)))
-									}
-								} else {
-									return Err(RuntimeErr(format!(
-										"Index out of bounds {} into item of {}",
-										index, v.len()
-									)))
-								}
-							}
-
-							Object::List(ref mut v) => {
-								let index = idx as usize;
-								if index < v.len() {
-									v[index] = Box::new(value);
-								} else {
-									return Err(RuntimeErr(format!(
-										"Index out of bounds {} into item of {}",
-										index, v.len()
-									)))
-								}
-							}
-
-							_ => return Err(RuntimeErr(format!(
-								"Cannot index {} with numeric value {}",
-								item, idx
-							)))
-						}
-					}
+				let n_index = match indexer {
+					Object::Number(n) => n as usize,
 					_ => return Err(RuntimeErr(format!(
-						"Cannot index {} with non-indexer value {}",
-						item, indexer
-					)))
+						"Cannot use '{indexer}' as an index for setter"
+					))),
+				};
+
+				if let Object::Ref(inner) = item {
+					let inner = Rc::get_mut(&mut self.heap[inner as usize]).unwrap();
+					match *inner {
+						Object::String(ref mut v) => {
+							if n_index < v.len() {
+								if let Object::String(ref s) = value {
+									v.insert_str(n_index, s);
+								} else {
+									return Err(RuntimeErr(format!(
+										"Cannot insert '{}' into string '{}'",
+										value, item
+									)))
+								}
+							} else {
+								return Err(RuntimeErr(format!(
+									"Index out of bounds {} into item of {}",
+									n_index, v.len()
+								)))
+							}
+						}
+
+						Object::List(ref mut v) => {
+							if n_index < v.len() {
+								v[n_index] = Box::new(value);
+							} else {
+								return Err(RuntimeErr(format!(
+									"Index out of bounds {} into item of {}",
+									n_index, v.len()
+								)))
+							}
+						}
+
+						_ => return Err(RuntimeErr(format!(
+							"Cannot index into '{inner}'"
+						))),
+					}
 				}
 			}
 
@@ -476,26 +486,28 @@ impl VM {
 					))),
 				};
 
-				match object {
-					Object::StringMap(ref map) => {
-						if !map.contains_key(&identifier) {
-							return Err(RuntimeErr(format!(
-								"Object {object} does not contain the field '{identifier}'",
-							)));
+				if let Object::Ref(inner) = object {
+					match &*self.heap[inner as usize] {
+						Object::StringMap(ref map) => {
+							if !map.contains_key(&identifier) {
+								return Err(RuntimeErr(format!(
+									"Object {object} does not contain the field '{identifier}'",
+								)));
+							}
+	
+							self.push(*map[&identifier].clone());
 						}
-
-						self.push(*map[&identifier].clone());
+						n @ _ => return Err(RuntimeErr(format!(
+							"Cannot index non-object with '{n}'",
+						))),
 					}
-					n @ _ => return Err(RuntimeErr(format!(
-						"Cannot index non-object with '{n}'",
-					))),
 				}
 			}
 
 			Instruction::SetProperty => {
 				let value = self.drop()?;
 				let identifier = self.drop()?;
-				let object = self.peek_mut();
+				let object = self.drop()?;
 
 				let identifier = match identifier {
 					Object::String(s) => s,
@@ -504,19 +516,22 @@ impl VM {
 					))),
 				};
 
-				match object {
-					Object::StringMap(ref mut map) => {
-						if !map.contains_key(&identifier) {
-							return Err(RuntimeErr(format!(
-								"Object {object} does not contain the field '{identifier}'",
-							)));
+				if let Object::Ref(inner) = object {
+					let inner = Rc::get_mut(&mut self.heap[inner as usize]).unwrap();
+					match inner {
+						Object::StringMap(ref mut map) => {
+							if !map.contains_key(&identifier) {
+								return Err(RuntimeErr(format!(
+									"Object {object} does not contain the field '{identifier}'",
+								)));
+							}
+	
+							map.insert(identifier, Box::new(value));
 						}
-
-						map.insert(identifier, Box::new(value));
+						n @ _ => return Err(RuntimeErr(format!(
+							"Cannot index non-object with '{n}'",
+						))),
 					}
-					n @ _ => return Err(RuntimeErr(format!(
-						"Cannot index non-object with '{n}'",
-					))),
 				}
 			}
 
@@ -662,7 +677,15 @@ impl VM {
 						let item = match function(self, &args) {
 							Ok(item) => {
 								match item {
-									Some(i) => i,
+									Some(i) => match i {
+										Object::List(_) | Object::StringMap(_) => {
+											self.push_heap(i)?;
+											_ = self.frames.pop();
+											self.inc();
+											return Ok(());
+										}
+										_ => i,
+									},
 									None => Object::None,
 								}
 							}

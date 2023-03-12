@@ -77,6 +77,7 @@ impl Stepper {
         self.vm.frames.push(CallFrame::new(None, 0, 0));
 
         self.vm.stack.clear();
+        self.vm.heap.clear();
 
         operations.clear();
         operations.push(get_instruction(self.vm.ip));

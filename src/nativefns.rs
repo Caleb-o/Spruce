@@ -23,6 +23,19 @@ pub fn register_native_functions(compiler: &mut Compiler, env: &mut Box<Environm
         Ok(None)
     }));
 
+    compiler.add_fn(env, "ref_str", ParamKind::Count(1), false, Rc::new(|vm, args| {
+        if let Object::Ref(id) = args[0] {
+            match &*vm.heap[id as usize] {
+                n @ Object::List(_) | n @ Object::StringMap(_) => {
+                    return Ok(Some(Object::String(format!("{n}"))));
+                }
+                _ => {}
+            }
+        }
+
+        Ok(None)
+    }));
+
     compiler.add_fn(env, "assert", ParamKind::Count(2), false, Rc::new(|_, args| {
         if let Object::Boolean(condition) = &args[0] {
             if let Object::String(message) = &args[1] {
@@ -36,6 +49,21 @@ pub fn register_native_functions(compiler: &mut Compiler, env: &mut Box<Environm
         Ok(None)
     }));
 
+    compiler.add_fn(env, "make_list", ParamKind::Count(1), false, Rc::new(|_, args| {
+        if let Object::Number(count) = &args[0] {
+            let count = *count as usize;
+            let mut items = Vec::with_capacity(count);
+
+            for _ in 0..count {
+                items.push(Box::new(Object::None));
+            }
+
+            return Ok(Some(Object::List(items)));
+        }
+
+        Ok(None)
+    }));
+
     compiler.add_fn(env, "time", ParamKind::Count(0), true, Rc::new(|vm, _| {
         let t = vm.started.elapsed().as_micros() as f32;
         Ok(Some(Object::Number(t)))
@@ -44,7 +72,7 @@ pub fn register_native_functions(compiler: &mut Compiler, env: &mut Box<Environm
     compiler.add_fn(env, "len", ParamKind::Count(1), true, Rc::new(|vm, args| {
         match &args[0] {
             Object::String(s) => Ok(Some(Object::Number(s.len() as f32))),
-            Object::List(l) => Ok(Some(Object::Number(l.len() as f32))),
+            Object::List(ref l) => Ok(Some(Object::Number(l.len() as f32))),
             Object::StringMap(map) => Ok(Some(Object::Number(map.len() as f32))),
             _ => {
                 vm.warning(format!("len expected a string but received {}", vm.peek()));
