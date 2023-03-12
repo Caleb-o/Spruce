@@ -23,9 +23,9 @@ pub fn register_native_functions(compiler: &mut Compiler, env: &mut Box<Environm
         Ok(None)
     }));
 
-    compiler.add_fn(env, "ref_str", ParamKind::Count(1), false, Rc::new(|vm, args| {
-        if let Object::Ref(id) = args[0] {
-            match &*vm.heap[id as usize] {
+    compiler.add_fn(env, "ref_str", ParamKind::Count(1), false, Rc::new(|_, args| {
+        if let Object::Ref(ref item) = &args[0] {
+            match &**item {
                 n @ Object::List(_) | n @ Object::StringMap(_) => {
                     return Ok(Some(Object::String(format!("{n}"))));
                 }

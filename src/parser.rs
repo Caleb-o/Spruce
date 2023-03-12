@@ -546,9 +546,8 @@ impl Parser {
             type_name = Some(self.current.clone());
             match self.current.kind {
                 TokenKind::Identifier | TokenKind::None => self.consume_here(),
-                _ => self.consume(TokenKind::Identifier, "Expected type name after identifier")?,
+                _ => return Err(self.error("Expected type name after identifier".into())),
             }
-            self.consume(TokenKind::Identifier, "")?;
         }
 
         Ok(Ast::new_parameter(param_name, type_name))

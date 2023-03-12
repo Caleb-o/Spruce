@@ -1,4 +1,4 @@
-use std::{fmt::Display, collections::HashMap};
+use std::{fmt::Display, collections::HashMap, rc::Rc};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Object {
@@ -11,7 +11,7 @@ pub enum Object {
 	Symbol(u16),
 	List(Vec<Box<Object>>),
 	StringMap(HashMap<String, Box<Object>>),
-	Ref(u32),
+	Ref(Rc<Object>),
 	// TODO: "Pointer" type, which holds its location in the stack
 	//		 If we want a complex/large type, we don't really want to
 	//		 duplicate it, especially if we want to mutate it.

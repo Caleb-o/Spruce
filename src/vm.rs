@@ -82,13 +82,14 @@ impl VM {
 	}
 
 	pub fn push_heap(&mut self, object: Object) -> Result<(), RuntimeErr> {
-		self.push(Object::Ref(match object {
-			Object::List(_) | Object::StringMap(_) => self.heap.len() as u32,
+		let item = Rc::new(object);
+		self.push(Object::Ref(match *item {
+			Object::List(_) | Object::StringMap(_) => Rc::clone(&item),
 			_ => return Err(RuntimeErr(format!(
-				"Cannot push '{object}' to the heap"
+				"Cannot push '{item}' to the heap"
 			))),
 		}));
-		self.heap.push(Rc::new(object));
+		self.heap.push(item);
 		Ok(())
 	}
 
@@ -394,7 +395,7 @@ impl VM {
 				};
 
 				if let Object::Ref(item) = item {
-					match *self.heap[item as usize] {
+					match *item {
 						Object::String(ref v) => {
 							if n_index < v.len() {
 								self.push(Object::String(String::from(&v[n_index..n_index + 1])));
@@ -427,7 +428,7 @@ impl VM {
 			Instruction::IndexSet => {
 				let value = self.drop()?;
 				let indexer = self.drop()?;
-				let item = self.drop()?;
+				let mut item = self.drop()?;
 
 				let n_index = match indexer {
 					Object::Number(n) => n as usize,
@@ -436,8 +437,8 @@ impl VM {
 					))),
 				};
 
-				if let Object::Ref(inner) = item {
-					let inner = Rc::get_mut(&mut self.heap[inner as usize]).unwrap();
+				if let Object::Ref(inner) = &mut item {
+					let inner = Rc::get_mut(inner).unwrap();
 					match *inner {
 						Object::String(ref mut v) => {
 							if n_index < v.len() {
@@ -486,8 +487,8 @@ impl VM {
 					))),
 				};
 
-				if let Object::Ref(inner) = object {
-					match &*self.heap[inner as usize] {
+				if let Object::Ref(inner) = &object {
+					match &**inner {
 						Object::StringMap(ref map) => {
 							if !map.contains_key(&identifier) {
 								return Err(RuntimeErr(format!(
@@ -507,7 +508,7 @@ impl VM {
 			Instruction::SetProperty => {
 				let value = self.drop()?;
 				let identifier = self.drop()?;
-				let object = self.drop()?;
+				let mut object = self.drop()?;
 
 				let identifier = match identifier {
 					Object::String(s) => s,
@@ -516,8 +517,8 @@ impl VM {
 					))),
 				};
 
-				if let Object::Ref(inner) = object {
-					let inner = Rc::get_mut(&mut self.heap[inner as usize]).unwrap();
+				if let Object::Ref(inner) = &mut object {
+					let inner = Rc::get_mut(inner).unwrap();
 					match inner {
 						Object::StringMap(ref mut map) => {
 							if !map.contains_key(&identifier) {
@@ -762,6 +763,10 @@ impl VM {
 				return Err(RuntimeErr("Error occured".into()));
 			}
 		}
+
+		// for h in &self.heap {
+		// 	println!("Count: {}", Rc::strong_count(h));
+		// }
 		Ok(())
 	}
 
