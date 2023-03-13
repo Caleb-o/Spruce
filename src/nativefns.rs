@@ -36,6 +36,21 @@ pub fn register_native_functions(compiler: &mut Compiler, env: &mut Box<Environm
         Ok(None)
     }));
 
+    compiler.add_fn(env, "append", ParamKind::Count(2), false, Rc::new(|_, args| {
+        if let Object::Ref(ref item) = &args[0] {
+            match &**item {
+                Object::List(l) => {
+                    let mut list = l.clone();
+                    list.push(Box::new(args[1].clone()));
+                    return Ok(Some(Object::List(list)));
+                }
+                _ => {}
+            }
+        }
+
+        Ok(None)
+    }));
+
     compiler.add_fn(env, "assert", ParamKind::Count(2), false, Rc::new(|_, args| {
         if let Object::Boolean(condition) = &args[0] {
             if let Object::String(message) = &args[1] {

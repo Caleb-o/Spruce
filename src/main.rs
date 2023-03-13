@@ -8,6 +8,7 @@ mod object;
 mod nativefns;
 mod symtable;
 mod compiler;
+mod heap;
 mod vm;
 mod stepper;
 mod source;
