@@ -369,6 +369,13 @@ impl Compiler {
 
     fn function_call(&mut self, env: &mut Box<Environment>, node: &Box<Ast>) -> Result<(), CompilerErr> {
         if let AstData::FunctionCall { lhs, arguments } = &node.data {
+            let arg_count = arguments.len() as u8;
+            let mut fnerr: Option<(String, u8)> = None;
+
+            for arg in arguments {
+                self.visit(env, &arg)?;
+            }
+            
             let (identifier, anonymous) = match lhs.data {
                 // FIXME: Change how identifier works, now that we visit lhs
                 AstData::Identifier => {
@@ -398,13 +405,6 @@ impl Compiler {
                     (None, false)
                 },
             };
-            
-            let arg_count = arguments.len() as u8;
-            let mut fnerr: Option<(String, u8)> = None;
-
-            for arg in arguments {
-                self.visit(env, &arg)?;
-            }
 
             if anonymous {
                 if let Some(local) = self.table.find_local(&lhs.token.span, true) {
