@@ -207,16 +207,10 @@ impl VM {
 
             Instruction::BuildList => {
                 let count = self.get_byte() as usize;
-                // let list = self.stack
-                // 	.iter().skip(self.stack.len() - count)
-                // 	.map(|o| Box::new(o.clone()))
-                // 	.collect::<Vec<Box<Object>>>();
-
-                let list = self.stack.drain(self.stack.len() - count..)
-                    .collect::<Vec<Object>>()
-                    .into_iter()
-                    .map(|o| Box::new(o))
-                    .collect();
+                let list = self.stack
+                	.iter().skip(self.stack.len() - count)
+                	.map(|o| Box::new(o.clone()))
+                	.collect::<Vec<Box<Object>>>();
                 
                 self.push_heap(Object::List(list))?;
             }
@@ -463,7 +457,7 @@ impl VM {
                 };
 
                 if let Object::Ref(inner) = &mut item {
-                    let inner = Rc::get_mut(inner).unwrap();
+                    let inner = Rc::make_mut(inner);
                     match *inner {
                         Object::String(ref mut v) => {
                             if n_index < v.len() {
