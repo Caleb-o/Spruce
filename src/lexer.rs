@@ -61,6 +61,7 @@ impl Lexer {
             '{' => self.make_char_token(TokenKind::LCurly),
             '}' => self.make_char_token(TokenKind::RCurly),
 
+            '?' => self.make_char_token(TokenKind::QuestionMark),
             '.' => self.make_char_token(TokenKind::Dot),
             '@' => self.make_char_token(TokenKind::At),
             '`' => self.make_char_token(TokenKind::Backtick),
@@ -136,6 +137,7 @@ impl Lexer {
         
         // Fixme: chars.nth seems dumb here
         match lexeme.chars().nth(0).unwrap() {
+            'a' => self.check_if_matches(start, len, &[("nd", TokenKind::And)]),
             'd' => self.check_if_matches(start, len, &[("o", TokenKind::Do)]),
             'e' => self.check_if_matches(start, len, &[
                 ("lse", TokenKind::Else),
@@ -152,6 +154,7 @@ impl Lexer {
                     ("nclude", TokenKind::Include),
                 ]),
             'n' => self.check_if_matches(start, len, &[("one", TokenKind::None)]),
+            'o' => self.check_if_matches(start, len, &[("r", TokenKind::Or)]),
             'r' => self.check_if_matches(start, len, &[("eturn", TokenKind::Return)]),
             's' => self.check_if_matches(start, len, &[
                     ("ruct", TokenKind::Struct),

@@ -242,8 +242,48 @@ impl Parser {
         Ok(node)
     }
 
-    fn assignment(&mut self) -> Result<Box<Ast>, ParserErr> {
+    fn or(&mut self) -> Result<Box<Ast>, ParserErr> {
         let mut node = self.type_equality()?;
+
+        while self.current.kind == TokenKind::And {
+            let token = self.current.clone();
+            self.consume_here();
+            node = Ast::new_logical_op(token, node, self.or()?);
+        }
+
+        Ok(node)
+    }
+
+    fn and(&mut self) -> Result<Box<Ast>, ParserErr> {
+        let mut node = self.or()?;
+
+        while self.current.kind == TokenKind::Or {
+            let token = self.current.clone();
+            self.consume_here();
+            node = Ast::new_logical_op(token, node, self.or()?);
+        }
+
+        Ok(node)
+    }
+
+    fn conditional(&mut self) -> Result<Box<Ast>, ParserErr> {
+        let mut node = self.and()?;
+
+        if self.current.kind == TokenKind::QuestionMark {
+            self.consume_here();
+
+            let true_body = self.expression()?;
+            self.consume(TokenKind::Colon, "Expect ':' after ternary true body")?;
+            let false_body = self.expression()?;
+
+            node = Ast::new_ternary(node.token.clone(), node, true_body, false_body);
+        }
+
+        Ok(node)
+    }
+
+    fn assignment(&mut self) -> Result<Box<Ast>, ParserErr> {
+        let mut node = self.conditional()?;
 
         loop {
             node = match self.current.kind {
@@ -506,10 +546,16 @@ impl Parser {
         };
 
         // Trailing if statement
-        if self.current.kind == TokenKind::If {
-            let token = self.current.clone();
-            self.consume_here();
-            node = Ast::new_trailing_if(token, node, self.expression()?);
+        match node.data {
+            // Disallow after certain types of statement
+            AstData::SwitchStatement {..} | AstData::Function {..} | AstData::IfStatement {..} => {}
+            _ => {
+                if self.current.kind == TokenKind::If {
+                    let token = self.current.clone();
+                    self.consume_here();
+                    node = Ast::new_trailing_if(token, node, self.expression()?);
+                }
+            }
         }
 
         match node.data {

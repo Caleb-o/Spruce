@@ -263,6 +263,8 @@ impl Environment {
             Instruction::GreaterEqual => simple_instruction("GREATER_EQUAL", offset),
             Instruction::Less => simple_instruction("LESS", offset),
             Instruction::LessEqual => simple_instruction("LESS_EQUAL", offset),
+            Instruction::And => simple_instruction("AND", offset),
+            Instruction::Or => simple_instruction("OR", offset),
             
             Instruction::IndexGet => simple_instruction("INDEX_GET", offset),
             Instruction::IndexSet => simple_instruction("INDEX_SET", offset),

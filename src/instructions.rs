@@ -54,6 +54,7 @@ pub enum Instruction {
     EqualEqual, NotEqual,
     Less, LessEqual,
     Greater, GreaterEqual,
+    And, Or,
 
     Negate, Add, Sub, Mul, Div,
 

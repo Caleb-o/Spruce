@@ -30,6 +30,7 @@ pub enum AstData {
     VarAssign { lhs: Box<Ast>, expression: Box<Ast> },
     VarAssignEqual { operator: Token, lhs: Box<Ast>, expression: Box<Ast> },
 
+    Ternary { condition: Box<Ast>, true_body: Box<Ast>, false_body: Box<Ast> },
     IfStatement { condition: Box<Ast>, true_body: Box<Ast>, false_body: Option<Box<Ast>> },
     ForStatement { variable: Option<Box<Ast>>, condition: Box<Ast>, increment: Option<Box<Ast>>, body: Box<Ast> },
     DoWhileStatement { body: Box<Ast>, condition: Box<Ast> },
@@ -173,6 +174,18 @@ impl Ast {
         Box::new(Self {
             token,
             data: AstData::Return(expression),
+        })
+    }
+
+    pub fn new_ternary(
+        token: Token,
+        condition: Box<Ast>,
+        true_body: Box<Ast>,
+        false_body: Box<Ast>
+    ) -> Box<Self> {
+        Box::new(Self {
+            token,
+            data: AstData::Ternary { condition, true_body, false_body },
         })
     }
 

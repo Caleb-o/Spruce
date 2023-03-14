@@ -49,7 +49,7 @@ impl Span {
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(u8)]
 pub enum TokenKind {
-    Plus, Minus, Star, Slash,
+    Plus, Minus, Star, Slash, QuestionMark,
     PlusEqual, MinusEqual, StarEqual, SlashEqual,
     Equal, EqualEqual, Bang, NotEqual,
     Greater, GreaterEqual, Less, LessEqual,
@@ -66,7 +66,7 @@ pub enum TokenKind {
     If, Else, For, Val, Var,
     Do, While, Include, Switch,
     Function, Struct, Is, Return,
-    Ensure, Identifier,
+    Ensure, Identifier, And, Or,
     
     EndOfFile,
     Error,

@@ -753,6 +753,8 @@ impl Compiler {
                 TokenKind::GreaterEqual =>      env.add_op(Instruction::GreaterEqual),
                 TokenKind::Less =>              env.add_op(Instruction::Less),
                 TokenKind::LessEqual =>         env.add_op(Instruction::LessEqual),
+                TokenKind::And =>               env.add_op(Instruction::And),
+                TokenKind::Or =>                env.add_op(Instruction::Or),
                 _ => unreachable!(),
             }
         }

@@ -278,6 +278,26 @@ impl VM {
                 }
             }
 
+            Instruction::Or => {
+                let (lhs, rhs) = self.pop_2_check()?;
+
+                if let Object::Boolean(l) = lhs {
+                    if let Object::Boolean(r) = rhs {
+                        self.push(Object::Boolean(l || r));
+                    }
+                }
+            }
+
+            Instruction::And => {
+                let (lhs, rhs) = self.pop_2_check()?;
+
+                if let Object::Boolean(l) = lhs {
+                    if let Object::Boolean(r) = rhs {
+                        self.push(Object::Boolean(l && r));
+                    }
+                }
+            }
+
             Instruction::LessEqual => {
                 let size = self.stack_size() - 2;
                 let (lhs, rhs) = self.pop_peek_check()?;
