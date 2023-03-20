@@ -72,6 +72,7 @@ pub struct Compiler {
     table: SymTable,
     functable: Vec<Function>,
     symbols: Symbols,
+    last_return: bool,
 }
 
 pub struct CompilerErr {
@@ -89,6 +90,7 @@ impl Compiler {
             table: SymTable::new(),
             functable: Vec::new(),
             symbols: Symbols::new(),
+            last_return: false,
         }
     }
 
@@ -1003,6 +1005,9 @@ impl Compiler {
     }
 
     fn body(&mut self, env: &mut Box<Environment>, node: &Box<Ast>, new_scope: bool) -> Result<(), CompilerErr> {
+        let prev_last_ret = self.last_return;
+        self.last_return = false;
+
         let AstData::Body(ref statements) = &node.data else { unreachable!() };
         if new_scope {
             self.push_scope();
@@ -1016,6 +1021,7 @@ impl Compiler {
             }
         }
 
+        self.last_return = prev_last_ret;
         Ok(())
     }
 
@@ -1078,9 +1084,22 @@ impl Compiler {
     }
 
     fn expression_statement(&mut self, env: &mut Box<Environment>, node: &Box<Ast>) -> Result<(), CompilerErr> {
-        let AstData::ExpressionStatement(expr) = &node.data else { unreachable!() };
+        let AstData::ExpressionStatement(is_stmt, expr) = &node.data else { unreachable!() };
         self.visit(env, expr)?;
-        env.add_op(Instruction::Pop);
+
+        if *is_stmt {
+            env.add_op(Instruction::Pop);
+        } else {
+            if self.last_return {
+                self.error_no_exit(
+                    "Scope already contains an implicity return expression".into(),
+                    &expr.token
+                );
+            } else {
+                env.add_op(Instruction::Return);
+                self.last_return = true;
+            }
+        }
         
         Ok(())
     }
@@ -1158,7 +1177,7 @@ impl Compiler {
             AstData::DoWhileStatement {..} => self.do_while_statement(env, node)?,
             AstData::TrailingIfStatement {..} => self.trailing_if(env, node)?,
             AstData::SwitchStatement {..} => self.switch_statement(env, node)?,
-            AstData::ExpressionStatement(_) => self.expression_statement(env, node)?,
+            AstData::ExpressionStatement(_, _) => self.expression_statement(env, node)?,
             AstData::GetProperty {..} => self.get_property(env, node)?,
             AstData::SetProperty {..} => self.set_property(env, node)?,
             AstData::IndexGetter {..} => self.index_getter(env, node)?,

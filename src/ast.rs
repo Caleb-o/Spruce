@@ -15,7 +15,7 @@ pub enum AstData {
     SymbolLiteral,
     MapLiteral(Vec<(Token, Option<Box<Ast>>)>),
     ListLiteral(Vec<Box<Ast>>),
-    ExpressionStatement(Box<Ast>),
+    ExpressionStatement(bool, Box<Ast>),
 
     BinaryOp { lhs: Box<Ast>, rhs: Box<Ast> },
     UnaryOp { rhs: Box<Ast> },
@@ -156,10 +156,10 @@ impl Ast {
         })
     }
 
-    pub fn new_expr_statement(expression: Box<Ast>) -> Box<Self> {
+    pub fn new_expr_statement(is_statement: bool, expression: Box<Ast>) -> Box<Self> {
         Box::new(Self {
             token: expression.token.clone(),
-            data: AstData::ExpressionStatement(expression),
+            data: AstData::ExpressionStatement(is_statement, expression),
         })
     }
 

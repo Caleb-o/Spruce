@@ -318,7 +318,7 @@ impl Parser {
     }
 
     fn expression_statement(&mut self) -> Result<Box<Ast>, ParserErr> {
-        let node = Ast::new_expr_statement(self.expression()?);
+        let node = Ast::new_expr_statement(true, self.expression()?);
         self.consume(TokenKind::SemiColon, "Expect ';' after expression statement")?;
         Ok(node)
     }
@@ -542,7 +542,14 @@ impl Parser {
             TokenKind::Var | TokenKind::Val => self.var_declaration()?,
             TokenKind::Return => self.return_statement()?,
             TokenKind::LCurly => self.body()?,
-            _ => Ast::new_expr_statement(self.expression()?),
+            _ => {
+                let node = self.expression()?;
+                let is_stmt = if self.current.kind == TokenKind::SemiColon {
+                    self.consume_here();
+                    true
+                } else { false };
+                return Ok(Ast::new_expr_statement(is_stmt, node));
+            },
         };
 
         // Trailing if statement
