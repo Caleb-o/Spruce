@@ -293,7 +293,11 @@ impl Parser {
                         AstData::Identifier => Ast::new_var_assign(node.token.clone(), node, self.expression()?),
                         AstData::IndexGetter {..} => Ast::new_index_setter(node.token.clone(), node, self.expression()?),
                         AstData::GetProperty {..} => Ast::new_property_setter(node.token.clone(), node, self.expression()?),
-                        _ => unreachable!(),
+                        _ => return Err(self.error(format!(
+                            "Cannot use '{}':{:?} on lhs of assignment",
+                            node.token.span.slice_source(),
+                            node.token.kind,
+                        ))),
                     }
                 }
 
@@ -303,7 +307,12 @@ impl Parser {
                     self.consume_here();
                     match node.data {
                         AstData::Identifier => Ast::new_var_assign_equal(node.token.clone(), operator, node, self.expression()?),
-                        _ => unreachable!(),
+                        _ => return Err(self.error(format!(
+                            "Cannot use '{}':{:?} on lhs of assignment operator '{}'",
+                            node.token.span.slice_source(),
+                            node.token.kind,
+                            operator.span.slice_source(),
+                        ))),
                     }
                 }
                 _ => break,
