@@ -221,7 +221,7 @@ impl Compiler {
         self.had_error = true;
 
         println!("{}", format!(
-            "[\x1b[31mError\x1b[0m] {} '{}' [{}:{}]",
+            "[\x1b[31mError\x1b[0m] {} - '{}' [{}:{}]",
             msg,
             token.span.source.file_path,
             token.line,

@@ -45,8 +45,8 @@ impl Display for SpruceErr {
             self.message,
             match self.payload {
                 SpruceErrData::Generic => "".into(),
-                SpruceErrData::Parser(ref e) => format!(" '{}' [{}:{}]", e.file_path, e.line, e.column),
-                SpruceErrData::Compiler(ref e) => format!(" '{}'", e.file_path),
+                SpruceErrData::Parser(ref e) => format!("'{}' [{}:{}]", e.file_path, e.line, e.column),
+                SpruceErrData::Compiler(ref e) => format!("'{}'", e.file_path),
                 SpruceErrData::Runtime(_) => "".into(),
             }
         )
