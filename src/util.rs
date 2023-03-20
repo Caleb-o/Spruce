@@ -1,6 +1,6 @@
 use std::{rc::Rc, time::Instant};
 
-use crate::{compiler::Compiler, source::Source, parser::Parser, environment::Environment, ast::Ast, error::SpruceErr, RunArgs};
+use crate::{source::Source, error::SpruceErr, RunArgs, frontend::{parser::Parser, ast::Ast, environment::Environment}};
 
 pub fn run_parser(file_path: String, source: String, args: RunArgs) -> Result<(Rc<Source>, Box<Ast>), SpruceErr> {
     let source = Rc::new(Source::new(file_path, source));

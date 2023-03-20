@@ -1,6 +1,8 @@
 use std::{rc::Rc, path::Path, fs, io::Error, collections::HashSet};
 
-use crate::{token::{Token, TokenKind}, lexer::Lexer, ast::{Ast, AstData}, source::Source, util, RunArgs};
+use crate::{source::Source, util, RunArgs, error::{SpruceErr, SpruceErrData}};
+
+use super::{lexer::Lexer, token::{Token, TokenKind}, ast::{Ast, AstData}};
 
 pub struct Parser {
     lexer: Lexer,
@@ -8,14 +10,6 @@ pub struct Parser {
     args: RunArgs,
     had_error: bool,
     included: HashSet<String>,
-}
-
-#[derive(Debug)]
-pub struct ParserErr {
-    pub file_path: String,
-    pub message: String,
-    pub line: u32,
-    pub column: u16,
 }
 
 impl Parser {
@@ -32,30 +26,29 @@ impl Parser {
         })
     }
 
-    pub fn run(&mut self) -> Result<Box<Ast>, ParserErr> {
+    pub fn run(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let program = self.outer_statements();
         if self.had_error {
-            Err(ParserErr {
-                file_path: (*self.lexer.source.file_path).clone(),
-                message: "Encountered an error while parsing".into(),
-                line: self.current.line,
-                column: self.current.column,
-            })
+            Err(SpruceErr::new("Encountered an error while parsing".into(), 
+                SpruceErrData::Parser {
+                    file_path: (*self.lexer.source.file_path).clone(),
+                    line: self.current.line,
+                    column: self.current.column,
+            }))
         } else {
             program
         }
     }
     
-    fn error(&self, message: String) -> ParserErr {
-        ParserErr {
+    fn error(&self, message: String) -> SpruceErr {
+        SpruceErr::new(message, SpruceErrData::Parser {
             file_path: (*self.lexer.source.file_path).clone(),
-            message,
             line: self.current.line,
             column: self.current.column,
-        }
+        })
     }
 
-    fn consume(&mut self, expected: TokenKind, msg: &str) -> Result<(), ParserErr> {
+    fn consume(&mut self, expected: TokenKind, msg: &str) -> Result<(), SpruceErr> {
         if self.current.kind == expected {
             self.current = self.lexer.next();
             return Ok(());
@@ -73,7 +66,7 @@ impl Parser {
         kinds.iter().any(|k| self.current.kind == *k)
     }
 
-    fn symbol(&mut self) -> Result<Box<Ast>, ParserErr> {
+    fn symbol(&mut self) -> Result<Box<Ast>, SpruceErr> {
         self.consume_here();
 
         let identifier = self.current.clone();
@@ -82,7 +75,7 @@ impl Parser {
         Ok(Ast::new_symbol(identifier))
     }
 
-    fn primary(&mut self) -> Result<Box<Ast>, ParserErr> {
+    fn primary(&mut self) -> Result<Box<Ast>, SpruceErr> {
         match self.current.kind {
             TokenKind::Number | TokenKind::String | TokenKind::None
             | TokenKind::True | TokenKind::False => {
@@ -117,7 +110,7 @@ impl Parser {
         }
     }
 
-    fn call(&mut self) -> Result<Box<Ast>, ParserErr> {
+    fn call(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let mut node = self.primary()?;
 
         loop {
@@ -132,7 +125,7 @@ impl Parser {
         Ok(node)
     }
 
-    fn unary(&mut self) -> Result<Box<Ast>, ParserErr> {
+    fn unary(&mut self) -> Result<Box<Ast>, SpruceErr> {
         loop {
             match self.current.kind {
                 TokenKind::Minus | TokenKind::Bang => {
@@ -147,7 +140,7 @@ impl Parser {
         self.call()
     }
 
-    fn factor(&mut self) -> Result<Box<Ast>, ParserErr> {
+    fn factor(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let mut node = self.unary()?;
         
         loop {
@@ -165,7 +158,7 @@ impl Parser {
         Ok(node)
     }
 
-    fn term(&mut self) -> Result<Box<Ast>, ParserErr> {
+    fn term(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let mut node = self.factor()?;
         
         loop {
@@ -183,7 +176,7 @@ impl Parser {
         Ok(node)
     }
 
-    fn comparison(&mut self) -> Result<Box<Ast>, ParserErr> {
+    fn comparison(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let mut node = self.term()?;
         
         loop {
@@ -202,7 +195,7 @@ impl Parser {
         Ok(node)
     }
 
-    fn equality(&mut self) -> Result<Box<Ast>, ParserErr> {
+    fn equality(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let mut node = self.comparison()?;
 
         loop {
@@ -220,7 +213,7 @@ impl Parser {
         Ok(node)
     }
 
-    fn type_equality(&mut self) -> Result<Box<Ast>, ParserErr> {
+    fn type_equality(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let mut node = self.equality()?;
 
         if self.is_any_of(&[TokenKind::Is, TokenKind::Ensure]) {
@@ -242,7 +235,7 @@ impl Parser {
         Ok(node)
     }
 
-    fn or(&mut self) -> Result<Box<Ast>, ParserErr> {
+    fn or(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let mut node = self.type_equality()?;
 
         while self.current.kind == TokenKind::And {
@@ -254,7 +247,7 @@ impl Parser {
         Ok(node)
     }
 
-    fn and(&mut self) -> Result<Box<Ast>, ParserErr> {
+    fn and(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let mut node = self.or()?;
 
         while self.current.kind == TokenKind::Or {
@@ -266,7 +259,7 @@ impl Parser {
         Ok(node)
     }
 
-    fn conditional(&mut self) -> Result<Box<Ast>, ParserErr> {
+    fn conditional(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let mut node = self.and()?;
 
         if self.current.kind == TokenKind::QuestionMark {
@@ -282,7 +275,7 @@ impl Parser {
         Ok(node)
     }
 
-    fn assignment(&mut self) -> Result<Box<Ast>, ParserErr> {
+    fn assignment(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let mut node = self.conditional()?;
 
         loop {
@@ -322,17 +315,17 @@ impl Parser {
         Ok(node)
     }
 
-    fn expression(&mut self) -> Result<Box<Ast>, ParserErr> {
+    fn expression(&mut self) -> Result<Box<Ast>, SpruceErr> {
         self.assignment()
     }
 
-    fn expression_statement(&mut self) -> Result<Box<Ast>, ParserErr> {
+    fn expression_statement(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let node = Ast::new_expr_statement(true, self.expression()?);
         self.consume(TokenKind::SemiColon, "Expect ';' after expression statement")?;
         Ok(node)
     }
 
-    fn list_literal(&mut self) -> Result<Box<Ast>, ParserErr> {
+    fn list_literal(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let token = self.current.clone();
         self.consume_here();
 
@@ -352,7 +345,7 @@ impl Parser {
         Ok(Ast::new_list_literal(token, values))
     }
 
-    fn map_literal(&mut self) -> Result<Box<Ast>, ParserErr> {
+    fn map_literal(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let token = self.current.clone();
         self.consume_here();
         self.consume(TokenKind::LCurly, "Expect '{' after '@' to start map literal")?;
@@ -391,7 +384,7 @@ impl Parser {
         Ok(Ast::new_map_literal(token, values))
     }
 
-    fn function_call(&mut self, lhs: Box<Ast>) -> Result<Box<Ast>, ParserErr> {
+    fn function_call(&mut self, lhs: Box<Ast>) -> Result<Box<Ast>, SpruceErr> {
         let token = self.current.clone();
         self.consume(TokenKind::LParen, "Expect '(' after function identifier")?;
         
@@ -410,7 +403,7 @@ impl Parser {
         Ok(Ast::new_function_call(token, lhs, arguments))
     }
 
-    fn index(&mut self, expression: Box<Ast>) -> Result<Box<Ast>, ParserErr> {
+    fn index(&mut self, expression: Box<Ast>) -> Result<Box<Ast>, SpruceErr> {
         self.consume(TokenKind::LSquare, "Expect '[' after expression to index")?;
         let index = self.expression()?;
         self.consume(TokenKind::RSquare, "Expect ']' after index expression")?;
@@ -418,7 +411,7 @@ impl Parser {
         Ok(Ast::new_index_getter(expression.token.clone(), expression, index))
     }
 
-    fn dot_property(&mut self, lhs: Box<Ast>) -> Result<Box<Ast>, ParserErr> {
+    fn dot_property(&mut self, lhs: Box<Ast>) -> Result<Box<Ast>, SpruceErr> {
         self.consume_here();
 
         let identifier = self.current.clone();
@@ -426,7 +419,7 @@ impl Parser {
         Ok(Ast::new_property_getter(identifier, lhs))
     }
 
-    fn single_statement_block(&mut self) -> Result<Box<Ast>, ParserErr> {
+    fn single_statement_block(&mut self) -> Result<Box<Ast>, SpruceErr> {
         match self.current.kind {
             TokenKind::If => self.if_statement(),
             TokenKind::For => self.for_statement(),
@@ -434,7 +427,7 @@ impl Parser {
         }
     }
 
-    fn if_statement(&mut self) -> Result<Box<Ast>, ParserErr> {
+    fn if_statement(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let token = self.current.clone();
         self.consume_here();
 
@@ -455,7 +448,7 @@ impl Parser {
         Ok(Ast::new_if_statement(token, condition, true_body, false_body))
     }
 
-    fn for_statement(&mut self) -> Result<Box<Ast>, ParserErr> {
+    fn for_statement(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let token = self.current.clone();
         self.consume_here();
         
@@ -478,7 +471,7 @@ impl Parser {
         Ok(Ast::new_for_statement(token, variable, condition, increment, self.single_statement_block()?))
     }
 
-    fn do_while_statement(&mut self) -> Result<Box<Ast>, ParserErr> {
+    fn do_while_statement(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let token = self.current.clone();
         self.consume_here();
 
@@ -490,7 +483,7 @@ impl Parser {
         Ok(Ast::new_do_while_statement(token, body, condition))
     }
 
-    fn switch_case(&mut self) -> Result<Box<Ast>, ParserErr> {
+    fn switch_case(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let token = self.current.clone();
         let case = if self.current.kind == TokenKind::Else {
             self.consume_here();
@@ -504,7 +497,7 @@ impl Parser {
             { self.body()? } else { self.expression_statement()?}))
     }
 
-    fn switch_statement(&mut self) -> Result<Box<Ast>, ParserErr> {
+    fn switch_statement(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let token = self.current.clone();
         self.consume_here();
 
@@ -521,7 +514,7 @@ impl Parser {
         Ok(Ast::new_switch_statement(token, condition, cases))
     }
 
-    fn return_statement(&mut self) -> Result<Box<Ast>, ParserErr> {
+    fn return_statement(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let token = self.current.clone();
         self.consume_here();
         let mut expression = None;
@@ -533,7 +526,7 @@ impl Parser {
         Ok(Ast::new_return(token, expression))
     }
 
-    fn statement(&mut self) -> Result<Box<Ast>, ParserErr> {
+    fn statement(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let mut node = match self.current.kind {
             TokenKind::Function => {
                 let func = self.function()?;
@@ -583,7 +576,7 @@ impl Parser {
         Ok(node)
     }
 
-    fn body(&mut self) -> Result<Box<Ast>, ParserErr> {
+    fn body(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let token = self.current.clone();
         self.consume(TokenKind::LCurly, "Expect '{' to start block body")?;
         let mut statements = Vec::new();
@@ -598,7 +591,7 @@ impl Parser {
     }
 
     #[inline]
-    fn consume_parameter(&mut self) -> Result<Box<Ast>, ParserErr> {
+    fn consume_parameter(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let param_name = self.current.clone();
         let mut type_name = None;
         self.consume(TokenKind::Identifier, "Expected identifier in parameter list")?;
@@ -619,7 +612,7 @@ impl Parser {
         &mut self,
         left: TokenKind,
         right: TokenKind
-    ) -> Result<(Option<Vec<Box<Ast>>>, Box<Ast>), ParserErr> {
+    ) -> Result<(Option<Vec<Box<Ast>>>, Box<Ast>), SpruceErr> {
         let parameters = if self.current.kind == left {
             let mut parameters = Vec::new();
             self.consume(left, &format!("Expect '{:?}' at the start of parameter list", left))?;
@@ -650,14 +643,14 @@ impl Parser {
         Ok((parameters, body))
     }
 
-    fn anon_function(&mut self) -> Result<Box<Ast>, ParserErr> {
+    fn anon_function(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let token = self.current.clone();
         let (parameters, body) = self.collect_params_and_body(TokenKind::Pipe, TokenKind::Pipe)?;
 
         Ok(Ast::new_function(token, true, parameters, body))
     }
 
-    fn include(&mut self) -> Result<Box<Ast>, ParserErr> {
+    fn include(&mut self) -> Result<Box<Ast>, SpruceErr> {
         self.consume_here();
         match self.current.kind {
             TokenKind::Identifier | TokenKind::String => {
@@ -726,7 +719,7 @@ impl Parser {
         }
     }
 
-    fn function(&mut self) -> Result<Box<Ast>, ParserErr> {
+    fn function(&mut self) -> Result<Box<Ast>, SpruceErr> {
         self.consume_here();
 
         let identifier = self.current.clone();
@@ -737,7 +730,7 @@ impl Parser {
         Ok(Ast::new_function(identifier, false, parameters, body))
     }
 
-    fn var_declaration(&mut self) -> Result<Box<Ast>, ParserErr> {
+    fn var_declaration(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let is_mutable = self.current.kind == TokenKind::Var;
         self.consume_here();
 
@@ -772,7 +765,7 @@ impl Parser {
         Ok(Ast::new_var_decls(decls))
     }
 
-    fn outer_statements(&mut self) -> Result<Box<Ast>, ParserErr> {
+    fn outer_statements(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let token = self.current.clone();
         let mut statements = Vec::new();
 
@@ -795,16 +788,10 @@ impl Parser {
                     statements.push(self.var_declaration()?);
                     self.consume(TokenKind::SemiColon, "Expect ';' after variable statement")?;
                 }
-                _ => {
-                    if self.args.script_mode {
-                        statements.push(self.statement()?);
-                    } else {
-                        return Err(self.error(format!(
-                            "Unknown item in outer scope {:?}",
-                            self.current.kind
-                        )));
-                    }
-                }
+                _ => return Err(self.error(format!(
+                    "Unknown item in outer scope {:?}",
+                    self.current.kind
+                ))),
             }
         }
 

@@ -1,4 +1,4 @@
-use crate::token::Span;
+use super::token::Span;
 
 #[derive(Debug, Clone)]
 pub struct Local {
@@ -82,7 +82,7 @@ impl SymTable {
     pub fn find_local(&self, span: &Span, anyscope: bool) -> Option<&Local> {
         for local in self.locals.iter().rev() {
             if anyscope && (local.depth == GLOBAL_DEPTH || local.depth >= self.depth_limit) {
-                if local.identifier.compare(span, &span.source.content) {
+                if local.identifier.compare(span) {
                     return Some(local);
                 }
             }

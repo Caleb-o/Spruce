@@ -1,12 +1,19 @@
 use std::{io, fmt::Display};
 
-use crate::{parser::ParserErr, compiler::CompilerErr, vm::RuntimeErr};
-
 pub enum SpruceErrData {
     Generic,
-    Parser(ParserErr),
-    Compiler(CompilerErr),
-    Runtime(RuntimeErr),
+    Parser {
+        file_path: String,
+        line: u32,
+        column: u16,
+    },
+    Analyser {
+        file_path: String,
+    },
+    Compiler {
+        file_path: String,
+    },
+    Runtime,
 }
 
 pub struct SpruceErr {
@@ -14,27 +21,15 @@ pub struct SpruceErr {
     pub payload: SpruceErrData,
 }
 
+impl SpruceErr {
+    pub fn new(message: String, payload: SpruceErrData) -> Self {
+        Self { message, payload }
+    }
+}
+
 impl From<io::Error> for SpruceErr {
     fn from(value: io::Error) -> Self {
         Self { message: value.to_string(), payload: SpruceErrData::Generic }
-    }
-}
-
-impl From<ParserErr> for SpruceErr {
-    fn from(value: ParserErr) -> Self {
-        Self { message: value.message.clone(), payload: SpruceErrData::Parser(value) }
-    }
-}
-
-impl From<CompilerErr> for SpruceErr {
-    fn from(value: CompilerErr) -> Self {
-        Self { message: value.message.clone(), payload: SpruceErrData::Compiler(value) }
-    }
-}
-
-impl From<RuntimeErr> for SpruceErr {
-    fn from(value: RuntimeErr) -> Self {
-        Self { message: value.0.clone(), payload: SpruceErrData::Runtime(value) }
     }
 }
 
@@ -44,10 +39,9 @@ impl Display for SpruceErr {
             "[\x1b[31mError\x1b[0m] {} - {}",
             self.message,
             match self.payload {
-                SpruceErrData::Generic => "".into(),
-                SpruceErrData::Parser(ref e) => format!("'{}' [{}:{}]", e.file_path, e.line, e.column),
-                SpruceErrData::Compiler(ref e) => format!("'{}'", e.file_path),
-                SpruceErrData::Runtime(_) => "".into(),
+                SpruceErrData::Parser { ref file_path, line, column } => format!("'{}' [{}:{}]", file_path, line, column),
+                SpruceErrData::Compiler { ref file_path } => format!("'{}'", file_path),
+                _ => "".into(),
             }
         )
     }

@@ -1,6 +1,8 @@
 use std::{io::Error, rc::Rc};
 
-use crate::{token::{Token, TokenKind, Span}, source::Source};
+use crate::source::Source;
+
+use super::token::{Token, Span, TokenKind};
 
 pub struct Lexer {
     pub source: Rc<Source>,

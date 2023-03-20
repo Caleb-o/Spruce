@@ -1,6 +1,8 @@
 use std::rc::Rc;
 
-use crate::{token::Token, source::Source};
+use crate::source::Source;
+
+use super::token::Token;
 
 #[derive(Debug)]
 pub struct Ast {

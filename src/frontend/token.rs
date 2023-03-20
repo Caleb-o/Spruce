@@ -23,22 +23,22 @@ impl Span {
         &self.source.content[self.start..self.start + self.len]
     }
     
-    pub fn compare(&self, other: &Span, source: &str) -> bool {
+    pub fn compare(&self, other: &Span) -> bool {
         // TODO: Reconsider the use of aend/bend
         let aend = self.start + self.len;
         let bend = other.start + other.len;
 
-        if aend >= source.len() || bend >= source.len() {
+        if aend >= self.source.content.len() || bend >= self.source.content.len() {
             return false;
         }
 
         self.slice_source() == other.slice_source()
     }
 
-    pub fn compare_str(&self, string: &str, source: &str) -> bool {
+    pub fn compare_str(&self, string: &str) -> bool {
         let aend = self.start + self.len;
 
-        if aend >= source.len() || string.len() >= source.len() {
+        if aend >= self.source.content.len() || string.len() >= self.source.content.len() {
             return false;
         }
 
