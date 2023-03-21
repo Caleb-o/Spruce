@@ -367,7 +367,16 @@ impl Analyser {
         }
 
         let kind = match statements.last() {
-            Some(n) => self.find_type_of(n)?,
+            Some(n) => match &n.data {
+                DecoratedAstData::ExpressionStatement(k, is_statement, _) => {
+                    if *is_statement {
+                        SpruceType::None
+                    } else {
+                        k.clone()
+                    }
+                }
+                _ => SpruceType::None,
+            },
             None => SpruceType::None,
         };
 

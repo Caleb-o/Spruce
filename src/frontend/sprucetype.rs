@@ -19,6 +19,14 @@ impl SpruceType {
     pub fn is_same(&self, other: &SpruceType) -> bool {
         match self {
             // TODO: List, Function
+            Self::List(k) => {
+                if discriminant(self) != discriminant(other) {
+                    return false;
+                }
+
+                let Self::List(j) = other else { unreachable!() };
+                k.is_same(j)
+            }
             _ => discriminant(self) == discriminant(other),
         }
     }
