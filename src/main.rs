@@ -15,6 +15,7 @@ use clap::Parser as ClapParser;
 #[command(bin_name = "spruce")]
 enum SpruceCli {
     Dump(RunArgs),
+    Check(RunArgs),
     Run(RunArgs),
 }
 
@@ -30,25 +31,36 @@ pub struct RunArgs {
 
 fn main() {
     match SpruceCli::parse() {
-        SpruceCli::Run(args) => {
+        SpruceCli::Check(args) => {
             if let Ok(source) = fs::read_to_string(&args.file_path) {
-                match util::compile_source(source, args) {
-                    Ok(env) => VM::new(env).run(),
+                match util::check_code(args.file_path.clone(), source, args) {
+                    Ok(_) => println!("GOOD"),
                     Err(e) => eprintln!("{e}"),
                 }
             } else {
                 eprintln!("Could not load file '{}'", args.file_path);
             }
         }
-        SpruceCli::Dump(args) => {
-            if let Ok(source) = fs::read_to_string(&args.file_path) {
-                match util::compile_source(source, args) {
-                    Ok(mut env) => env.dump(),
-                    Err(e) => eprintln!("{e}"),
-                }
-            } else {
-                eprintln!("Could not load file '{}'", args.file_path);
-            }
-        }
+        _ => unimplemented!(),
+        // SpruceCli::Run(args) => {
+        //     if let Ok(source) = fs::read_to_string(&args.file_path) {
+        //         match util::compile_source(source, args) {
+        //             Ok(env) => VM::new(env).run(),
+        //             Err(e) => eprintln!("{e}"),
+        //         }
+        //     } else {
+        //         eprintln!("Could not load file '{}'", args.file_path);
+        //     }
+        // }
+        // SpruceCli::Dump(args) => {
+        //     if let Ok(source) = fs::read_to_string(&args.file_path) {
+        //         match util::compile_source(source, args) {
+        //             Ok(mut env) => env.dump(),
+        //             Err(e) => eprintln!("{e}"),
+        //         }
+        //     } else {
+        //         eprintln!("Could not load file '{}'", args.file_path);
+        //     }
+        // }
     }
 }

@@ -3,7 +3,8 @@ use std::{fmt::Display, collections::HashMap, rc::Rc};
 #[derive(Debug, Clone, PartialEq)]
 pub enum Object {
     None,
-    Number(f32),
+    Int(i32),
+    Float(f32),
     String(String),
     Boolean(bool),
     Function(u32),
@@ -21,7 +22,8 @@ impl Object {
     pub fn get_type_name(&self) -> &'static str {
         match *self {
             Object::None => "none",
-            Object::Number(_) => "number",
+            Object::Int(_) => "int",
+            Object::Float(_) => "float",
             Object::String(_) => "string",
             Object::Boolean(_) => "bool",
             Object::List(_) => "list",
@@ -36,8 +38,14 @@ impl Object {
     pub fn is_exact(&self, other: &Object) -> bool {
         match *self {
             Self::None => true,
-            Self::Number(v) => {
-                if let Self::Number(o) = *other {
+            Self::Int(v) => {
+                if let Self::Int(o) = *other {
+                    return v == o;
+                }
+                false
+            },
+            Self::Float(v) => {
+                if let Self::Float(o) = *other {
                     return v == o;
                 }
                 false
@@ -69,7 +77,8 @@ impl Display for Object {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", match self {
             Object::None => "None".into(),
-            Object::Number(v) => v.to_string(),
+            Object::Int(v) => v.to_string(),
+            Object::Float(v) => v.to_string(),
             Object::Boolean(v) => v.to_string(),
             Object::String(v) => v.clone(),
             Object::List(ref list) => {

@@ -13,11 +13,11 @@ pub struct DecoratedAst {
 #[derive(Debug, Clone)]
 pub enum DecoratedAstData {
     Identifier,
-    Literal(u32, SpruceType), // Constant index
+    Literal(SpruceType, u32), // Constant index
     SymbolLiteral(u32), // Symbol Index
     MapLiteral(Vec<(Token, Option<Box<DecoratedAst>>)>),
-    ListLiteral(Vec<Box<DecoratedAst>>),
-    ExpressionStatement(bool, Box<DecoratedAst>),
+    ListLiteral(SpruceType, Vec<Box<DecoratedAst>>),
+    ExpressionStatement(SpruceType, bool, Box<DecoratedAst>),
 
     BinaryOp { lhs: Box<DecoratedAst>, rhs: Box<DecoratedAst> },
     UnaryOp { rhs: Box<DecoratedAst> },
@@ -50,7 +50,7 @@ pub enum DecoratedAstData {
     SwitchCase { case: Option<Box<DecoratedAst>>, body: Box<DecoratedAst> },
 
     Return(Option<Box<DecoratedAst>>),
-    Body(Vec<Box<DecoratedAst>>),
+    Body(SpruceType, Vec<Box<DecoratedAst>>),
     StdInclude,
     Program { source: Rc<Source>, body: Vec<Box<DecoratedAst>> },
     Empty,
@@ -81,17 +81,17 @@ impl DecoratedAst {
         })
     }
 
-    pub fn new_body(token: Token, statements: Vec<Box<DecoratedAst>>) -> Box<Self> {
+    pub fn new_body(token: Token, statements: Vec<Box<DecoratedAst>>, kind: SpruceType) -> Box<Self> {
         Box::new(Self {
             token,
-            data: DecoratedAstData::Body(statements),
+            data: DecoratedAstData::Body(kind, statements),
         })
     }
 
     pub fn new_literal(token: Token, index: u32, kind: SpruceType) -> Box<Self> {
         Box::new(Self { 
             token,
-            data: DecoratedAstData::Literal(index, kind),
+            data: DecoratedAstData::Literal(kind, index),
         })
     }
 
@@ -109,10 +109,10 @@ impl DecoratedAst {
         })
     }
 
-    pub fn new_list_literal(token: Token, values: Vec<Box<DecoratedAst>>) -> Box<Self> {
+    pub fn new_list_literal(token: Token, values: Vec<Box<DecoratedAst>>, kind: SpruceType) -> Box<Self> {
         Box::new(Self {
             token,
-            data: DecoratedAstData::ListLiteral(values),
+            data: DecoratedAstData::ListLiteral(kind, values),
         })
     }
 
@@ -158,10 +158,10 @@ impl DecoratedAst {
         })
     }
 
-    pub fn new_expr_statement(is_statement: bool, expression: Box<DecoratedAst>) -> Box<Self> {
+    pub fn new_expr_statement(is_statement: bool, expression: Box<DecoratedAst>, kind: SpruceType) -> Box<Self> {
         Box::new(Self {
             token: expression.token.clone(),
-            data: DecoratedAstData::ExpressionStatement(is_statement, expression),
+            data: DecoratedAstData::ExpressionStatement(kind, is_statement, expression),
         })
     }
 

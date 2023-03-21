@@ -77,7 +77,7 @@ impl Parser {
 
     fn primary(&mut self) -> Result<Box<Ast>, SpruceErr> {
         match self.current.kind {
-            TokenKind::Number | TokenKind::String | TokenKind::None
+            TokenKind::Int | TokenKind::Float | TokenKind::String | TokenKind::None
             | TokenKind::True | TokenKind::False => {
                 let token = self.current.clone();
                 self.consume_here();
@@ -700,7 +700,7 @@ impl Parser {
                     self.included.insert(include_str.clone());
 
                     let source = fs::read_to_string(&include_path).unwrap();
-                    let program = match util::run_parser(include_str.clone(), source, self.args.clone()) {
+                    let program = match util::check_code(include_str.clone(), source, self.args.clone()) {
                         Ok((_, program)) => program,
                         Err(e) => return Err(self.error(format!("Could not parse '{}' because {}", include_str, e.message))),
                     };
@@ -788,6 +788,7 @@ impl Parser {
                     statements.push(self.var_declaration()?);
                     self.consume(TokenKind::SemiColon, "Expect ';' after variable statement")?;
                 }
+                TokenKind::LCurly => statements.push(self.body()?),
                 _ => return Err(self.error(format!(
                     "Unknown item in outer scope {:?}",
                     self.current.kind

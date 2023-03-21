@@ -240,7 +240,7 @@ impl Lexer {
         }
 
         self.make_token(
-            TokenKind::Number,
+            if is_float { TokenKind::Float } else { TokenKind::Int },
             Span::new(pos, self.pos - pos, Rc::clone(&self.source)),
             column,
         )

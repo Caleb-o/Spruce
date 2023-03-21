@@ -24,7 +24,7 @@ pub enum Function {
         empty: bool,
     },
     Native {
-        identifier: &'static str,
+        identifier: String,
         param_types: ParamTypes,
         has_return: bool,
     },

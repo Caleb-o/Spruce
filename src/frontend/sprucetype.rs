@@ -1,4 +1,6 @@
-#[derive(Debug, Clone, PartialEq, Eq)]
+use std::mem::discriminant;
+
+#[derive(Debug, Clone)]
 pub enum SpruceType {
     None,
     Any,
@@ -11,4 +13,13 @@ pub enum SpruceType {
         parameters: Option<Vec<Box<SpruceType>>>,
         return_type: Box<SpruceType>,
     },
+}
+
+impl SpruceType {
+    pub fn is_same(&self, other: &SpruceType) -> bool {
+        match self {
+            // TODO: List, Function
+            _ => discriminant(self) == discriminant(other),
+        }
+    }
 }
