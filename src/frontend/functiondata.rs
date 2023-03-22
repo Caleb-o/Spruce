@@ -21,12 +21,13 @@ pub enum Function {
     User {
         meta_id: u32,
         param_types: ParamTypes,
+        return_type: SpruceType,
         empty: bool,
     },
     Native {
         identifier: String,
         param_types: ParamTypes,
-        has_return: bool,
+        return_type: SpruceType,
     },
 }
 

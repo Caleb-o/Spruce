@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use crate::source::Source;
 
-use super::{token::Token, sprucetype::SpruceType};
+use super::{token::Token, sprucetype::SpruceType, ast::TypeKind};
 
 #[derive(Debug, Clone)]
 pub struct DecoratedAst {
@@ -23,14 +23,16 @@ pub enum DecoratedAstData {
     UnaryOp { kind: SpruceType, rhs: Box<DecoratedAst> },
     LogicalOp { kind: SpruceType, lhs: Box<DecoratedAst>, rhs: Box<DecoratedAst> },
 
-    Parameter { type_name: Option<Token> },
-    Function { anonymous: bool, parameters: Option<Vec<Box<DecoratedAst>>>, body: Box<DecoratedAst> },
+    Parameter(SpruceType),
+    ParameterList(Option<Vec<Box<DecoratedAst>>>),
+    Function { anonymous: bool, parameters: Box<DecoratedAst>, kind: SpruceType, body: Box<DecoratedAst> },
     FunctionCall { lhs: Box<DecoratedAst>, arguments: Vec<Box<DecoratedAst>> },
 
     VarDeclaration { is_mutable: bool, kind: SpruceType, expression: Box<DecoratedAst> },
     VarDeclarations(Vec<Box<DecoratedAst>>),
     VarAssign { lhs: Box<DecoratedAst>, expression: Box<DecoratedAst> },
     VarAssignEqual { operator: Token, lhs: Box<DecoratedAst>, expression: Box<DecoratedAst> },
+    Type(SpruceType),
 
     Ternary { condition: Box<DecoratedAst>, kind: SpruceType, true_body: Box<DecoratedAst>, false_body: Box<DecoratedAst> },
     IfStatement { condition: Box<DecoratedAst>, kind: SpruceType, true_body: Box<DecoratedAst>, false_body: Option<Box<DecoratedAst>> },
@@ -49,7 +51,7 @@ pub enum DecoratedAstData {
     SwitchStatement { condition: Box<DecoratedAst>, cases: Vec<Box<DecoratedAst>> },
     SwitchCase { case: Option<Box<DecoratedAst>>, body: Box<DecoratedAst> },
 
-    Return(Option<Box<DecoratedAst>>),
+    Return(SpruceType, Option<Box<DecoratedAst>>),
     Body(SpruceType, Vec<Box<DecoratedAst>>),
     StdInclude,
     Program { source: Rc<Source>, body: Vec<Box<DecoratedAst>> },
@@ -151,10 +153,16 @@ impl DecoratedAst {
         })
     }
 
-    pub fn new_function(token: Token, anonymous: bool, parameters: Option<Vec<Box<DecoratedAst>>>, body: Box<DecoratedAst>) -> Box<Self> {
+    pub fn new_function(
+        token: Token,
+        anonymous: bool,
+        parameters: Box<DecoratedAst>,
+        kind: SpruceType,
+        body: Box<DecoratedAst>
+    ) -> Box<Self> {
         Box::new(Self {
             token,
-            data: DecoratedAstData::Function { anonymous, parameters, body },
+            data: DecoratedAstData::Function { anonymous, parameters, kind, body },
         })
     }
 
@@ -165,17 +173,31 @@ impl DecoratedAst {
         })
     }
 
-    pub fn new_parameter(token: Token, type_name: Option<Token>) -> Box<Self> {
+    pub fn new_parameter(token: Token, kind: SpruceType) -> Box<Self> {
         Box::new(Self {
             token,
-            data: DecoratedAstData::Parameter { type_name },
+            data: DecoratedAstData::Parameter(kind),
         })
     }
 
-    pub fn new_return(token: Token, expression: Option<Box<DecoratedAst>>) -> Box<Self> {
+    pub fn new_parameter_list(token: Token, parameters: Option<Vec<Box<DecoratedAst>>>) -> Box<Self> {
         Box::new(Self {
             token,
-            data: DecoratedAstData::Return(expression),
+            data: DecoratedAstData::ParameterList(parameters),
+        })
+    }
+
+    pub fn new_return(token: Token, kind: SpruceType, expression: Option<Box<DecoratedAst>>) -> Box<Self> {
+        Box::new(Self {
+            token,
+            data: DecoratedAstData::Return(kind, expression),
+        })
+    }
+
+    pub fn new_type(token: Token, kind: SpruceType) -> Box<Self> {
+        Box::new(Self {
+            token,
+            data: DecoratedAstData::Type(kind),
         })
     }
 

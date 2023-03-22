@@ -2,7 +2,7 @@ use std::{rc::Rc, path::Path, fs, io::Error, collections::HashSet};
 
 use crate::{source::Source, util, RunArgs, error::{SpruceErr, SpruceErrData}};
 
-use super::{lexer::Lexer, token::{Token, TokenKind}, ast::{Ast, AstData, TypeKind}};
+use super::{lexer::Lexer, token::{Token, TokenKind}, ast::{Ast, AstData, TypeKind}, decorated_ast::DecoratedAst};
 
 pub struct Parser {
     lexer: Lexer,
@@ -54,7 +54,6 @@ impl Parser {
             return Ok(());
         }
 
-        println!("Current '{}'", self.current.span.slice_source());
         Err(self.error(String::from(msg)))
     }
 
@@ -577,26 +576,18 @@ impl Parser {
     #[inline]
     fn consume_parameter(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let param_name = self.current.clone();
-        let mut type_name = None;
         self.consume(TokenKind::Identifier, "Expected identifier in parameter list")?;
-
-        if self.current.kind == TokenKind::Colon {
-            self.consume_here();
-            type_name = Some(self.current.clone());
-            match self.current.kind {
-                TokenKind::Identifier | TokenKind::None => self.consume_here(),
-                _ => return Err(self.error("Expected type name after identifier".into())),
-            }
-        }
+        
+        let type_name = self.collect_type()?;
 
         Ok(Ast::new_parameter(param_name, type_name))
     }
 
-    fn collect_params_and_body(
+    fn collect_params(
         &mut self,
         left: TokenKind,
         right: TokenKind
-    ) -> Result<(Option<Vec<Box<Ast>>>, Box<Ast>), SpruceErr> {
+    ) -> Result<Option<Vec<Box<Ast>>>, SpruceErr> {
         let parameters = if self.current.kind == left {
             let mut parameters = Vec::new();
             self.consume(left, &format!("Expect '{:?}' at the start of parameter list", left))?;
@@ -616,22 +607,32 @@ impl Parser {
             Some(parameters)
         } else {None};
 
-        let body = if self.current.kind == TokenKind::Equal {
+        Ok(parameters)
+    }
+
+    fn collect_body(&mut self) -> Result<Box<Ast>, SpruceErr> {
+        Ok(if self.current.kind == TokenKind::Equal {
             let token = self.current.clone();
             self.consume_here();
             Ast::new_return(token, Some(self.expression()?))
         } else {
             self.body()?
-        };
-
-        Ok((parameters, body))
+        })
     }
 
     fn anon_function(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let token = self.current.clone();
-        let (parameters, body) = self.collect_params_and_body(TokenKind::Pipe, TokenKind::Pipe)?;
+        let parameters = self.collect_params(TokenKind::Pipe, TokenKind::Pipe)?;
+        let return_type = match self.current.kind {
+            TokenKind::LCurly | TokenKind::Equal => None,
+            _ => {
+                self.consume(TokenKind::Colon, "Expect ':' before return type")?;
+                Some(self.collect_type()?)
+            },
+        };
+        let body = self.collect_body()?;
 
-        Ok(Ast::new_function(token, true, parameters, body))
+        Ok(Ast::new_function(token, true, parameters, return_type, body))
     }
 
     fn include(&mut self) -> Result<Box<Ast>, SpruceErr> {
@@ -709,9 +710,19 @@ impl Parser {
         let identifier = self.current.clone();
         self.consume(TokenKind::Identifier, "Expected identifier after 'fn'")?;
 
-        let (parameters, body) = self.collect_params_and_body(TokenKind::LParen, TokenKind::RParen)?;
+        let parameters = self.collect_params(TokenKind::LParen, TokenKind::RParen)?;
 
-        Ok(Ast::new_function(identifier, false, parameters, body))
+        let return_type = match self.current.kind {
+            TokenKind::LCurly | TokenKind::Equal => None,
+            _ => {
+                self.consume(TokenKind::Colon, "Expect ':' before return type")?;
+                Some(self.collect_type()?)
+            },
+        };
+
+        let body = self.collect_body()?;
+
+        Ok(Ast::new_function(identifier, false, parameters, return_type, body))
     }
 
     fn collect_var_decl(&mut self, is_mutable: bool) -> Result<Box<Ast>, SpruceErr> {
@@ -737,22 +748,52 @@ impl Parser {
 
     fn collect_type(&mut self) -> Result<Box<Ast>, SpruceErr> {
         Ok(match self.current.kind {
-            TokenKind::Identifier => {
+            TokenKind::Identifier | TokenKind::None => {
                 let identifier = self.current.clone();
                 self.consume_here();
-                Ast::new_type(identifier, TypeKind::Standard, None)
+                Ast::new_type(identifier, TypeKind::Standard)
             }
             TokenKind::LSquare => {
                 self.consume_here();
                 let inner = self.collect_type()?;
                 self.consume(TokenKind::RSquare, "Expect closing ']' after type")?;
-                Ast::new_type(inner.token.clone(), TypeKind::List, Some(inner))
+                Ast::new_type(inner.token.clone(), TypeKind::List(inner))
             }
             TokenKind::LParen => {
                 self.consume_here();
-                let inner = self.collect_type()?;
+                let mut types = vec![self.collect_type()?];
+
+                while self.current.kind == TokenKind::Comma {
+                    self.consume_here();
+                    types.push(self.collect_type()?);
+                }
+
                 self.consume(TokenKind::RParen, "Expect closing ')' after type")?;
-                Ast::new_type(inner.token.clone(), TypeKind::Tuple, Some(inner))
+                Ast::new_type(self.current.clone(), TypeKind::Tuple(types))
+            }
+            TokenKind::Function => {
+                let token = self.current.clone();
+                self.consume_here();
+                self.consume(TokenKind::LParen, "Expect '(' to start function type")?;
+
+                let parameters = if self.current.kind != TokenKind::RParen {
+                    let mut types = vec![self.collect_type()?];
+
+                    while self.current.kind == TokenKind::Comma {
+                        self.consume_here();
+                        types.push(self.collect_type()?);
+                    }
+
+                    Some(types)
+                } else {
+                    None
+                };
+
+                self.consume(TokenKind::RParen, "Expect ')' to close function type")?;
+                self.consume(TokenKind::Colon, "Expect ':' after function type parameter list")?;
+                let return_type = self.collect_type()?;
+
+                Ast::new_type(token, TypeKind::Function { parameters, return_type })
             }
             _ => return Err(self.error(format!(
                 "Unknown item in type definition '{}'",

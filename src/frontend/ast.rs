@@ -10,9 +10,15 @@ pub struct Ast {
     pub data: AstData,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub enum TypeKind {
-    Standard, Tuple, List,
+    Standard,
+    Tuple(Vec<Box<Ast>>),
+    List(Box<Ast>),
+    Function {
+        parameters: Option<Vec<Box<Ast>>>,
+        return_type: Box<Ast>,
+    },
 }
 
 #[derive(Debug)]
@@ -28,15 +34,15 @@ pub enum AstData {
     UnaryOp { rhs: Box<Ast> },
     LogicalOp { lhs: Box<Ast>, rhs: Box<Ast> },
 
-    Parameter { type_name: Option<Token> },
-    Function { anonymous: bool, parameters: Option<Vec<Box<Ast>>>, body: Box<Ast> },
+    Parameter { type_name: Box<Ast> },
+    Function { anonymous: bool, parameters: Option<Vec<Box<Ast>>>, return_type: Option<Box<Ast>>, body: Box<Ast> },
     FunctionCall { lhs: Box<Ast>, arguments: Vec<Box<Ast>> },
 
     VarDeclaration { is_mutable: bool, kind: Option<Box<Ast>>, expression: Option<Box<Ast>> },
     VarDeclarations(Vec<Box<Ast>>),
     VarAssign { lhs: Box<Ast>, expression: Box<Ast> },
     VarAssignEqual { operator: Token, lhs: Box<Ast>, expression: Box<Ast> },
-    Type { kind: TypeKind, inner: Option<Box<Ast>> },
+    Type { kind: TypeKind },
 
     Ternary { condition: Box<Ast>, true_body: Box<Ast>, false_body: Box<Ast> },
     IfStatement { condition: Box<Ast>, true_body: Box<Ast>, false_body: Option<Box<Ast>> },
@@ -157,17 +163,23 @@ impl Ast {
         })
     }
 
-    pub fn new_type(token: Token, kind: TypeKind, inner: Option<Box<Ast>>) -> Box<Self> {
+    pub fn new_type(token: Token, kind: TypeKind) -> Box<Self> {
         Box::new(Self {
             token,
-            data: AstData::Type { kind, inner },
+            data: AstData::Type { kind },
         })
     }
 
-    pub fn new_function(token: Token, anonymous: bool, parameters: Option<Vec<Box<Ast>>>, body: Box<Ast>) -> Box<Self> {
+    pub fn new_function(
+        token: Token,
+        anonymous: bool,
+        parameters: Option<Vec<Box<Ast>>>,
+        return_type: Option<Box<Ast>>,
+        body: Box<Ast>
+    ) -> Box<Self> {
         Box::new(Self {
             token,
-            data: AstData::Function { anonymous, parameters, body },
+            data: AstData::Function { anonymous, parameters, return_type, body },
         })
     }
 
@@ -178,7 +190,7 @@ impl Ast {
         })
     }
 
-    pub fn new_parameter(token: Token, type_name: Option<Token>) -> Box<Self> {
+    pub fn new_parameter(token: Token, type_name: Box<Ast>) -> Box<Self> {
         Box::new(Self {
             token,
             data: AstData::Parameter { type_name },

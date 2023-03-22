@@ -1,4 +1,4 @@
-use std::{rc::Rc, mem::discriminant};
+use std::rc::Rc;
 
 use crate::{source::Source, RunArgs, error::{SpruceErr, SpruceErrData}, nativefns, object::Object};
 
@@ -12,6 +12,10 @@ struct LookAhead {
     position: u32,
 }
 
+enum ScopeType {
+    None, Function,
+}
+
 pub struct Analyser {
     had_error: bool,
     source: Rc<Source>,
@@ -22,6 +26,7 @@ pub struct Analyser {
     table: SymTable,
     symbol_values: Symbols,
     last_return: bool,
+    scope_type: ScopeType,
 }
 
 impl Analyser {
@@ -36,6 +41,7 @@ impl Analyser {
             table: SymTable::new(),
             symbol_values: Symbols::new(),
             last_return: false,
+            scope_type: ScopeType::None,
         }
     }
 
@@ -64,13 +70,13 @@ impl Analyser {
     pub fn add_fn(
         &mut self,
         identifier: &Span,
-        param_count: ParamTypes,
-        has_return: bool,
+        param_types: ParamTypes,
+        return_type: SpruceType,
     ) {
         let function = Function::Native { 
             identifier: identifier.slice_source().to_string(),
-            param_types: None,
-            has_return,
+            param_types,
+            return_type,
         };
 
         // Add to function table
@@ -227,9 +233,9 @@ impl Analyser {
     fn register_function(
         &mut self,
         identifier: &Token,
-        position: u32,
-        parameters: &Option<Vec<Box<Ast>>>,
-    ) -> Result<Box<DecoratedAst>, SpruceErr>
+        parameters: Option<Vec<Box<SpruceType>>>,
+        return_type: Box<SpruceType>,
+    ) -> Result<(), SpruceErr>
     {
         let func = self.find_function(&identifier.span);
 
@@ -245,31 +251,24 @@ impl Analyser {
             return Err(self.error(format!(
                 "Function with identifier '{}' already exists",
                 identifier.span.slice_source()
-            )));
+        )));
         }
 
-        // FIXME
-        // _ = self.register_local(&identifier, false, Some(self.functable.len() as u32));
+        self.register_local(&identifier, false, SpruceType::Function {
+            parameters,
+            return_type
+        });
         
         self.push_scope();
-        // self.evaluate_params(parameters)?;
         
-        // FIXME: Need to get the types of the parameters
-        let param_count = match parameters {
-            Some(ref p) => p.len() as u8,
-            None => 0,
-        };
-
-        let function = Function::User {
-            meta_id: self.functable.len() as u32 - 1,
+        self.add_function(identifier.span.clone(), Function::User {
+            meta_id: self.functable.len() as u32,
             param_types: None,
+            return_type: SpruceType::None,
             empty: false
-        };
+        });
 
-        self.add_function(identifier.span.clone(), function);
-
-        // Ok(())
-        todo!()
+        Ok(())
     }
 
     fn mark_function_empty(&mut self, id: &Span) {
@@ -344,7 +343,7 @@ impl Analyser {
             
             if !list_type.is_same(type_of) {
                 self.error_no_exit(format!(
-                        "Item at index {idx} in list, has type '{:?}' but expects '{:?}'",
+                        "Item at index {idx} in list, has type {} but expects {}",
                         type_of,
                         list_type,
                     ),
@@ -368,7 +367,7 @@ impl Analyser {
 
         if !lhs_type.is_same(&rhs_type) {
             self.error_no_exit(format!(
-                    "Binary operation type mismatch, {:?} and {:?}",
+                    "Binary operation type mismatch, {} and {}",
                     lhs_type,
                     rhs_type
                 ),
@@ -476,7 +475,7 @@ impl Analyser {
 
         if !lhs_type.is_same(&rhs_type) {
             self.error_no_exit(format!(
-                    "Logical operation type mismatch, {:?} and {:?}",
+                    "Logical operation type mismatch, {} and {}",
                     lhs_type,
                     rhs_type
                 ),
@@ -510,7 +509,7 @@ impl Analyser {
 
         if !condition_type.is_same(&SpruceType::Bool) {
             self.error_no_exit(format!(
-                    "Ternary statement condition expects a bool, but is a {:?}",
+                    "Ternary statement condition expects a bool, but is a {}",
                     condition_type,
                 ),
                 &condition.token
@@ -522,7 +521,7 @@ impl Analyser {
 
         if !true_type.is_same(&false_type) {
             self.error_no_exit(format!(
-                    "Ternary statement branches must return the same type. Expected {:?} but received {:?}",
+                    "Ternary statement branches must return the same type. Expected {} but received {}",
                     true_type,
                     false_type,
                 ),
@@ -547,7 +546,7 @@ impl Analyser {
 
         if !condition_type.is_same(&SpruceType::Bool) {
             self.error_no_exit(format!(
-                    "If statement condition expects a bool, but is a {:?}",
+                    "If statement condition expects a bool, but is a {}",
                     condition_type,
                 ),
                 &condition.token
@@ -561,7 +560,7 @@ impl Analyser {
 
                 if !true_type.is_same(&false_type) {
                     self.error_no_exit(format!(
-                            "If statement branches must return the same type. Expected {:?} but received {:?}",
+                            "If statement branches must return the same type. Expected {} but received {}",
                             true_type,
                             false_type,
                         ),
@@ -580,8 +579,17 @@ impl Analyser {
         let AstData::Body(inner) = &node.data else { unreachable!() };
         let mut statements = Vec::new();
 
-        for item in inner {
+        for (idx, item) in inner.iter().enumerate() {
             statements.push(self.visit(item)?);
+
+            if let AstData::ExpressionStatement(is_statement, _) = &item.data {
+                if !is_statement && idx < inner.len() - 1 {
+                    self.error_no_exit(
+                        "Trying to use an open expression before the last statement".into(),
+                        &item.token
+                    );
+                }
+            }
         }
 
         let kind = match statements.last() {
@@ -593,6 +601,7 @@ impl Analyser {
                         k.clone()
                     }
                 }
+                DecoratedAstData::Return(kind, _) => kind.clone(),
                 _ => SpruceType::None,
             },
             None => SpruceType::None,
@@ -606,6 +615,10 @@ impl Analyser {
         let inner = self.visit(inner)?;
         let kind = self.find_type_of(&inner)?;
         Ok(DecoratedAst::new_expr_statement(*is_statement, inner, kind))
+    }
+
+    fn type_id(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+        Ok(DecoratedAst::new_type(node.token.clone(), self.get_type_from_ast(&node)?))
     }
 
     fn identifier(&mut self, node: &Box<Ast>) -> Box<DecoratedAst> {
@@ -640,11 +653,11 @@ impl Analyser {
 
         let kind = match kind {
             Some(kind) => {
-                let kind = self.get_kind_from_ast(kind)?;
+                let kind = self.get_type_from_ast(kind)?;
 
                 if !kind.is_same(&expr_kind) {
                     self.error_no_exit(format!(
-                            "Variable '{}' expected type {:?} but received {:?}",
+                            "Variable '{}' expected type {} but received {}",
                             identifier.span.slice_source(),
                             kind,
                             expr_kind,
@@ -652,7 +665,7 @@ impl Analyser {
                         identifier
                     );
                 }
-                expr_kind
+                kind
             },
             None => expr_kind,
         };
@@ -719,7 +732,7 @@ impl Analyser {
 
                 if !expr_type.is_same(&kind) {
                     self.error_no_exit(format!(
-                            "Cannot assign type {:?} to '{}' where type {:?} is expected",
+                            "Cannot assign type {} to '{}' where type {} is expected",
                             expr_type,
                             identifier.span.slice_source(),
                             kind,
@@ -739,6 +752,110 @@ impl Analyser {
         Ok(DecoratedAst::new_var_assign(node.token.clone(), setter, expr))
     }
 
+    #[inline]
+    fn evaluate_params(
+        &mut self,
+        token: Token,
+        parameters: &Option<Vec<Box<Ast>>>,
+    ) -> Result<(Box<DecoratedAst>, Option<Vec<Box<SpruceType>>>), SpruceErr> {
+        // Register locals from parameters
+        if let Some(ref parameters) = parameters {
+            let mut params = Vec::new();
+            let mut types = Vec::new();
+
+            for param in parameters {
+                let AstData::Parameter { type_name } = &param.data else { unreachable!("{:#?}", param.data) };
+                let kind = self.get_type_from_ast(type_name)?;
+                self.register_local(&param.token, false, kind.clone());
+                
+                types.push(Box::new(kind.clone()));
+                params.push(DecoratedAst::new_parameter(param.token.clone(), kind));
+            }
+
+            Ok((DecoratedAst::new_parameter_list(token,
+                if parameters.len() == 0 {
+                        None
+                    } else {
+                        Some(params)
+                    },
+                ),
+                Some(types),
+            ))
+        } else {
+            Ok((DecoratedAst::new_parameter_list(token, None), None))
+        }
+    }
+
+    fn function(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+        let AstData::Function { anonymous, parameters, return_type, body } = &node.data else { unreachable!() };
+        let identifier = &node.token;
+        
+        if *anonymous {
+            self.push_scope();
+            self.table.mark_depth_limit();
+        }
+        
+        let (parameters, types) = self.evaluate_params(identifier.clone(), parameters)?;
+
+        let return_ = match *return_type {
+            Some(ref return_) => self.visit(return_)?,
+            None => DecoratedAst::new_empty(node.token.clone()),
+        };
+        let return_type = self.find_type_of(&return_)?;
+
+        if !anonymous {
+            self.register_function(identifier, types, Box::new(return_type.clone()))?;
+            if !self.table.is_global() {
+                self.table.mark_depth_limit();
+            }
+        }
+        
+        let body_ast = match &body.data {
+            AstData::Return(_) => self.return_statement(body)?,
+            AstData::Body(_) => self.body(body)?,
+            _ => unreachable!(),
+        };
+        let body_type = self.find_type_of(&body_ast)?;
+
+        // Make sure the body matches the return type
+        if !body_type.is_same(&return_type) {
+            self.error_no_exit(format!(
+                    "Function '{}' expects the return type {}, but has {}",
+                    node.token.span.slice_source(),
+                    return_type,
+                    body_type,
+                ),
+                &node.token
+            );
+        }
+
+        self.pop_scope();
+        self.table.reset_mark();
+        
+        // Don't generate pointless returns
+        if let AstData::Body(ref statements) = &body.data {
+            if statements.len() == 0 {
+                self.mark_function_empty(&identifier.span);
+            }
+        }
+        
+        Ok(DecoratedAst::new_function(node.token.clone(), *anonymous, parameters, body_type, body_ast))
+    }
+
+    fn return_statement(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+        let AstData::Return(expression) = &node.data else { unreachable!() };
+
+        let (kind, expression) = match expression {
+            Some(expr) => {
+                let expr = self.visit(expr)?;
+                (self.find_type_of(&expr)?, Some(expr))
+            }
+            None => (SpruceType::None, None),
+        };
+
+        Ok(DecoratedAst::new_return(node.token.clone(), kind, expression))
+    }
+
     fn program(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
         let AstData::Program { source, body } = &node.data else { unreachable!() };
         let mut statements = Vec::new();
@@ -755,6 +872,7 @@ impl Analyser {
             AstData::Literal => self.literal(node)?,
             AstData::ListLiteral(_) => self.list_literal(node)?,
 
+            AstData::Type {..} => self.type_id(node)?,
             AstData::Identifier => self.identifier(node),
             AstData::BinaryOp {..} => self.binary_op(node)?,
             AstData::UnaryOp {..} => self.unary_op(node)?,
@@ -769,6 +887,8 @@ impl Analyser {
             AstData::Body(_) => self.body(node)?,
             AstData::ExpressionStatement(_, _) => self.expr_statement(node)?,
 
+            AstData::Function {..} => self.function(node)?,
+            AstData::Return(_) => self.return_statement(node)?,
             AstData::Program {..} => self.program(node)?,
             AstData::Empty => DecoratedAst::new_empty(node.token.clone()),
             _ => return Err(self.error(format!("Unknown node in check: {:#?}", node))),
@@ -777,20 +897,21 @@ impl Analyser {
 
     fn find_type_of(&self, node: &Box<DecoratedAst>) -> Result<SpruceType, SpruceErr> {
         Ok(match &node.data {
-            DecoratedAstData::Literal(t, _) => t.clone(),
-            DecoratedAstData::ListLiteral(t, _) => t.clone(),
+            DecoratedAstData::Literal(kind, _) => kind.clone(),
+            DecoratedAstData::ListLiteral(kind, _) => kind.clone(),
             
             DecoratedAstData::BinaryOp { kind, .. } => kind.clone(),
             DecoratedAstData::UnaryOp { kind, .. } => kind.clone(),
             DecoratedAstData::LogicalOp {..} => SpruceType::Bool,
             
-            DecoratedAstData::Identifier(t) => t.clone(),
+            DecoratedAstData::Identifier(kind) => kind.clone(),
             DecoratedAstData::VarAssign { lhs, .. } => self.find_type_of(lhs)?,
+            DecoratedAstData::Type(kind) => kind.clone(),
             
             DecoratedAstData::Ternary { kind, ..} => kind.clone(),
             DecoratedAstData::IfStatement { kind, ..} => kind.clone(),
-            DecoratedAstData::Body(t, _) => t.clone(),
-            DecoratedAstData::ExpressionStatement(t, _, _) => t.clone(),
+            DecoratedAstData::Body(kind, _) => kind.clone(),
+            DecoratedAstData::ExpressionStatement(kind, _, _) => kind.clone(),
             DecoratedAstData::Empty => SpruceType::Any,
 
             _ => return Err(SpruceErr::new(format!(
@@ -803,10 +924,10 @@ impl Analyser {
         })
     }
 
-    fn get_kind_from_ast(&mut self, node: &Box<Ast>) -> Result<SpruceType, SpruceErr> {
-        let AstData::Type { kind, inner } = &node.data else { unreachable!() };
+    fn get_type_from_ast(&mut self, node: &Box<Ast>) -> Result<SpruceType, SpruceErr> {
+        let AstData::Type { kind } = &node.data else { unreachable!() };
 
-        Ok(match *kind {
+        Ok(match &*kind {
             TypeKind::Standard => {
                 match node.token.span.slice_source() {
                     "any" => SpruceType::Any,
@@ -814,16 +935,35 @@ impl Analyser {
                     "float" => SpruceType::Float,
                     "bool" => SpruceType::Bool,
                     // TODO: Check for custom type before error
-                    _ => return Err(self.error(format!(
-                        "Unknown type identifier '{}'",
-                        node.token.span.slice_source(),
-                    ))),
+                    _ => {
+                        self.error_no_exit(format!(
+                                "Unknown type identifier '{}'",
+                                node.token.span.slice_source(),
+                            ),
+                            &node.token
+                        );
+                        SpruceType::Error
+                    },
                 }
             }
-            TypeKind::List => SpruceType::List(Box::new(self.get_kind_from_ast(match inner {
-                Some(ref o) => o,
-                None => unreachable!(),
-            })?)),
+            TypeKind::List(ref inner) => SpruceType::List(Box::new(self.get_type_from_ast(inner)?)),
+            TypeKind::Function { parameters, return_type } => {
+                SpruceType::Function {
+                    parameters: match parameters {
+                        Some(ref parameters) => {
+                            let mut types = Vec::new();
+
+                            for kind in parameters {
+                                types.push(Box::new(self.get_type_from_ast(kind)?));
+                            }
+
+                            Some(types)
+                        }
+                        None => None,
+                    },
+                    return_type: Box::new(self.get_type_from_ast(&return_type)?),
+                }
+            }
             _ => unimplemented!(),
         })
     }
