@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{rc::Rc, mem::discriminant};
 
 use crate::{source::Source, RunArgs, error::{SpruceErr, SpruceErrData}, nativefns, object::Object};
 
@@ -334,7 +334,7 @@ impl Analyser {
             values.push(item);
         }
 
-        Ok(DecoratedAst::new_list_literal(node.token.clone(), values, SpruceType::Tuple(types)))
+        Ok(DecoratedAst::new_tuple_literal(node.token.clone(), values, SpruceType::Tuple(types)))
     }
 
     fn list_literal(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
@@ -663,6 +663,15 @@ impl Analyser {
     fn var_declaration(&mut self, var_decl: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
         let AstData::VarDeclaration { is_mutable, kind, expression } = &var_decl.data else { unreachable!() };
         let identifier = &var_decl.token;
+        
+        if !is_mutable && expression.is_none() {
+            self.error_no_exit(format!(
+                    "Immutable variable '{}' must be bound to a value",
+                    identifier.span.slice_source(),
+                ),
+                identifier
+            );
+        }
 
         let expression = match expression {
             Some(expr) => self.visit(expr)?,
@@ -749,8 +758,15 @@ impl Analyser {
                         &identifier
                     );
                 }
-
-                if !expr_type.is_same(&kind) {
+                
+                if discriminant(&kind) == discriminant(&SpruceType::Any) {
+                    self.error_no_exit(format!(
+                        "Currently cannot assign value to un-initialised variable '{}'",
+                        identifier.span.slice_source(),
+                    ),
+                    &identifier
+                );
+                } else if !expr_type.is_same(&kind) {
                     self.error_no_exit(format!(
                             "Cannot assign type {} to '{}' where type {} is expected",
                             expr_type,
@@ -925,6 +941,7 @@ impl Analyser {
     fn find_type_of(&self, node: &Box<DecoratedAst>) -> Result<SpruceType, SpruceErr> {
         Ok(match &node.data {
             DecoratedAstData::Literal(kind, _) => kind.clone(),
+            DecoratedAstData::TupleLiteral(kind, _) => kind.clone(),
             DecoratedAstData::ListLiteral(kind, _) => kind.clone(),
             
             DecoratedAstData::BinaryOp { kind, .. } => kind.clone(),

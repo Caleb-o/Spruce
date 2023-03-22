@@ -16,7 +16,7 @@ pub enum DecoratedAstData {
     Literal(SpruceType, u32), // Constant index
     SymbolLiteral(u32), // Symbol Index
     MapLiteral(Vec<(Token, Option<Box<DecoratedAst>>)>),
-    TupleLiteral(Vec<SpruceType>, Vec<Box<DecoratedAst>>),
+    TupleLiteral(SpruceType, Vec<Box<DecoratedAst>>),
     ListLiteral(SpruceType, Vec<Box<DecoratedAst>>),
     ExpressionStatement(SpruceType, bool, Box<DecoratedAst>),
 
@@ -112,10 +112,10 @@ impl DecoratedAst {
         })
     }
 
-    pub fn new_tuple_literal(token: Token, values: Vec<Box<DecoratedAst>>, kinds: Vec<SpruceType>) -> Box<Self> {
+    pub fn new_tuple_literal(token: Token, values: Vec<Box<DecoratedAst>>, kind: SpruceType) -> Box<Self> {
         Box::new(Self {
             token,
-            data: DecoratedAstData::TupleLiteral(kinds, values),
+            data: DecoratedAstData::TupleLiteral(kind, values),
         })
     }
 
