@@ -358,6 +358,74 @@ impl Analyser {
         Ok(DecoratedAst::new_list_literal(node.token.clone(), values, SpruceType::List(Box::new(list_type))))
     }
 
+    fn binary_op(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+        let AstData::BinaryOp { lhs, rhs } = &node.data  else { unreachable!() };
+        let lhs = self.visit(&lhs)?;
+        let rhs = self.visit(&rhs)?;
+
+        let lhs_type = self.find_type_of(&lhs)?;
+        let rhs_type = self.find_type_of(&rhs)?;
+
+        if !lhs_type.is_same(&rhs_type) {
+            self.error_no_exit(format!(
+                    "Binary operation type mismatch, {:?} and {:?}",
+                    lhs_type,
+                    rhs_type
+                ),
+                &node.token
+            )
+        }
+
+        match node.token.kind {
+            TokenKind::Plus | TokenKind::Minus | TokenKind::Star |
+            TokenKind::Slash | TokenKind::EqualEqual | TokenKind::NotEqual => {},
+            _ => self.error_no_exit(format!(
+                    "Unknown operator in binary operation '{}'",
+                    node.token.span.slice_source(),
+                ),
+                &node.token,
+            ),
+        }
+
+        Ok(DecoratedAst::new_binary_op(node.token.clone(), lhs_type, lhs, rhs))
+    }
+
+    fn unary_op(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+        let AstData::UnaryOp { rhs } = &node.data  else { unreachable!() };
+        let rhs = self.visit(&rhs)?;
+        let kind = self.find_type_of(&rhs)?;
+
+        match node.token.kind {
+            TokenKind::Minus | TokenKind::Bang => {}
+            _ => self.error_no_exit(format!(
+                    "Unknown operator in unary operation '{}'",
+                    node.token.span.slice_source(),
+                ),
+                &node.token,
+            ),
+        }
+
+        Ok(DecoratedAst::new_unary_op(node.token.clone(), kind, rhs))
+    }
+
+    // fn logical_op(&mut self, env: &mut Box<Environment>, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    //     let AstData::LogicalOp { lhs, rhs } = &node.data else { unreachable!() };
+    //     self.visit(env, &lhs)?;
+    //     self.visit(env, &rhs)?;
+
+    //     match node.token.kind {
+    //         TokenKind::Greater =>           env.add_op(Instruction::Greater),
+    //         TokenKind::GreaterEqual =>      env.add_op(Instruction::GreaterEqual),
+    //         TokenKind::Less =>              env.add_op(Instruction::Less),
+    //         TokenKind::LessEqual =>         env.add_op(Instruction::LessEqual),
+    //         TokenKind::And =>               env.add_op(Instruction::And),
+    //         TokenKind::Or =>                env.add_op(Instruction::Or),
+    //         _ => unreachable!(),
+    //     }
+
+    //     Ok(())
+    // }
+
     fn body(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
         let AstData::Body(inner) = &node.data else { unreachable!() };
         let mut statements = Vec::new();
@@ -538,6 +606,8 @@ impl Analyser {
             AstData::ListLiteral(_) => self.list_literal(node)?,
 
             AstData::Identifier => self.identifier(node),
+            AstData::BinaryOp {..} => self.binary_op(node)?,
+            AstData::UnaryOp {..} => self.unary_op(node)?,
 
             AstData::VarDeclaration {..} => self.var_declaration(node)?,
             AstData::VarDeclarations(_) => self.var_declarations(node)?,
@@ -556,12 +626,14 @@ impl Analyser {
         Ok(match &node.data {
             DecoratedAstData::Literal(t, _) => t.clone(),
             DecoratedAstData::ListLiteral(t, _) => t.clone(),
+            
+            DecoratedAstData::BinaryOp { kind, .. } => kind.clone(),
+            DecoratedAstData::UnaryOp { kind, .. } => kind.clone(),
+            
             DecoratedAstData::Identifier(t) => t.clone(),
-
-            DecoratedAstData::Body(t, _) => t.clone(),
-
             DecoratedAstData::VarAssign { lhs, .. } => self.find_type_of(lhs)?,
-
+            
+            DecoratedAstData::Body(t, _) => t.clone(),
             DecoratedAstData::ExpressionStatement(t, _, _) => t.clone(),
             DecoratedAstData::Empty => SpruceType::Any,
 

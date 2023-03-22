@@ -19,9 +19,9 @@ pub enum DecoratedAstData {
     ListLiteral(SpruceType, Vec<Box<DecoratedAst>>),
     ExpressionStatement(SpruceType, bool, Box<DecoratedAst>),
 
-    BinaryOp { lhs: Box<DecoratedAst>, rhs: Box<DecoratedAst> },
-    UnaryOp { rhs: Box<DecoratedAst> },
-    LogicalOp { lhs: Box<DecoratedAst>, rhs: Box<DecoratedAst> },
+    BinaryOp { kind: SpruceType, lhs: Box<DecoratedAst>, rhs: Box<DecoratedAst> },
+    UnaryOp { kind: SpruceType, rhs: Box<DecoratedAst> },
+    LogicalOp { kind: SpruceType, lhs: Box<DecoratedAst>, rhs: Box<DecoratedAst> },
 
     Parameter { type_name: Option<Token> },
     Function { anonymous: bool, parameters: Option<Vec<Box<DecoratedAst>>>, body: Box<DecoratedAst> },
@@ -285,24 +285,24 @@ impl DecoratedAst {
         })
     }
 
-    pub fn new_binary_op(token: Token, lhs: Box<DecoratedAst>, rhs: Box<DecoratedAst>) -> Box<Self> {
+    pub fn new_binary_op(token: Token, kind: SpruceType, lhs: Box<DecoratedAst>, rhs: Box<DecoratedAst>) -> Box<Self> {
         Box::new(Self { 
             token,
-            data: DecoratedAstData::BinaryOp { lhs, rhs },
+            data: DecoratedAstData::BinaryOp { kind, lhs, rhs },
         })
     }
 
-    pub fn new_unary_op(token: Token, rhs: Box<DecoratedAst>) -> Box<Self> {
+    pub fn new_unary_op(token: Token, kind: SpruceType, rhs: Box<DecoratedAst>) -> Box<Self> {
         Box::new(Self { 
             token,
-            data: DecoratedAstData::UnaryOp { rhs },
+            data: DecoratedAstData::UnaryOp { kind, rhs },
         })
     }
 
-    pub fn new_logical_op(token: Token, lhs: Box<DecoratedAst>, rhs: Box<DecoratedAst>) -> Box<Self> {
+    pub fn new_logical_op(token: Token, kind: SpruceType, lhs: Box<DecoratedAst>, rhs: Box<DecoratedAst>) -> Box<Self> {
         Box::new(Self { 
             token,
-            data: DecoratedAstData::LogicalOp { lhs, rhs },
+            data: DecoratedAstData::LogicalOp { kind, lhs, rhs },
         })
     }
 

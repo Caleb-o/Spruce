@@ -42,25 +42,5 @@ fn main() {
             }
         }
         _ => unimplemented!(),
-        // SpruceCli::Run(args) => {
-        //     if let Ok(source) = fs::read_to_string(&args.file_path) {
-        //         match util::compile_source(source, args) {
-        //             Ok(env) => VM::new(env).run(),
-        //             Err(e) => eprintln!("{e}"),
-        //         }
-        //     } else {
-        //         eprintln!("Could not load file '{}'", args.file_path);
-        //     }
-        // }
-        // SpruceCli::Dump(args) => {
-        //     if let Ok(source) = fs::read_to_string(&args.file_path) {
-        //         match util::compile_source(source, args) {
-        //             Ok(mut env) => env.dump(),
-        //             Err(e) => eprintln!("{e}"),
-        //         }
-        //     } else {
-        //         eprintln!("Could not load file '{}'", args.file_path);
-        //     }
-        // }
     }
 }
