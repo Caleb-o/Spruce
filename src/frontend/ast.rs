@@ -27,6 +27,7 @@ pub enum AstData {
     Literal,
     SymbolLiteral,
     MapLiteral(Vec<(Token, Option<Box<Ast>>)>),
+    TupleLiteral(Vec<Box<Ast>>),
     ListLiteral(Vec<Box<Ast>>),
     ExpressionStatement(bool, Box<Ast>),
 
@@ -118,6 +119,13 @@ impl Ast {
         Box::new(Self {
             token,
             data: AstData::MapLiteral(values),
+        })
+    }
+
+    pub fn new_tuple_literal(token: Token, values: Vec<Box<Ast>>) -> Box<Self> {
+        Box::new(Self {
+            token,
+            data: AstData::TupleLiteral(values),
         })
     }
 

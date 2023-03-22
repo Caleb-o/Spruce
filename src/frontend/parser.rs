@@ -86,6 +86,19 @@ impl Parser {
             TokenKind::LParen => {
                 self.consume_here();
                 let expr = self.expression()?;
+
+                if self.current.kind == TokenKind::Comma {
+                    let mut exprs = vec![expr];
+
+                    while self.current.kind == TokenKind::Comma {
+                        self.consume_here();
+                        exprs.push(self.expression()?);
+                    }
+
+                    self.consume(TokenKind::RParen, "Expect ')' to close group expression")?;
+                    return Ok(Ast::new_tuple_literal(exprs[0].token.clone(), exprs));
+                }
+
                 self.consume(TokenKind::RParen, "Expect ')' to close group expression")?;
                 Ok(expr)
             },

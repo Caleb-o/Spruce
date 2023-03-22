@@ -50,12 +50,10 @@ impl Analyser {
 
         let program = self.visit(program)?;
 
-        // println!("{program:#?}");
-
-        // match self.find_function_str("main") {
-        //     Some(_) => {}
-        //     None => return Err(self.error("Cannot find function 'main'".into())),
-        // }
+        match self.find_function_str("main") {
+            Some(_) => {} // Type-check main function for correct signature
+            None => return Err(self.error("Cannot find function 'main'".into())),
+        }
 
         // Try to resolve calls that were not during compilation
         self.resolve_function_calls();
@@ -67,7 +65,7 @@ impl Analyser {
         Ok(Box::new(Environment::new(program)))
     }
 
-    pub fn add_fn(
+    pub fn add_native_fn(
         &mut self,
         identifier: &Span,
         param_types: ParamTypes,
@@ -259,8 +257,6 @@ impl Analyser {
             return_type
         });
         
-        self.push_scope();
-        
         self.add_function(identifier.span.clone(), Function::User {
             meta_id: self.functable.len() as u32,
             param_types: None,
@@ -323,6 +319,22 @@ impl Analyser {
             TokenKind::Float => SpruceType::Float,
             _ => unreachable!(),
         }))
+    }
+
+    fn tuple_literal(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+        let AstData::TupleLiteral(inner) = &node.data else { unreachable!() };
+        let mut types = Vec::new();
+        let mut values = Vec::new();
+
+        for item in inner {
+            let item = self.visit(&item)?;
+            let type_of = self.find_type_of(&item)?;
+            
+            types.push(Box::new(type_of));
+            values.push(item);
+        }
+
+        Ok(DecoratedAst::new_list_literal(node.token.clone(), values, SpruceType::Tuple(types)))
     }
 
     fn list_literal(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
@@ -594,11 +606,11 @@ impl Analyser {
 
         let kind = match statements.last() {
             Some(n) => match &n.data {
-                DecoratedAstData::ExpressionStatement(k, is_statement, _) => {
+                DecoratedAstData::ExpressionStatement(kind, is_statement, _) => {
                     if *is_statement {
                         SpruceType::None
                     } else {
-                        k.clone()
+                        kind.clone()
                     }
                 }
                 DecoratedAstData::Return(kind, _) => kind.clone(),
@@ -790,18 +802,21 @@ impl Analyser {
         let AstData::Function { anonymous, parameters, return_type, body } = &node.data else { unreachable!() };
         let identifier = &node.token;
         
+        self.push_scope();
+
         if *anonymous {
-            self.push_scope();
             self.table.mark_depth_limit();
         }
         
         let (parameters, types) = self.evaluate_params(identifier.clone(), parameters)?;
 
-        let return_ = match *return_type {
-            Some(ref return_) => self.visit(return_)?,
-            None => DecoratedAst::new_empty(node.token.clone()),
+        let return_type = match *return_type {
+            Some(ref return_) => {
+                let expr = self.visit(return_)?;
+                self.find_type_of(&expr)?
+            },
+            None => SpruceType::None,
         };
-        let return_type = self.find_type_of(&return_)?;
 
         if !anonymous {
             self.register_function(identifier, types, Box::new(return_type.clone()))?;
@@ -813,10 +828,10 @@ impl Analyser {
         let body_ast = match &body.data {
             AstData::Return(_) => self.return_statement(body)?,
             AstData::Body(_) => self.body(body)?,
-            _ => unreachable!(),
+            _ => unreachable!("BODY AST"),
         };
         let body_type = self.find_type_of(&body_ast)?;
-
+        
         // Make sure the body matches the return type
         if !body_type.is_same(&return_type) {
             self.error_no_exit(format!(
@@ -833,7 +848,7 @@ impl Analyser {
         self.table.reset_mark();
         
         // Don't generate pointless returns
-        if let AstData::Body(ref statements) = &body.data {
+        if let DecoratedAstData::Body(_, ref statements) = &body_ast.data {
             if statements.len() == 0 {
                 self.mark_function_empty(&identifier.span);
             }
@@ -870,6 +885,7 @@ impl Analyser {
     fn visit(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
         Ok(match node.data {
             AstData::Literal => self.literal(node)?,
+            AstData::TupleLiteral(_) => self.tuple_literal(node)?,
             AstData::ListLiteral(_) => self.list_literal(node)?,
 
             AstData::Type {..} => self.type_id(node)?,
@@ -912,6 +928,7 @@ impl Analyser {
             DecoratedAstData::IfStatement { kind, ..} => kind.clone(),
             DecoratedAstData::Body(kind, _) => kind.clone(),
             DecoratedAstData::ExpressionStatement(kind, _, _) => kind.clone(),
+            DecoratedAstData::Return(kind, _) => kind.clone(),
             DecoratedAstData::Empty => SpruceType::Any,
 
             _ => return Err(SpruceErr::new(format!(
@@ -934,6 +951,7 @@ impl Analyser {
                     "int" => SpruceType::Int,
                     "float" => SpruceType::Float,
                     "bool" => SpruceType::Bool,
+                    "string" => SpruceType::String,
                     // TODO: Check for custom type before error
                     _ => {
                         self.error_no_exit(format!(
@@ -946,6 +964,15 @@ impl Analyser {
                     },
                 }
             }
+            TypeKind::Tuple(ref inner) => {
+                let mut types = Vec::new();
+
+                for item in inner {
+                    types.push(Box::new(self.get_type_from_ast(item)?))
+                }
+
+                SpruceType::Tuple(types)
+            },
             TypeKind::List(ref inner) => SpruceType::List(Box::new(self.get_type_from_ast(inner)?)),
             TypeKind::Function { parameters, return_type } => {
                 SpruceType::Function {
