@@ -499,6 +499,61 @@ impl Analyser {
         Ok(DecoratedAst::new_logical_op(node.token.clone(), lhs, rhs))
     }
 
+    fn ternary(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+        let AstData::Ternary { condition, true_body, false_body } = &node.data else { unreachable!() };
+
+        let condition = self.visit(condition)?;
+        let true_body = self.visit(true_body)?;
+        let false_body = self.visit(false_body)?;
+
+        let true_type = self.find_type_of(&true_body)?;
+        let false_type = self.find_type_of(&false_body)?;
+
+        if !true_type.is_same(&false_type) {
+            self.error_no_exit(format!(
+                    "Ternary statement branches must return the same type. Expected {:?} but received {:?}",
+                    true_type,
+                    false_type,
+                ),
+                &false_body.token
+            );
+        }
+
+        Ok(DecoratedAst::new_ternary(node.token.clone(), condition, true_type, true_body, false_body))
+    }
+
+    fn if_statement(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+        let AstData::IfStatement { condition, true_body, false_body } = &node.data else { unreachable!() };
+
+        let condition = self.visit(condition)?;
+        let true_body = self.visit(true_body)?;
+        let false_body = match false_body {
+            Some(ref body) => Some(self.visit(body)?),
+            None => None,
+        };
+
+        let true_type = self.find_type_of(&true_body)?;
+        match false_body {
+            Some(ref body) => {
+                let false_type = self.find_type_of(body)?;
+
+                if !true_type.is_same(&false_type) {
+                    self.error_no_exit(format!(
+                            "If statement branches must return the same type. Expected {:?} but received {:?}",
+                            true_type,
+                            false_type,
+                        ),
+                        &body.token
+                    );
+                }
+            }
+            None => {},
+        };
+
+        Ok(DecoratedAst::new_if_statement(node.token.clone(), condition, true_type, true_body, false_body))
+    }
+
+
     fn body(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
         let AstData::Body(inner) = &node.data else { unreachable!() };
         let mut statements = Vec::new();
@@ -687,6 +742,8 @@ impl Analyser {
             AstData::VarDeclarations(_) => self.var_declarations(node)?,
             AstData::VarAssign {..} => self.var_assign(node)?,
 
+            AstData::Ternary {..} => self.ternary(node)?,
+            AstData::IfStatement {..} => self.if_statement(node)?,
             AstData::Body(_) => self.body(node)?,
             AstData::ExpressionStatement(_, _) => self.expr_statement(node)?,
 
@@ -708,6 +765,8 @@ impl Analyser {
             DecoratedAstData::Identifier(t) => t.clone(),
             DecoratedAstData::VarAssign { lhs, .. } => self.find_type_of(lhs)?,
             
+            DecoratedAstData::Ternary { kind, ..} => kind.clone(),
+            DecoratedAstData::IfStatement { kind, ..} => kind.clone(),
             DecoratedAstData::Body(t, _) => t.clone(),
             DecoratedAstData::ExpressionStatement(t, _, _) => t.clone(),
             DecoratedAstData::Empty => SpruceType::Any,

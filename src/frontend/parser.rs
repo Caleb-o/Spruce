@@ -97,6 +97,8 @@ impl Parser {
             TokenKind::Backtick => self.symbol(),
             TokenKind::LCurly => self.body(),
 
+            TokenKind::If => self.if_expression_statement(true),
+
             TokenKind::Identifier => {
                 let token = self.current.clone();
                 self.consume_here();
@@ -214,35 +216,13 @@ impl Parser {
         Ok(node)
     }
 
-    fn type_equality(&mut self) -> Result<Box<Ast>, SpruceErr> {
-        let mut node = self.equality()?;
-
-        if self.is_any_of(&[TokenKind::Is, TokenKind::Ensure]) {
-        	let is_assert = self.current.kind == TokenKind::Ensure;
-        	self.consume_here();
-        	let type_id = self.current.clone();
-            match self.current.kind {
-                TokenKind::Identifier | TokenKind::None => self.consume_here(),
-                _ => {
-                    self.consume(TokenKind::Identifier, &format!(
-                        "Expect identifier after is/ensure, but found '{}'",
-                        type_id.span.slice_source()
-                    ))?;
-                }
-            }
-            node = Ast::new_type_check(is_assert, node, type_id);
-        }
-
-        Ok(node)
-    }
-
     fn or(&mut self) -> Result<Box<Ast>, SpruceErr> {
-        let mut node = self.type_equality()?;
+        let mut node = self.equality()?;
 
         while self.current.kind == TokenKind::And {
             let token = self.current.clone();
             self.consume_here();
-            node = Ast::new_logical_op(token, node, self.or()?);
+            node = Ast::new_logical_op(token, node, self.expression()?);
         }
 
         Ok(node)
@@ -251,10 +231,10 @@ impl Parser {
     fn and(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let mut node = self.or()?;
 
-        while self.current.kind == TokenKind::Or {
+        while self.current.kind == TokenKind::And {
             let token = self.current.clone();
             self.consume_here();
-            node = Ast::new_logical_op(token, node, self.or()?);
+            node = Ast::new_logical_op(token, node, self.expression()?);
         }
 
         Ok(node)
@@ -422,13 +402,13 @@ impl Parser {
 
     fn single_statement_block(&mut self) -> Result<Box<Ast>, SpruceErr> {
         match self.current.kind {
-            TokenKind::If => self.if_statement(),
+            TokenKind::If => self.if_expression_statement(false),
             TokenKind::For => self.for_statement(),
             _ => self.body(),
         }
     }
 
-    fn if_statement(&mut self) -> Result<Box<Ast>, SpruceErr> {
+    fn if_expression_statement(&mut self, force_else: bool) -> Result<Box<Ast>, SpruceErr> {
         let token = self.current.clone();
         self.consume_here();
 
@@ -440,10 +420,14 @@ impl Parser {
             self.consume_here();
 
             false_body = Some(if self.current.kind == TokenKind::If {
-                self.if_statement()?
+                self.if_expression_statement(force_else)?
             } else {
                 self.body()?
             });
+        } else if force_else {
+            return Err(self.error(
+                "If expected an else branch".into()
+            ));
         }
         
         Ok(Ast::new_if_statement(token, condition, true_body, false_body))
@@ -538,7 +522,7 @@ impl Parser {
                 }
                 func
             }
-            TokenKind::If => self.if_statement()?,
+            TokenKind::If => self.if_expression_statement(false)?,
             TokenKind::For => self.for_statement()?,
             TokenKind::Do => self.do_while_statement()?,
             TokenKind::Switch => self.switch_statement()?,

@@ -32,8 +32,8 @@ pub enum DecoratedAstData {
     VarAssign { lhs: Box<DecoratedAst>, expression: Box<DecoratedAst> },
     VarAssignEqual { operator: Token, lhs: Box<DecoratedAst>, expression: Box<DecoratedAst> },
 
-    Ternary { condition: Box<DecoratedAst>, true_body: Box<DecoratedAst>, false_body: Box<DecoratedAst> },
-    IfStatement { condition: Box<DecoratedAst>, true_body: Box<DecoratedAst>, false_body: Option<Box<DecoratedAst>> },
+    Ternary { condition: Box<DecoratedAst>, kind: SpruceType, true_body: Box<DecoratedAst>, false_body: Box<DecoratedAst> },
+    IfStatement { condition: Box<DecoratedAst>, kind: SpruceType, true_body: Box<DecoratedAst>, false_body: Option<Box<DecoratedAst>> },
     ForStatement { variable: Option<Box<DecoratedAst>>, condition: Box<DecoratedAst>, increment: Option<Box<DecoratedAst>>, body: Box<DecoratedAst> },
     DoWhileStatement { body: Box<DecoratedAst>, condition: Box<DecoratedAst> },
     TrailingIfStatement { statement: Box<DecoratedAst>, condition: Box<DecoratedAst> },
@@ -182,24 +182,26 @@ impl DecoratedAst {
     pub fn new_ternary(
         token: Token,
         condition: Box<DecoratedAst>,
+        kind: SpruceType,
         true_body: Box<DecoratedAst>,
         false_body: Box<DecoratedAst>
     ) -> Box<Self> {
         Box::new(Self {
             token,
-            data: DecoratedAstData::Ternary { condition, true_body, false_body },
+            data: DecoratedAstData::Ternary { condition, kind, true_body, false_body },
         })
     }
 
     pub fn new_if_statement(
         token: Token,
         condition: Box<DecoratedAst>,
+        kind: SpruceType,
         true_body: Box<DecoratedAst>,
         false_body: Option<Box<DecoratedAst>>
     ) -> Box<Self> {
         Box::new(Self {
             token,
-            data: DecoratedAstData::IfStatement { condition, true_body, false_body },
+            data: DecoratedAstData::IfStatement { condition, kind, true_body, false_body },
         })
     }
 
