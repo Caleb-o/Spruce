@@ -376,6 +376,35 @@ impl Analyser {
             )
         }
 
+        // Check operation on type
+        match &lhs_type {
+            SpruceType::Bool => {
+                self.error_no_exit(
+                        "Cannot use binary operators on two bools".into()
+                    , &node.token
+                );
+            }
+            SpruceType::List(_) => {
+                self.error_no_exit(
+                        "Cannot use binary operators on two lists".into()
+                    , &node.token
+                );
+            }
+            SpruceType::Tuple(_) => {
+                self.error_no_exit(
+                        "Cannot use binary operators on two tuples".into()
+                    , &node.token
+                );
+            }
+            SpruceType::Function {..} => {
+                self.error_no_exit(
+                        "Cannot use binary operators on two functions".into()
+                    , &node.token
+                );
+            }
+            _ => {}
+        }
+
         match node.token.kind {
             TokenKind::Plus | TokenKind::Minus | TokenKind::Star |
             TokenKind::Slash => {},
@@ -394,6 +423,35 @@ impl Analyser {
         let AstData::UnaryOp { rhs } = &node.data  else { unreachable!() };
         let rhs = self.visit(&rhs)?;
         let kind = self.find_type_of(&rhs)?;
+
+        // Check operation on type
+        match &kind {
+            SpruceType::String => {
+                self.error_no_exit(
+                        "Cannot use unary operators on a string".into()
+                    , &node.token
+                );
+            }
+            SpruceType::List(_) => {
+                self.error_no_exit(
+                        "Cannot use unary operators on a list".into()
+                    , &node.token
+                );
+            }
+            SpruceType::Tuple(_) => {
+                self.error_no_exit(
+                        "Cannot use unary operators on a tuple".into()
+                    , &node.token
+                );
+            }
+            SpruceType::Function {..} => {
+                self.error_no_exit(
+                        "Cannot use unary operators on a function".into()
+                    , &node.token
+                );
+            }
+            _ => {}
+        }
 
         match node.token.kind {
             TokenKind::Minus | TokenKind::Bang => {}
@@ -517,7 +575,7 @@ impl Analyser {
                         identifier
                     );
                 }
-                kind
+                expr_kind
             },
             None => expr_kind,
         };
