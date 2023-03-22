@@ -10,6 +10,11 @@ pub struct Ast {
     pub data: AstData,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum TypeKind {
+    Standard, Tuple, List,
+}
+
 #[derive(Debug)]
 pub enum AstData {
     Identifier,
@@ -27,10 +32,11 @@ pub enum AstData {
     Function { anonymous: bool, parameters: Option<Vec<Box<Ast>>>, body: Box<Ast> },
     FunctionCall { lhs: Box<Ast>, arguments: Vec<Box<Ast>> },
 
-    VarDeclaration { is_mutable: bool, expression: Option<Box<Ast>> },
+    VarDeclaration { is_mutable: bool, kind: Option<Box<Ast>>, expression: Option<Box<Ast>> },
     VarDeclarations(Vec<Box<Ast>>),
     VarAssign { lhs: Box<Ast>, expression: Box<Ast> },
     VarAssignEqual { operator: Token, lhs: Box<Ast>, expression: Box<Ast> },
+    Type { kind: TypeKind, inner: Option<Box<Ast>> },
 
     Ternary { condition: Box<Ast>, true_body: Box<Ast>, false_body: Box<Ast> },
     IfStatement { condition: Box<Ast>, true_body: Box<Ast>, false_body: Option<Box<Ast>> },
@@ -123,10 +129,10 @@ impl Ast {
         })
     }
 
-    pub fn new_var_decl(token: Token, is_mutable: bool, expression: Option<Box<Ast>>) -> Box<Self> {
+    pub fn new_var_decl(token: Token, is_mutable: bool, kind: Option<Box<Ast>>, expression: Option<Box<Ast>>) -> Box<Self> {
         Box::new(Self {
             token,
-            data: AstData::VarDeclaration { is_mutable, expression },
+            data: AstData::VarDeclaration { is_mutable, kind, expression },
         })
     }
 
@@ -148,6 +154,13 @@ impl Ast {
         Box::new(Self {
             token,
             data: AstData::VarAssignEqual { operator, lhs, expression },
+        })
+    }
+
+    pub fn new_type(token: Token, kind: TypeKind, inner: Option<Box<Ast>>) -> Box<Self> {
+        Box::new(Self {
+            token,
+            data: AstData::Type { kind, inner },
         })
     }
 

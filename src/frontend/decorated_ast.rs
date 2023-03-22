@@ -27,7 +27,7 @@ pub enum DecoratedAstData {
     Function { anonymous: bool, parameters: Option<Vec<Box<DecoratedAst>>>, body: Box<DecoratedAst> },
     FunctionCall { lhs: Box<DecoratedAst>, arguments: Vec<Box<DecoratedAst>> },
 
-    VarDeclaration { is_mutable: bool, expression: Option<Box<DecoratedAst>> },
+    VarDeclaration { is_mutable: bool, kind: SpruceType, expression: Box<DecoratedAst> },
     VarDeclarations(Vec<Box<DecoratedAst>>),
     VarAssign { lhs: Box<DecoratedAst>, expression: Box<DecoratedAst> },
     VarAssignEqual { operator: Token, lhs: Box<DecoratedAst>, expression: Box<DecoratedAst> },
@@ -123,10 +123,10 @@ impl DecoratedAst {
         })
     }
 
-    pub fn new_var_decl(token: Token, is_mutable: bool, expression: Option<Box<DecoratedAst>>) -> Box<Self> {
+    pub fn new_var_decl(token: Token, is_mutable: bool, kind: SpruceType, expression: Box<DecoratedAst>) -> Box<Self> {
         Box::new(Self {
             token,
-            data: DecoratedAstData::VarDeclaration { is_mutable, expression },
+            data: DecoratedAstData::VarDeclaration { is_mutable, kind, expression },
         })
     }
 

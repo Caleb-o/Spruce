@@ -8,6 +8,7 @@ pub enum SpruceType {
     Float,
     Bool,
     String,
+    Tuple(Vec<Box<SpruceType>>),
     List(Box<SpruceType>),
     Function {
         parameters: Option<Vec<Box<SpruceType>>>,
@@ -18,6 +19,7 @@ pub enum SpruceType {
 impl SpruceType {
     pub fn is_same(&self, other: &SpruceType) -> bool {
         match self {
+            Self::Any => true,
             // TODO: List, Function
             Self::List(k) => {
                 if discriminant(self) != discriminant(other) {

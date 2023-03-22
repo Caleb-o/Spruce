@@ -2,7 +2,7 @@ use std::{rc::Rc, path::Path, fs, io::Error, collections::HashSet};
 
 use crate::{source::Source, util, RunArgs, error::{SpruceErr, SpruceErrData}};
 
-use super::{lexer::Lexer, token::{Token, TokenKind}, ast::{Ast, AstData}};
+use super::{lexer::Lexer, token::{Token, TokenKind}, ast::{Ast, AstData, TypeKind}};
 
 pub struct Parser {
     lexer: Lexer,
@@ -95,6 +95,7 @@ impl Parser {
             TokenKind::At => self.map_literal(),
             TokenKind::Pipe => self.anon_function(),
             TokenKind::Backtick => self.symbol(),
+            TokenKind::LCurly => self.body(),
 
             TokenKind::Identifier => {
                 let token = self.current.clone();
@@ -543,7 +544,6 @@ impl Parser {
             TokenKind::Switch => self.switch_statement()?,
             TokenKind::Var | TokenKind::Val => self.var_declaration()?,
             TokenKind::Return => self.return_statement()?,
-            TokenKind::LCurly => self.body()?,
             _ => {
                 let node = self.expression()?;
                 let is_stmt = if self.current.kind == TokenKind::SemiColon {
@@ -730,14 +730,16 @@ impl Parser {
         Ok(Ast::new_function(identifier, false, parameters, body))
     }
 
-    fn var_declaration(&mut self) -> Result<Box<Ast>, SpruceErr> {
-        let is_mutable = self.current.kind == TokenKind::Var;
-        self.consume_here();
-
-        let mut decls = Vec::new();
-        
+    fn collect_var_decl(&mut self, is_mutable: bool) -> Result<Box<Ast>, SpruceErr> {
         let identifier = self.current.clone();
         self.consume(TokenKind::Identifier, "Expected identifier after 'var'/'val'")?;
+
+        let kind = if self.current.kind == TokenKind::Colon {
+            self.consume_here();
+            Some(self.collect_type()?)
+        } else {
+            None
+        };
         
         // Produce the expression
         let mut expr = None;
@@ -745,21 +747,45 @@ impl Parser {
             self.consume_here();
             expr = Some(self.expression()?);
         }
-        decls.push(Ast::new_var_decl(identifier, is_mutable, expr));
 
+        Ok(Ast::new_var_decl(identifier, is_mutable, kind, expr))
+    }
+
+    fn collect_type(&mut self) -> Result<Box<Ast>, SpruceErr> {
+        Ok(match self.current.kind {
+            TokenKind::Identifier => {
+                let identifier = self.current.clone();
+                self.consume_here();
+                Ast::new_type(identifier, TypeKind::Standard, None)
+            }
+            TokenKind::LSquare => {
+                self.consume_here();
+                let inner = self.collect_type()?;
+                self.consume(TokenKind::RSquare, "Expect closing ']' after type")?;
+                Ast::new_type(inner.token.clone(), TypeKind::List, Some(inner))
+            }
+            TokenKind::LParen => {
+                self.consume_here();
+                let inner = self.collect_type()?;
+                self.consume(TokenKind::RParen, "Expect closing ')' after type")?;
+                Ast::new_type(inner.token.clone(), TypeKind::Tuple, Some(inner))
+            }
+            _ => return Err(self.error(format!(
+                "Unknown item in type definition '{}'",
+                self.current.span.slice_source(),
+            ))),
+        })
+    }
+
+    fn var_declaration(&mut self) -> Result<Box<Ast>, SpruceErr> {
+        let is_mutable = self.current.kind == TokenKind::Var;
+        self.consume_here();
+
+        let mut decls = vec![self.collect_var_decl(is_mutable)?];
+        
         while self.current.kind == TokenKind::Comma {
             self.consume_here();
-
-            let identifier = self.current.clone();
-            self.consume(TokenKind::Identifier, "Expected identifier after 'var'/'val'")?;
-            
-            // Produce the expression
-            let mut expr = None;
-            if self.current.kind == TokenKind::Equal {
-                self.consume_here();
-                expr = Some(self.expression()?);
-            }
-            decls.push(Ast::new_var_decl(identifier, is_mutable, expr));
+            decls.push(self.collect_var_decl(is_mutable)?);
         }
 
         Ok(Ast::new_var_decls(decls))
@@ -788,7 +814,6 @@ impl Parser {
                     statements.push(self.var_declaration()?);
                     self.consume(TokenKind::SemiColon, "Expect ';' after variable statement")?;
                 }
-                TokenKind::LCurly => statements.push(self.body()?),
                 _ => return Err(self.error(format!(
                     "Unknown item in outer scope {:?}",
                     self.current.kind

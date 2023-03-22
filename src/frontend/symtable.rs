@@ -1,4 +1,4 @@
-use super::token::Span;
+use super::{token::Span, sprucetype::SpruceType};
 
 #[derive(Debug, Clone)]
 pub struct Local {
@@ -6,7 +6,7 @@ pub struct Local {
     pub depth: u16,
     pub position: u16,
     pub mutable: bool,
-    pub func: Option<u32>,
+    pub kind: SpruceType,
 }
 
 const GLOBAL_DEPTH: u16 = 0;
@@ -66,17 +66,16 @@ impl SymTable {
         &mut self,
         identifier: Span,
         mutable: bool,
-        func: Option<u32>,
-    ) -> u16 {
+        kind: SpruceType,
+    ) {
         let position = self.find_count();
         self.locals.push(Local { 
             identifier,
             depth: self.depth,
             position,
             mutable,
-            func
+            kind
         });
-        position
     }
 
     pub fn find_local(&self, span: &Span, anyscope: bool) -> Option<&Local> {
@@ -117,7 +116,7 @@ impl SymTable {
             .iter()
             .rev()
             .fold(0, |acc, l| {
-                if l.func.is_none() && l.depth >= self.depth_limit {
+                if l.depth >= self.depth_limit {
                     acc + 1
                 } else {
                     acc
@@ -129,7 +128,7 @@ impl SymTable {
         self.locals
             .iter()
             .fold(0, |acc, l| {
-                if l.func.is_none() && l.depth == GLOBAL_DEPTH {
+                if l.depth == GLOBAL_DEPTH {
                     acc + 1
                 } else {
                     acc

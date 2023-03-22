@@ -1,8 +1,8 @@
-use std::rc::Rc;
+use std::{rc::Rc, mem::discriminant};
 
 use crate::{source::Source, RunArgs, error::{SpruceErr, SpruceErrData}, nativefns, object::Object};
 
-use super::{token::{Token, Span, TokenKind}, functiondata::{Function, FunctionMeta, ParamTypes}, symbols::Symbols, symtable::SymTable, environment::{Environment, ConstantValue}, ast::{Ast, AstData}, decorated_ast::{DecoratedAst, DecoratedAstData}, sprucetype::SpruceType};
+use super::{token::{Token, Span, TokenKind}, functiondata::{Function, FunctionMeta, ParamTypes}, symbols::Symbols, symtable::SymTable, environment::{Environment, ConstantValue}, ast::{Ast, AstData, TypeKind}, decorated_ast::{DecoratedAst, DecoratedAstData}, sprucetype::SpruceType};
 
 #[derive(Debug, Clone)]
 struct LookAhead {
@@ -206,7 +206,7 @@ impl Analyser {
         self.find_function_str(span.slice_source())
     }
 
-    fn register_local(&mut self, token: &Token, mutable: bool, func: Option<u32>) -> Option<usize> {
+    fn register_local(&mut self, token: &Token, mutable: bool, kind: SpruceType) {
         let local = self.table.find_local(&token.span, false);
 
         match local {
@@ -218,10 +218,9 @@ impl Analyser {
                     ),
                     token
                 );
-                None
             }
 
-            None => Some(self.table.new_local(token.clone().span, mutable, func) as usize),
+            None => self.table.new_local(token.clone().span, mutable, kind),
         }
     }
 
@@ -249,7 +248,8 @@ impl Analyser {
             )));
         }
 
-        _ = self.register_local(&identifier, false, Some(self.functable.len() as u32));
+        // FIXME
+        // _ = self.register_local(&identifier, false, Some(self.functable.len() as u32));
         
         self.push_scope();
         // self.evaluate_params(parameters)?;
@@ -390,6 +390,74 @@ impl Analyser {
         Ok(DecoratedAst::new_expr_statement(*is_statement, inner, kind))
     }
 
+    fn var_declaration(&mut self, var_decl: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+        let AstData::VarDeclaration { is_mutable, kind, expression } = &var_decl.data else { unreachable!() };
+        let identifier = &var_decl.token;
+
+        let expression = match expression {
+            Some(expr) => self.visit(expr)?,
+            None => DecoratedAst::new_empty(identifier.clone()),
+        };
+
+        let expr_kind = self.find_type_of(&expression)?;
+
+        let kind = match kind {
+            Some(kind) => {
+                let kind = self.get_kind_from_ast(kind)?;
+
+                if !kind.is_same(&expr_kind) {
+                    self.error_no_exit(format!(
+                            "Variable '{}' expected type {:?} but received {:?}",
+                            identifier.span.slice_source(),
+                            kind,
+                            expr_kind,
+                        ),
+                        identifier
+                    );
+                }
+                kind
+            },
+            None => expr_kind,
+        };
+
+        self.register_local(identifier, *is_mutable, kind.clone());
+
+        if self.table.is_global() {
+            // Check mutable
+            if self.args.no_global_mut && *is_mutable {
+                self.error_no_exit(
+                    format!(
+                        "Cannot declare mutable variable '{}' in global scope, when the 'no-mutable' flag is set",
+                        identifier.span.slice_source()
+                    ),
+                    identifier
+                );
+            }
+
+            // Check global
+            if self.args.no_global {
+                self.error_no_exit(
+                    format!(
+                        "Cannot declare variable '{}' in global scope, when the 'no-global' flag is set",
+                        identifier.span.slice_source()
+                    ),
+                    identifier
+                );
+            }
+        }
+
+        Ok(DecoratedAst::new_var_decl(var_decl.token.clone(), *is_mutable, kind, expression))
+    }
+
+    fn var_declarations(&mut self, var_decls: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+        let AstData::VarDeclarations(decls) = &var_decls.data else { unreachable!() };
+        let mut declarations = Vec::new();
+        for decl in decls {
+            declarations.push(self.var_declaration(&decl)?);
+        }
+        Ok(DecoratedAst::new_var_decls(declarations))
+    }
+
     fn program(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
         let AstData::Program { source, body } = &node.data else { unreachable!() };
         let mut statements = Vec::new();
@@ -406,6 +474,9 @@ impl Analyser {
             AstData::Literal => self.literal(node)?,
             AstData::ListLiteral(_) => self.list_literal(node)?,
 
+            AstData::VarDeclaration {..} => self.var_declaration(node)?,
+            AstData::VarDeclarations(_) => self.var_declarations(node)?,
+
             AstData::Body(_) => self.body(node)?,
             AstData::ExpressionStatement(_, _) => self.expr_statement(node)?,
 
@@ -420,7 +491,10 @@ impl Analyser {
             DecoratedAstData::Literal(t, _) => t.clone(),
             DecoratedAstData::ListLiteral(t, _) => t.clone(),
 
+            DecoratedAstData::Body(t, _) => t.clone(),
+
             DecoratedAstData::ExpressionStatement(t, _, _) => t.clone(),
+            DecoratedAstData::Empty => SpruceType::Any,
 
             _ => return Err(SpruceErr::new(format!(
                     "Cannot find type of '{}'",
@@ -428,6 +502,31 @@ impl Analyser {
                 ),
                 SpruceErrData::Analyser { file_path: (*self.source.file_path).clone() }
             ))
+        })
+    }
+
+    fn get_kind_from_ast(&mut self, node: &Box<Ast>) -> Result<SpruceType, SpruceErr> {
+        let AstData::Type { kind, inner } = &node.data else { unreachable!() };
+
+        Ok(match *kind {
+            TypeKind::Standard => {
+                match node.token.span.slice_source() {
+                    "any" => SpruceType::Any,
+                    "int" => SpruceType::Int,
+                    "float" => SpruceType::Float,
+                    "bool" => SpruceType::Bool,
+                    // TODO: Check for custom type before error
+                    _ => return Err(self.error(format!(
+                        "Unknown type identifier '{}'",
+                        node.token.span.slice_source(),
+                    ))),
+                }
+            }
+            TypeKind::List => SpruceType::List(Box::new(self.get_kind_from_ast(match inner {
+                Some(ref o) => o,
+                None => unreachable!(),
+            })?)),
+            _ => unimplemented!(),
         })
     }
 }
