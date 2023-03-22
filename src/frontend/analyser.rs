@@ -506,6 +506,17 @@ impl Analyser {
         let true_body = self.visit(true_body)?;
         let false_body = self.visit(false_body)?;
 
+        let condition_type = self.find_type_of(&condition)?;
+
+        if !condition_type.is_same(&SpruceType::Bool) {
+            self.error_no_exit(format!(
+                    "Ternary statement condition expects a bool, but is a {:?}",
+                    condition_type,
+                ),
+                &condition.token
+            );
+        }
+
         let true_type = self.find_type_of(&true_body)?;
         let false_type = self.find_type_of(&false_body)?;
 
@@ -531,6 +542,17 @@ impl Analyser {
             Some(ref body) => Some(self.visit(body)?),
             None => None,
         };
+
+        let condition_type = self.find_type_of(&condition)?;
+
+        if !condition_type.is_same(&SpruceType::Bool) {
+            self.error_no_exit(format!(
+                    "If statement condition expects a bool, but is a {:?}",
+                    condition_type,
+                ),
+                &condition.token
+            );
+        }
 
         let true_type = self.find_type_of(&true_body)?;
         match false_body {
