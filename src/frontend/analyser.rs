@@ -587,9 +587,13 @@ impl Analyser {
     }
 
 
-    fn body(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn body(&mut self, node: &Box<Ast>, new_scope: bool) -> Result<Box<DecoratedAst>, SpruceErr> {
         let AstData::Body(inner) = &node.data else { unreachable!() };
         let mut statements = Vec::new();
+
+        if new_scope {
+            self.push_scope();
+        }
 
         for (idx, item) in inner.iter().enumerate() {
             statements.push(self.visit(item)?);
@@ -602,6 +606,10 @@ impl Analyser {
                     );
                 }
             }
+        }
+
+        if new_scope {
+            self.pop_scope();
         }
 
         let kind = match statements.last() {
@@ -802,14 +810,7 @@ impl Analyser {
         let AstData::Function { anonymous, parameters, return_type, body } = &node.data else { unreachable!() };
         let identifier = &node.token;
         
-        self.push_scope();
-
-        if *anonymous {
-            self.table.mark_depth_limit();
-        }
         
-        let (parameters, types) = self.evaluate_params(identifier.clone(), parameters)?;
-
         let return_type = match *return_type {
             Some(ref return_) => {
                 let expr = self.visit(return_)?;
@@ -817,17 +818,27 @@ impl Analyser {
             },
             None => SpruceType::None,
         };
-
-        if !anonymous {
+        
+        let parameters = if *anonymous {
+            self.push_scope();
+            self.table.mark_depth_limit();
+            let (parameters, _) = self.evaluate_params(identifier.clone(), parameters)?;
+            parameters
+        } else {
+            let (parameters, types) = self.evaluate_params(identifier.clone(), parameters)?;
             self.register_function(identifier, types, Box::new(return_type.clone()))?;
+            
+            self.push_scope();
             if !self.table.is_global() {
                 self.table.mark_depth_limit();
             }
-        }
+
+            parameters
+        };
         
         let body_ast = match &body.data {
             AstData::Return(_) => self.return_statement(body)?,
-            AstData::Body(_) => self.body(body)?,
+            AstData::Body(_) => self.body(body, false)?,
             _ => unreachable!("BODY AST"),
         };
         let body_type = self.find_type_of(&body_ast)?;
@@ -900,7 +911,7 @@ impl Analyser {
 
             AstData::Ternary {..} => self.ternary(node)?,
             AstData::IfStatement {..} => self.if_statement(node)?,
-            AstData::Body(_) => self.body(node)?,
+            AstData::Body(_) => self.body(node, true)?,
             AstData::ExpressionStatement(_, _) => self.expr_statement(node)?,
 
             AstData::Function {..} => self.function(node)?,

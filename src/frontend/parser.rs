@@ -540,6 +540,7 @@ impl Parser {
             TokenKind::Switch => self.switch_statement()?,
             TokenKind::Var | TokenKind::Val => self.var_declaration()?,
             TokenKind::Return => self.return_statement()?,
+            TokenKind::LCurly => self.body()?,
             _ => {
                 let node = self.expression()?;
                 let is_stmt = if self.current.kind == TokenKind::SemiColon {

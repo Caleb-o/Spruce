@@ -59,22 +59,26 @@ impl SpruceType {
 
                 let SpruceType::Function { parameters, return_type } = other else { unreachable!() };
 
-                if discriminant(s_parameters) != discriminant(parameters) {
+                if (s_parameters.is_some() && parameters.is_none()) ||
+                    (s_parameters.is_none() && parameters.is_some()) {
                     return false;
                 }
 
-                let s_parameters = s_parameters.as_ref().unwrap();
-                let parameters = parameters.as_ref().unwrap();
+                match s_parameters {
+                    Some(ref s_parameters) => {
+                        let parameters = parameters.as_ref().unwrap(); 
 
-
-                if s_parameters.len() != parameters.len() {
-                    return false;
-                }
-
-                for (lhs, rhs) in s_parameters.iter().zip(parameters) {
-                    if !lhs.is_same(rhs) {
-                        return false;
+                        if s_parameters.len() != parameters.len() {
+                            return false;
+                        }
+        
+                        for (lhs, rhs) in s_parameters.iter().zip(parameters) {
+                            if !lhs.is_same(rhs) {
+                                return false;
+                            }
+                        }
                     }
+                    _ => {}
                 }
 
                 if !s_return_type.is_same(return_type) {
