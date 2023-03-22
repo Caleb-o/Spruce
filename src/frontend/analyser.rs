@@ -378,7 +378,7 @@ impl Analyser {
 
         match node.token.kind {
             TokenKind::Plus | TokenKind::Minus | TokenKind::Star |
-            TokenKind::Slash | TokenKind::EqualEqual | TokenKind::NotEqual => {},
+            TokenKind::Slash => {},
             _ => self.error_no_exit(format!(
                     "Unknown operator in binary operation '{}'",
                     node.token.span.slice_source(),
@@ -408,23 +408,38 @@ impl Analyser {
         Ok(DecoratedAst::new_unary_op(node.token.clone(), kind, rhs))
     }
 
-    // fn logical_op(&mut self, env: &mut Box<Environment>, node: &Box<Ast>) -> Result<(), SpruceErr> {
-    //     let AstData::LogicalOp { lhs, rhs } = &node.data else { unreachable!() };
-    //     self.visit(env, &lhs)?;
-    //     self.visit(env, &rhs)?;
+    fn logical_op(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+        let AstData::LogicalOp { lhs, rhs } = &node.data else { unreachable!() };
+        let lhs = self.visit(&lhs)?;
+        let rhs = self.visit(&rhs)?;
 
-    //     match node.token.kind {
-    //         TokenKind::Greater =>           env.add_op(Instruction::Greater),
-    //         TokenKind::GreaterEqual =>      env.add_op(Instruction::GreaterEqual),
-    //         TokenKind::Less =>              env.add_op(Instruction::Less),
-    //         TokenKind::LessEqual =>         env.add_op(Instruction::LessEqual),
-    //         TokenKind::And =>               env.add_op(Instruction::And),
-    //         TokenKind::Or =>                env.add_op(Instruction::Or),
-    //         _ => unreachable!(),
-    //     }
+        let lhs_type = self.find_type_of(&lhs)?;
+        let rhs_type = self.find_type_of(&rhs)?;
 
-    //     Ok(())
-    // }
+        if !lhs_type.is_same(&rhs_type) {
+            self.error_no_exit(format!(
+                    "Logical operation type mismatch, {:?} and {:?}",
+                    lhs_type,
+                    rhs_type
+                ),
+                &node.token
+            )
+        }
+
+        match node.token.kind {
+            TokenKind::Greater | TokenKind::GreaterEqual | TokenKind::Less |
+            TokenKind::LessEqual | TokenKind::And | TokenKind::Or |
+            TokenKind::EqualEqual | TokenKind::NotEqual => {}
+            _ => self.error_no_exit(format!(
+                    "Unknown operator in logical operation '{}'",
+                    node.token.span.slice_source(),
+                ),
+                &node.token,
+            ),
+        }
+
+        Ok(DecoratedAst::new_logical_op(node.token.clone(), lhs, rhs))
+    }
 
     fn body(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
         let AstData::Body(inner) = &node.data else { unreachable!() };
@@ -608,6 +623,7 @@ impl Analyser {
             AstData::Identifier => self.identifier(node),
             AstData::BinaryOp {..} => self.binary_op(node)?,
             AstData::UnaryOp {..} => self.unary_op(node)?,
+            AstData::LogicalOp {..} => self.logical_op(node)?,
 
             AstData::VarDeclaration {..} => self.var_declaration(node)?,
             AstData::VarDeclarations(_) => self.var_declarations(node)?,
@@ -629,6 +645,7 @@ impl Analyser {
             
             DecoratedAstData::BinaryOp { kind, .. } => kind.clone(),
             DecoratedAstData::UnaryOp { kind, .. } => kind.clone(),
+            DecoratedAstData::LogicalOp {..} => SpruceType::Bool,
             
             DecoratedAstData::Identifier(t) => t.clone(),
             DecoratedAstData::VarAssign { lhs, .. } => self.find_type_of(lhs)?,

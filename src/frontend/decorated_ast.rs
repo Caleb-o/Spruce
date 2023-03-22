@@ -299,10 +299,10 @@ impl DecoratedAst {
         })
     }
 
-    pub fn new_logical_op(token: Token, kind: SpruceType, lhs: Box<DecoratedAst>, rhs: Box<DecoratedAst>) -> Box<Self> {
+    pub fn new_logical_op(token: Token, lhs: Box<DecoratedAst>, rhs: Box<DecoratedAst>) -> Box<Self> {
         Box::new(Self { 
             token,
-            data: DecoratedAstData::LogicalOp { kind, lhs, rhs },
+            data: DecoratedAstData::LogicalOp { kind: SpruceType::Bool, lhs, rhs },
         })
     }
 

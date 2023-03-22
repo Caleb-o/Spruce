@@ -204,7 +204,7 @@ impl Parser {
                 TokenKind::EqualEqual | TokenKind::NotEqual => {
                     let token = self.current.clone();
                     self.consume_here();
-                    node = Ast::new_binary_op(token, node, self.comparison()?);
+                    node = Ast::new_logical_op(token, node, self.comparison()?);
                 }
     
                 _ => break,
