@@ -390,6 +390,25 @@ impl Analyser {
         Ok(DecoratedAst::new_expr_statement(*is_statement, inner, kind))
     }
 
+    fn identifier(&mut self, node: &Box<Ast>) -> Box<DecoratedAst> {
+        let identifier = &node.token;
+        let mut kind = SpruceType::None;
+
+        match self.table.find_local(&identifier.span, true) {
+            Some(local) => {
+                kind = local.kind.clone();
+            },
+            None => self.error_no_exit(format!(
+                    "Identifier '{}' does not exist in the current context",
+                    identifier.span.slice_source(),
+                ),
+                &identifier.clone()
+            ),
+        }
+
+        DecoratedAst::new_identifier(identifier.clone(), kind)
+    }
+
     fn var_declaration(&mut self, var_decl: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
         let AstData::VarDeclaration { is_mutable, kind, expression } = &var_decl.data else { unreachable!() };
         let identifier = &var_decl.token;
@@ -458,6 +477,50 @@ impl Analyser {
         Ok(DecoratedAst::new_var_decls(declarations))
     }
 
+    fn var_assign(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+        let AstData::VarAssign { lhs, expression } = &node.data else { unreachable!() };
+        let identifier = &node.token;
+
+        let setter = self.visit(&lhs)?;
+        let expr = self.visit(&expression)?;
+
+        match self.table.find_local(&identifier.span, true) {
+            Some(local) => {
+                let is_mutable = local.mutable;
+                let kind = local.kind.clone();
+                let expr_type = self.find_type_of(&expr)?;
+
+                if !is_mutable {
+                    self.error_no_exit(format!(
+                            "Cannot re-assign an immutable value '{}'",
+                            identifier.span.slice_source(),
+                        ),
+                        &identifier
+                    );
+                }
+
+                if !expr_type.is_same(&kind) {
+                    self.error_no_exit(format!(
+                            "Cannot assign type {:?} to '{}' where type {:?} is expected",
+                            expr_type,
+                            identifier.span.slice_source(),
+                            kind,
+                        ),
+                        &identifier
+                    );
+                }
+            }
+            None => self.error_no_exit(format!(
+                    "Cannot assign to variable '{}' as it does not exist or is not in the correct context",
+                    identifier.span.slice_source(),
+                ),
+                &identifier
+            ),
+        }
+
+        Ok(DecoratedAst::new_var_assign(node.token.clone(), setter, expr))
+    }
+
     fn program(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
         let AstData::Program { source, body } = &node.data else { unreachable!() };
         let mut statements = Vec::new();
@@ -474,8 +537,11 @@ impl Analyser {
             AstData::Literal => self.literal(node)?,
             AstData::ListLiteral(_) => self.list_literal(node)?,
 
+            AstData::Identifier => self.identifier(node),
+
             AstData::VarDeclaration {..} => self.var_declaration(node)?,
             AstData::VarDeclarations(_) => self.var_declarations(node)?,
+            AstData::VarAssign {..} => self.var_assign(node)?,
 
             AstData::Body(_) => self.body(node)?,
             AstData::ExpressionStatement(_, _) => self.expr_statement(node)?,
@@ -490,15 +556,19 @@ impl Analyser {
         Ok(match &node.data {
             DecoratedAstData::Literal(t, _) => t.clone(),
             DecoratedAstData::ListLiteral(t, _) => t.clone(),
+            DecoratedAstData::Identifier(t) => t.clone(),
 
             DecoratedAstData::Body(t, _) => t.clone(),
+
+            DecoratedAstData::VarAssign { lhs, .. } => self.find_type_of(lhs)?,
 
             DecoratedAstData::ExpressionStatement(t, _, _) => t.clone(),
             DecoratedAstData::Empty => SpruceType::Any,
 
             _ => return Err(SpruceErr::new(format!(
-                    "Cannot find type of '{}'",
-                    node.token.span.slice_source()
+                    "Cannot find type of '{}' - {:#?}",
+                    node.token.span.slice_source(),
+                    node.data,
                 ),
                 SpruceErrData::Analyser { file_path: (*self.source.file_path).clone() }
             ))

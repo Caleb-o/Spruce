@@ -12,7 +12,7 @@ pub struct DecoratedAst {
 
 #[derive(Debug, Clone)]
 pub enum DecoratedAstData {
-    Identifier,
+    Identifier(SpruceType),
     Literal(SpruceType, u32), // Constant index
     SymbolLiteral(u32), // Symbol Index
     MapLiteral(Vec<(Token, Option<Box<DecoratedAst>>)>),
@@ -116,10 +116,10 @@ impl DecoratedAst {
         })
     }
 
-    pub fn new_identifier(token: Token) -> Box<Self> {
+    pub fn new_identifier(token: Token, kind: SpruceType) -> Box<Self> {
         Box::new(Self { 
             token,
-            data: DecoratedAstData::Identifier,
+            data: DecoratedAstData::Identifier(kind),
         })
     }
 

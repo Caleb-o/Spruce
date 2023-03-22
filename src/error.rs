@@ -40,6 +40,7 @@ impl Display for SpruceErr {
             self.message,
             match self.payload {
                 SpruceErrData::Parser { ref file_path, line, column } => format!("'{}' [{}:{}]", file_path, line, column),
+                SpruceErrData::Analyser { ref file_path } => format!("'{}'", file_path),
                 SpruceErrData::Compiler { ref file_path } => format!("'{}'", file_path),
                 _ => "".into(),
             }
