@@ -98,6 +98,12 @@ impl Compiler {
         Ok(())
     }
 
+    fn symbol_literal(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+        let DecoratedAstData::SymbolLiteral(value) = &node.data else { unreachable!() };
+        self.output_code.push_str(&format!("{value}"));
+        Ok(())
+    }
+
     fn binary_op(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::BinaryOp { kind: _, lhs, rhs } = &node.data else { unreachable!() };
         
@@ -276,6 +282,7 @@ impl Compiler {
         match node.data {
             DecoratedAstData::Literal(_, _) => self.literal(node)?,
             DecoratedAstData::TupleLiteral(_, _) => self.tuple_literal(node)?,
+            DecoratedAstData::SymbolLiteral(_) => self.symbol_literal(node)?,
             DecoratedAstData::BinaryOp {..} => self.binary_op(node)?,
             DecoratedAstData::Identifier(_) => self.identifier(node)?,
 
@@ -308,6 +315,7 @@ impl Compiler {
             SpruceType::Bool => "bool".into(),
             SpruceType::Int => "int".into(),
             SpruceType::String => "string".into(),
+            SpruceType::Symbol => "int".into(),
             SpruceType::Tuple(kinds) => {
                 let mut string = String::from("(");
 
