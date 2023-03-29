@@ -347,7 +347,7 @@ impl Analyser {
             values.push(first);
         }
 
-        for (idx, item) in inner.iter().enumerate() {
+        for (idx, item) in inner.iter().skip(1).enumerate() {
             let item = self.visit(&item)?;
             let type_of = &self.find_type_of(&item)?;
             

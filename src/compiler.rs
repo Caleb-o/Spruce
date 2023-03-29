@@ -76,6 +76,8 @@ impl Compiler {
     }
 
     fn boiler_plate(&mut self, root: Box<DecoratedAst>) -> Result<(), SpruceErr> {
+        self.output_code.push_str("using System;\n");
+        self.output_code.push_str("using System.Collections.Generic;\n\n");
         self.output_code.push_str("namespace Application;\n\n");
         self.generate_symbol_enum();
         self.output_code.push_str("sealed class Program\n{\n");
@@ -85,7 +87,7 @@ impl Compiler {
         self.visit(&root)?;
         
         self.output_code.push_str(&format!(
-            "{}public static void Main() {{ main(); }}\n",
+            "{}public static void Main() {{ new Program().main(); }}\n",
             self.tab_string(),
         ));
         self.dedent();
@@ -117,6 +119,24 @@ impl Compiler {
             }
         }
         self.output_code.push(')');
+
+        Ok(())
+    }
+
+    fn list_literal(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+        let DecoratedAstData::ListLiteral(_, values) = &node.data else { unreachable!() };
+
+        self.output_code.push_str("new(){ ");
+
+        for (idx, arg) in values.iter().enumerate() {
+            self.visit(arg)?;
+
+            if idx < values.len() - 1 {
+                self.output_code.push_str(", ");
+            }
+        }
+
+        self.output_code.push_str(" }");
 
         Ok(())
     }
@@ -308,6 +328,7 @@ impl Compiler {
         match node.data {
             DecoratedAstData::Literal(_, _) => self.literal(node)?,
             DecoratedAstData::TupleLiteral(_, _) => self.tuple_literal(node)?,
+            DecoratedAstData::ListLiteral(_, _) => self.list_literal(node)?,
             DecoratedAstData::SymbolLiteral(_) => self.symbol_literal(node)?,
             DecoratedAstData::BinaryOp {..} => self.binary_op(node)?,
             DecoratedAstData::Identifier(_) => self.identifier(node)?,
