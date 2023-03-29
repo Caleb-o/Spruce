@@ -20,3 +20,5 @@ experimenting.sp
 *.data
 *.svg
 *.exe
+
+out.cs
