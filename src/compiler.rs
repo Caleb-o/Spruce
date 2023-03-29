@@ -324,6 +324,18 @@ impl Compiler {
         Ok(())
     }
 
+    fn comment(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+        let DecoratedAstData::Comment = &node.data else { unreachable!() };
+
+        self.output_code.push_str(&format!(
+            "{}// {}\n",
+            self.tab_string(),
+            node.token.span.slice_source(),
+        ));
+
+        Ok(())
+    }
+
     fn visit(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
         match node.data {
             DecoratedAstData::Literal(_, _) => self.literal(node)?,
@@ -345,6 +357,7 @@ impl Compiler {
             DecoratedAstData::ExpressionStatement(_, _, _) => self.expression_statement(node)?,
 
             DecoratedAstData::Program {..} => self.program(node)?,
+            DecoratedAstData::Comment => self.comment(node)?,
             DecoratedAstData::Empty => {}
 
             _ => return Err(self.error(format!(

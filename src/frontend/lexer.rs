@@ -24,6 +24,22 @@ impl Lexer {
     pub fn next(&mut self) -> Token {
         self.skip_whitespace();
 
+        // Comments
+        if self.peek() == '#' {
+            self.advance();
+
+            let pos = self.pos;
+            while !self.is_at_end() && self.peek() != '\n' {
+                self.advance();
+            }
+
+            return self.make_token(
+                TokenKind::Comment,
+                Span::new(pos, self.pos - pos, Rc::clone(&self.source)),
+                self.column
+            );
+        }
+
         if self.is_at_end() {
             return self.make_token(
                 TokenKind::EndOfFile,
@@ -266,14 +282,6 @@ impl Lexer {
             match self.peek() {
                 '\n' => self.advance_line(),
                 ' ' | '\t' | '\r' => self.advance(),
-
-                // Comments
-                '#' => {
-                    self.advance();
-                    while !self.is_at_end() && self.peek() != '\n' {
-                        self.advance();
-                    }
-                }
 
                 _ => break,
             }

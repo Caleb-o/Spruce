@@ -540,6 +540,11 @@ impl Parser {
             TokenKind::Switch => self.switch_statement()?,
             TokenKind::Var | TokenKind::Val => self.var_declaration()?,
             TokenKind::Return => self.return_statement()?,
+            TokenKind::Comment => {
+                let current = self.current.clone();
+                self.consume_here();
+                Ast::new_comment(current)
+            }
             _ => {
                 let node = self.expression()?;
                 let is_stmt = if self.current.kind == TokenKind::SemiColon {
@@ -553,6 +558,7 @@ impl Parser {
         // Trailing if statement
         match node.data {
             // Disallow after certain types of statement
+            AstData::Comment |
             AstData::SwitchStatement {..} | AstData::Function {..} | AstData::IfStatement {..} => {}
             _ => {
                 if self.current.kind == TokenKind::If {
@@ -564,8 +570,8 @@ impl Parser {
         }
 
         match node.data {
-            AstData::SwitchStatement {..} | AstData::Function {..} | AstData::IfStatement {..}
-            | AstData::ForStatement {..} | AstData::Body(_) => {}
+            AstData::Comment | AstData::SwitchStatement {..} | AstData::Function {..} |
+            AstData::IfStatement {..} | AstData::ForStatement {..} | AstData::Body(_) => {}
             _ => self.consume(TokenKind::SemiColon, "Expect ';' after statement")?,
         }
         
@@ -851,6 +857,11 @@ impl Parser {
                 TokenKind::Var | TokenKind::Val => {
                     statements.push(self.var_declaration()?);
                     self.consume(TokenKind::SemiColon, "Expect ';' after variable statement")?;
+                }
+                TokenKind::Comment => {
+                    let current = self.current.clone();
+                    self.consume_here();
+                    statements.push(Ast::new_comment(current));
                 }
                 _ => return Err(self.error(format!(
                     "Unknown item in outer scope {:?}",

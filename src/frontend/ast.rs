@@ -31,6 +31,8 @@ pub enum AstData {
     ListLiteral(Vec<Box<Ast>>),
     ExpressionStatement(bool, Box<Ast>),
 
+    Comment,
+
     BinaryOp { lhs: Box<Ast>, rhs: Box<Ast> },
     UnaryOp { rhs: Box<Ast> },
     LogicalOp { lhs: Box<Ast>, rhs: Box<Ast> },
@@ -138,6 +140,13 @@ impl Ast {
         Box::new(Self { 
             token,
             data: AstData::Identifier,
+        })
+    }
+
+    pub fn new_comment(token: Token) -> Box<Self> {
+        Box::new(Self { 
+            token,
+            data: AstData::Comment,
         })
     }
 

@@ -1053,6 +1053,8 @@ impl Analyser {
             AstData::Return(_) => self.return_statement(node)?,
             AstData::Program {..} => self.program(node)?,
             AstData::Empty => DecoratedAst::new_empty(node.token.clone()),
+
+            AstData::Comment => DecoratedAst::new_comment(node.token.clone()),
             _ => return Err(self.error(format!("Unknown node in check: {:#?}", node))),
         })
     }

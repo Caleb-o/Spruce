@@ -68,6 +68,7 @@ pub enum TokenKind {
     Function, Struct, Is, Return,
     Ensure, Identifier, And, Or,
     
+    Comment,
     EndOfFile,
     Error,
 }

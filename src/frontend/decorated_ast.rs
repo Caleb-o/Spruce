@@ -25,6 +25,8 @@ pub enum DecoratedAstData {
     ListLiteral(SpruceType, Vec<Box<DecoratedAst>>),
     ExpressionStatement(SpruceType, bool, Box<DecoratedAst>),
 
+    Comment,
+
     BinaryOp { kind: SpruceType, lhs: Box<DecoratedAst>, rhs: Box<DecoratedAst> },
     UnaryOp { kind: SpruceType, rhs: Box<DecoratedAst> },
     LogicalOp { kind: SpruceType, lhs: Box<DecoratedAst>, rhs: Box<DecoratedAst> },
@@ -183,6 +185,13 @@ impl DecoratedAst {
         Box::new(Self {
             token: expression.token.clone(),
             data: DecoratedAstData::ExpressionStatement(kind, is_statement, expression),
+        })
+    }
+
+    pub fn new_comment(token: Token) -> Box<Self> {
+        Box::new(Self { 
+            token,
+            data: DecoratedAstData::Comment,
         })
     }
 
