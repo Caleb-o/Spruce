@@ -43,7 +43,7 @@ impl Analyser {
         }
     }
 
-    pub fn run(&mut self, program: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    pub fn run(&mut self, program: &Box<Ast>) -> Result<(Box<DecoratedAst>, Symbols), SpruceErr> {
         nativefns::register_native_functions(self);
 
         let program = self.visit(program)?;
@@ -60,7 +60,7 @@ impl Analyser {
             return Err(self.error("Error(s) occured".into()));
         }
 
-        Ok(program)
+        Ok((program, self.symbol_values.clone()))
     }
 
     pub fn add_native_fn(
@@ -728,7 +728,7 @@ impl Analyser {
                 }
                 kind
             },
-            None => expr_kind,
+            None => expr_kind.clone(),
         };
 
         self.register_local(identifier, *is_mutable, kind.clone());
@@ -757,7 +757,7 @@ impl Analyser {
             }
         }
 
-        Ok(DecoratedAst::new_var_decl(var_decl.token.clone(), *is_mutable, kind, expression))
+        Ok(DecoratedAst::new_var_decl(var_decl.token.clone(), *is_mutable, expr_kind, expression))
     }
 
     fn var_declarations(&mut self, var_decls: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {

@@ -1,8 +1,8 @@
 use std::rc::Rc;
 
-use crate::{source::Source, error::SpruceErr, RunArgs, frontend::{parser::Parser, analyser::Analyser, decorated_ast::DecoratedAst, ast::Ast}};
+use crate::{source::Source, error::SpruceErr, RunArgs, frontend::{parser::Parser, analyser::Analyser, decorated_ast::DecoratedAst, ast::Ast, symbols::Symbols}};
 
-pub fn check_code(file_path: String, source: String, args: RunArgs) -> Result<(Rc<Source>, Box<DecoratedAst>), SpruceErr> {
+pub fn check_code(file_path: String, source: String, args: RunArgs) -> Result<(Rc<Source>, (Box<DecoratedAst>, Symbols)), SpruceErr> {
     let source = Rc::new(Source::new(file_path, source));
 
     let mut parser = match Parser::new(&source, args.clone()) {

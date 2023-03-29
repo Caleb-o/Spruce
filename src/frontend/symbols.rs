@@ -1,5 +1,6 @@
 use super::token::Span;
 
+#[derive(Clone)]
 pub struct Symbols {
     table: Vec<Span>,
 }
@@ -7,6 +8,10 @@ pub struct Symbols {
 impl Symbols {
     pub fn new() -> Self {
         Self { table: Vec::new() }
+    }
+
+    pub fn get_table(&self) -> &Vec<Span> {
+        &self.table
     }
 
     pub fn find_or_add(&mut self, span: &Span) -> u32 {

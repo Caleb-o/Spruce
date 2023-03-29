@@ -1,18 +1,20 @@
 use std::{rc::Rc, fs};
 
-use crate::{source::Source, frontend::{decorated_ast::{DecoratedAst, DecoratedAstData, FunctionType}, sprucetype::SpruceType, token::TokenKind}, error::{SpruceErr, SpruceErrData}};
+use crate::{source::Source, frontend::{decorated_ast::{DecoratedAst, DecoratedAstData, FunctionType}, sprucetype::SpruceType, token::TokenKind, symbols::Symbols}, error::{SpruceErr, SpruceErrData}};
 
 pub struct Compiler {
     source: Rc<Source>,
     depth: u32,
+    symbols: Symbols,
     output_code: String,
 }
 
 impl Compiler {
-    pub fn new(source: Rc<Source>) -> Self {
+    pub fn new(source: Rc<Source>, symbols: Symbols) -> Self {
         Self {
             source,
             depth: 0,
+            symbols,
             output_code: String::new(),
         }
     }
@@ -53,8 +55,29 @@ impl Compiler {
         string
     }
 
+    fn generate_symbol_enum(&mut self) {
+        if self.symbols.get_table().len() == 0 {
+            return;
+        }
+
+        self.output_code.push_str("enum Symbol\n{\n");
+        self.indent();
+
+        for item in self.symbols.get_table() {
+            self.output_code.push_str(&format!(
+                "{}{},\n",
+                self.tab_string(),
+                item.slice_source(),
+            ));
+        }
+        
+        self.dedent();
+        self.output_code.push_str("}\n\n");
+    }
+
     fn boiler_plate(&mut self, root: Box<DecoratedAst>) -> Result<(), SpruceErr> {
         self.output_code.push_str("namespace Application;\n\n");
+        self.generate_symbol_enum();
         self.output_code.push_str("sealed class Program\n{\n");
         
         self.indent();
@@ -100,7 +123,10 @@ impl Compiler {
 
     fn symbol_literal(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::SymbolLiteral(value) = &node.data else { unreachable!() };
-        self.output_code.push_str(&format!("{value}"));
+        self.output_code.push_str(&format!(
+            "Symbol.{}",
+            self.symbols.get_table()[*value as usize].slice_source(),
+        ));
         Ok(())
     }
 
@@ -315,7 +341,7 @@ impl Compiler {
             SpruceType::Bool => "bool".into(),
             SpruceType::Int => "int".into(),
             SpruceType::String => "string".into(),
-            SpruceType::Symbol => "int".into(),
+            SpruceType::Symbol => "Symbol".into(),
             SpruceType::Tuple(kinds) => {
                 let mut string = String::from("(");
 

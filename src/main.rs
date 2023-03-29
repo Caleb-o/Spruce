@@ -45,8 +45,8 @@ fn main() {
         SpruceCli::Run(args) => {
             if let Ok(source) = fs::read_to_string(&args.file_path) {
                 match util::check_code(args.file_path.clone(), source, args) {
-                    Ok((source, root)) => {
-                        let mut compiler = Compiler::new(source);
+                    Ok((source, (root, symbols))) => {
+                        let mut compiler = Compiler::new(source, symbols);
                         if let Err(e) = compiler.run(root) {
                             eprintln!("{e}");
                         }
