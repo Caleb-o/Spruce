@@ -51,8 +51,6 @@ pub enum AstData {
     DoWhileStatement { body: Box<Ast>, condition: Box<Ast> },
     TrailingIfStatement { statement: Box<Ast>, condition: Box<Ast> },
 
-    TypeCheck { is_assert: bool, expression: Box<Ast> },
-
     IndexGetter { expression: Box<Ast>, index: Box<Ast> },
     IndexSetter { expression: Box<Ast>, rhs: Box<Ast> },
 
@@ -287,20 +285,6 @@ impl Ast {
         Box::new(Self {
             token,
             data: AstData::FunctionCall { lhs, arguments },
-        })
-    }
-
-    pub fn new_type_check(
-        is_assert: bool,
-        expression: Box<Ast>,
-        type_name: Token
-    ) -> Box<Self> {
-        Box::new(Self {
-            token: type_name,
-            data: AstData::TypeCheck {
-                is_assert,
-                expression,
-             },
         })
     }
 

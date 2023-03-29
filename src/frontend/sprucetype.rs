@@ -11,6 +11,7 @@ pub enum SpruceType {
     String,
     Tuple(Vec<Box<SpruceType>>),
     List(Box<SpruceType>),
+    Symbol,
     Function {
         parameters: Option<Vec<Box<SpruceType>>>,
         return_type: Box<SpruceType>,
@@ -101,6 +102,7 @@ impl Display for SpruceType {
             Self::Float => "float".into(),
             Self::Bool => "bool".into(),
             Self::String => "string".into(),
+            Self::Symbol => "symbol".into(),
             Self::List(inner) => format!("[{}]", inner),
             Self::Tuple(inner) => {
                 let mut tuplestr = String::from("(");
@@ -130,10 +132,9 @@ impl Display for SpruceType {
                 }
                 
                 fnstr.push_str(&format!("): {}", return_type));
-                
                 fnstr
             },
-            n @ _ => unimplemented!("{n}"),
+            n @ _ => unimplemented!("Display for {n:?}"),
         })
     }
 }

@@ -2,12 +2,17 @@ use std::rc::Rc;
 
 use crate::source::Source;
 
-use super::{token::Token, sprucetype::SpruceType, ast::TypeKind};
+use super::{token::Token, sprucetype::SpruceType, ast::TypeKind, functiondata::FunctionMeta};
 
 #[derive(Debug, Clone)]
 pub struct DecoratedAst {
     pub token: Token,
     pub data: DecoratedAstData,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FunctionType {
+    Standard, Anonymous, Inner,
 }
 
 #[derive(Debug, Clone)]
@@ -26,8 +31,8 @@ pub enum DecoratedAstData {
 
     Parameter(SpruceType),
     ParameterList(Option<Vec<Box<DecoratedAst>>>),
-    Function { anonymous: bool, parameters: Box<DecoratedAst>, kind: SpruceType, body: Box<DecoratedAst> },
-    FunctionCall { lhs: Box<DecoratedAst>, arguments: Vec<Box<DecoratedAst>> },
+    Function { function_type: FunctionType, parameters: Box<DecoratedAst>, kind: SpruceType, body: Box<DecoratedAst> },
+    FunctionCall { kind: SpruceType, lhs: Box<DecoratedAst>, arguments: Vec<Box<DecoratedAst>> },
 
     VarDeclaration { is_mutable: bool, kind: SpruceType, expression: Box<DecoratedAst> },
     VarDeclarations(Vec<Box<DecoratedAst>>),
@@ -163,14 +168,14 @@ impl DecoratedAst {
 
     pub fn new_function(
         token: Token,
-        anonymous: bool,
+        function_type: FunctionType,
         parameters: Box<DecoratedAst>,
         kind: SpruceType,
         body: Box<DecoratedAst>
     ) -> Box<Self> {
         Box::new(Self {
             token,
-            data: DecoratedAstData::Function { anonymous, parameters, kind, body },
+            data: DecoratedAstData::Function { function_type, parameters, kind, body },
         })
     }
 
@@ -280,12 +285,13 @@ impl DecoratedAst {
 
     pub fn new_function_call(
         token: Token,
+        kind: SpruceType,
         lhs: Box<DecoratedAst>,
         arguments: Vec<Box<DecoratedAst>>,
     ) -> Box<Self> {
         Box::new(Self {
             token,
-            data: DecoratedAstData::FunctionCall { lhs, arguments },
+            data: DecoratedAstData::FunctionCall { kind, lhs, arguments },
         })
     }
 

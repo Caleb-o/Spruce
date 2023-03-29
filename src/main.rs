@@ -9,6 +9,7 @@ mod error;
 use std::fs;
 
 use clap::Parser as ClapParser;
+use compiler::Compiler;
 
 #[derive(ClapParser)] // requires `derive` feature
 #[command(name = "spruce")]
@@ -35,6 +36,21 @@ fn main() {
             if let Ok(source) = fs::read_to_string(&args.file_path) {
                 match util::check_code(args.file_path.clone(), source, args) {
                     Ok(_) => println!("GOOD"),
+                    Err(e) => eprintln!("{e}"),
+                }
+            } else {
+                eprintln!("Could not load file '{}'", args.file_path);
+            }
+        }
+        SpruceCli::Run(args) => {
+            if let Ok(source) = fs::read_to_string(&args.file_path) {
+                match util::check_code(args.file_path.clone(), source, args) {
+                    Ok((source, root)) => {
+                        let mut compiler = Compiler::new(source);
+                        if let Err(e) = compiler.run(root) {
+                            eprintln!("{e}");
+                        }
+                    },
                     Err(e) => eprintln!("{e}"),
                 }
             } else {

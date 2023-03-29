@@ -146,7 +146,7 @@ impl Parser {
                 TokenKind::Minus | TokenKind::Bang => {
                     let token = self.current.clone();
                     self.consume_here();
-                    return Ok(Ast::new_unary_op(token, self.call()?));
+                    return Ok(Ast::new_unary_op(token, self.expression()?));
                 },
                 _ => break,
             }
@@ -698,7 +698,7 @@ impl Parser {
                     self.included.insert(include_str.clone());
 
                     let source = fs::read_to_string(&include_path).unwrap();
-                    let program = match util::check_code(include_str.clone(), source, self.args.clone()) {
+                    let program = match util::compile_source(include_str.clone(), source, self.args.clone()) {
                         Ok((_, program)) => program,
                         Err(e) => return Err(self.error(format!("Could not parse '{}' because {}", include_str, e.message))),
                     };

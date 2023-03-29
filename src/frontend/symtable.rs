@@ -30,6 +30,11 @@ impl SymTable {
     }
 
     #[inline]
+    pub fn get_depth(&self) -> u16 {
+        self.depth
+    }
+
+    #[inline]
     pub fn new_scope(&mut self) {
         self.depth += 1;
     }

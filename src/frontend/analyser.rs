@@ -2,14 +2,12 @@ use std::{rc::Rc, mem::discriminant};
 
 use crate::{source::Source, RunArgs, error::{SpruceErr, SpruceErrData}, nativefns, object::Object};
 
-use super::{token::{Token, Span, TokenKind}, functiondata::{Function, FunctionMeta, ParamTypes}, symbols::Symbols, symtable::SymTable, environment::{Environment, ConstantValue}, ast::{Ast, AstData, TypeKind}, decorated_ast::{DecoratedAst, DecoratedAstData}, sprucetype::SpruceType};
+use super::{token::{Token, Span, TokenKind}, functiondata::{Function, FunctionMeta, ParamTypes}, symbols::Symbols, symtable::SymTable, environment::{Environment, ConstantValue}, ast::{Ast, AstData, TypeKind}, decorated_ast::{DecoratedAst, DecoratedAstData, FunctionType}, sprucetype::SpruceType};
 
 #[derive(Debug, Clone)]
 struct LookAhead {
     token: Token,
     args: u8,
-    // Position in bytecode
-    position: u32,
 }
 
 enum ScopeType {
@@ -45,7 +43,7 @@ impl Analyser {
         }
     }
 
-    pub fn run(&mut self, program: &Box<Ast>) -> Result<Box<Environment>, SpruceErr> {
+    pub fn run(&mut self, program: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
         nativefns::register_native_functions(self);
 
         let program = self.visit(program)?;
@@ -62,7 +60,7 @@ impl Analyser {
             return Err(self.error("Error(s) occured".into()));
         }
 
-        Ok(Box::new(Environment::new(program)))
+        Ok(program)
     }
 
     pub fn add_native_fn(
@@ -369,6 +367,13 @@ impl Analyser {
         Ok(DecoratedAst::new_list_literal(node.token.clone(), values, SpruceType::List(Box::new(list_type))))
     }
 
+    fn symbol_literal(&mut self, node: &Box<Ast>) -> Box<DecoratedAst> {
+        let AstData::SymbolLiteral = &node.data else { unreachable!() };
+        let index = self.symbol_values.find_or_add(&node.token.span);
+
+        DecoratedAst::new_symbol(node.token.clone(), index)
+    }
+
     fn binary_op(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
         let AstData::BinaryOp { lhs, rhs } = &node.data  else { unreachable!() };
         let lhs = self.visit(&lhs)?;
@@ -392,6 +397,12 @@ impl Analyser {
             SpruceType::Bool => {
                 self.error_no_exit(
                         "Cannot use binary operators on two bools".into()
+                    , &node.token
+                );
+            }
+            SpruceType::Symbol => {
+                self.error_no_exit(
+                        "Cannot use binary operators on two symbols".into()
                     , &node.token
                 );
             }
@@ -439,25 +450,46 @@ impl Analyser {
         match &kind {
             SpruceType::String => {
                 self.error_no_exit(
-                        "Cannot use unary operators on a string".into()
+                        format!(
+                            "Cannot use unary operator '{}' on a string",
+                            node.token.span.slice_source(),
+                        )
+                    , &node.token
+                );
+            }
+            SpruceType::Symbol => {
+                self.error_no_exit(
+                    format!(
+                        "Cannot use unary operator '{}' on a symbol",
+                        node.token.span.slice_source(),
+                    )
                     , &node.token
                 );
             }
             SpruceType::List(_) => {
                 self.error_no_exit(
-                        "Cannot use unary operators on a list".into()
+                    format!(
+                        "Cannot use unary operator '{}' on a list",
+                        node.token.span.slice_source(),
+                    )
                     , &node.token
                 );
             }
             SpruceType::Tuple(_) => {
                 self.error_no_exit(
-                        "Cannot use unary operators on a tuple".into()
+                    format!(
+                        "Cannot use unary operator '{}' on a tuple",
+                        node.token.span.slice_source(),
+                    )
                     , &node.token
                 );
             }
             SpruceType::Function {..} => {
                 self.error_no_exit(
-                        "Cannot use unary operators on a function".into()
+                    format!(
+                        "Cannot use unary operator '{}' on a function",
+                        node.token.span.slice_source(),
+                    )
                     , &node.token
                 );
             }
@@ -788,6 +820,73 @@ impl Analyser {
         Ok(DecoratedAst::new_var_assign(node.token.clone(), setter, expr))
     }
 
+    fn function_call(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+        let AstData::FunctionCall { lhs, arguments } = &node.data else { unreachable!() };
+
+        let left = self.visit(lhs)?;
+
+        let function = match lhs.data {
+            AstData::Identifier => {
+                match self.table.find_local(&lhs.token.span, true) {
+                    Some(local) => local.kind.clone(),
+                    None => return Err(self.error(format!(
+                        "Find local for '{}'",
+                        lhs.token.span.slice_source(),
+                    )))
+                }
+            }
+            _ => return Err(self.error(format!(
+                "Cannot collect function information about '{:#?}' just yet",
+                lhs,
+            )))
+        };
+
+        let function = match function {
+            SpruceType::Function {..} => function,
+            _ => return Err(self.error(format!(
+                "Cannot call non-function '{}'",
+                lhs.token.span.slice_source(),
+            )))
+        };
+
+        let SpruceType::Function { parameters, return_type } = function else { unreachable!() };
+
+        if parameters.is_none() && arguments.len() > 0 {
+            self.error_no_exit(format!(
+                    "Function '{}' requires {} arguments, but receieved {}",
+                    node.token.span.slice_source(),
+                    if parameters.is_some() { parameters.as_ref().unwrap().len() } else { 0 },
+                    arguments.len(),
+                ),
+                &node.token,
+            );
+        }
+        
+        let mut args = Vec::new();
+        for (idx, arg) in arguments.iter().enumerate() {
+            args.push(self.visit(arg)?);
+
+            if let Some(parameters) = &parameters {
+                if idx < parameters.len() {
+                    let lhs = self.find_type_of(args.last().unwrap())?;
+                    if !lhs.is_same(&parameters[idx]) {
+                        self.error_no_exit(format!(
+                                "Argument {} in call to '{}' expects type {} but received {}",
+                                idx + 1,
+                                left.token.span.slice_source(),
+                                lhs,
+                                parameters[idx],
+                            ),
+                            &arg.token,
+                        );
+                    }
+                }
+            }
+        }
+
+        Ok(DecoratedAst::new_function_call(lhs.token.clone(), *return_type, left, args))
+    }
+
     #[inline]
     fn evaluate_params(
         &mut self,
@@ -825,7 +924,6 @@ impl Analyser {
     fn function(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
         let AstData::Function { anonymous, parameters, return_type, body } = &node.data else { unreachable!() };
         let identifier = &node.token;
-        
         
         let return_type = match *return_type {
             Some(ref return_) => {
@@ -880,8 +978,16 @@ impl Analyser {
                 self.mark_function_empty(&identifier.span);
             }
         }
+
+        let function_type = if *anonymous {
+            FunctionType::Anonymous  
+        } else if self.table.get_depth() > 0 {
+            FunctionType::Inner
+        } else {
+            FunctionType::Standard
+        };
         
-        Ok(DecoratedAst::new_function(node.token.clone(), *anonymous, parameters, body_type, body_ast))
+        Ok(DecoratedAst::new_function(node.token.clone(), function_type, parameters, body_type, body_ast))
     }
 
     fn return_statement(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
@@ -914,6 +1020,7 @@ impl Analyser {
             AstData::Literal => self.literal(node)?,
             AstData::TupleLiteral(_) => self.tuple_literal(node)?,
             AstData::ListLiteral(_) => self.list_literal(node)?,
+            AstData::SymbolLiteral => self.symbol_literal(node),
 
             AstData::Type {..} => self.type_id(node)?,
             AstData::Identifier => self.identifier(node),
@@ -924,6 +1031,7 @@ impl Analyser {
             AstData::VarDeclaration {..} => self.var_declaration(node)?,
             AstData::VarDeclarations(_) => self.var_declarations(node)?,
             AstData::VarAssign {..} => self.var_assign(node)?,
+            AstData::FunctionCall {..} => self.function_call(node)?,
 
             AstData::Ternary {..} => self.ternary(node)?,
             AstData::IfStatement {..} => self.if_statement(node)?,
@@ -943,11 +1051,13 @@ impl Analyser {
             DecoratedAstData::Literal(kind, _) => kind.clone(),
             DecoratedAstData::TupleLiteral(kind, _) => kind.clone(),
             DecoratedAstData::ListLiteral(kind, _) => kind.clone(),
+            DecoratedAstData::SymbolLiteral(_) => SpruceType::Symbol,
             
             DecoratedAstData::BinaryOp { kind, .. } => kind.clone(),
             DecoratedAstData::UnaryOp { kind, .. } => kind.clone(),
             DecoratedAstData::LogicalOp {..} => SpruceType::Bool,
             
+            DecoratedAstData::FunctionCall { kind, .. } => kind.clone(),
             DecoratedAstData::Identifier(kind) => kind.clone(),
             DecoratedAstData::VarAssign { lhs, .. } => self.find_type_of(lhs)?,
             DecoratedAstData::Type(kind) => kind.clone(),
@@ -980,6 +1090,7 @@ impl Analyser {
                     "float" => SpruceType::Float,
                     "bool" => SpruceType::Bool,
                     "string" => SpruceType::String,
+                    "symbol" => SpruceType::Symbol,
                     // TODO: Check for custom type before error
                     _ => {
                         self.error_no_exit(format!(
@@ -1019,7 +1130,7 @@ impl Analyser {
                     return_type: Box::new(self.get_type_from_ast(&return_type)?),
                 }
             }
-            _ => unimplemented!(),
+            _ => unimplemented!("Type from AST"),
         })
     }
 }
