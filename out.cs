@@ -15,6 +15,7 @@ sealed class Program
             return a * b;
         }
 
+        int ff = 1;
         Func<int, int, int> add = inner;
         int a = 10;
         a = 20 + 30;

@@ -731,6 +731,17 @@ impl Analyser {
             None => expr_kind.clone(),
         };
 
+        if let DecoratedAstData::Empty = &expression.data {
+            if kind.is_same(&SpruceType::Any) {
+                self.error_no_exit(format!(
+                        "Cannot use type 'any' on '{}' without initialising with an expression",
+                        identifier.span.slice_source(),
+                    ),
+                    identifier,
+                );
+            }
+        }
+
         self.register_local(identifier, *is_mutable, kind.clone());
 
         if self.table.is_global() {
