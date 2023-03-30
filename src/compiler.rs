@@ -244,6 +244,52 @@ impl Compiler {
         Ok(())
     }
 
+    fn if_statement(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+        let DecoratedAstData::IfStatement { is_expression, condition, kind: _, true_body, false_body } = &node.data else { unreachable!() };
+
+        if *is_expression {
+            // Convert to ternary
+            self.output_code.push_str(" (");
+            self.visit(condition)?;
+            self.output_code.push_str(") ? ");
+            self.wrap_in_lambda(true_body)?;
+            self.output_code.push_str(" : ");
+            self.wrap_in_lambda(false_body.as_ref().unwrap())?;
+        } else {
+            self.output_code.push_str(&format!(
+                "{}if (",
+                self.tab_string(),
+            ));
+            self.visit(condition)?;
+            self.output_code.push_str(")\n");
+            self.visit(true_body)?;
+
+            if let Some(false_body) = false_body {
+                self.output_code.pop();
+                self.output_code.push_str(&format!(
+                    "{}else\n",
+                    self.tab_string(),
+                ));
+                self.visit(false_body)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn terary_expression(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+        let DecoratedAstData::Ternary { condition, kind: _, true_body, false_body } = &node.data else { unreachable!() };
+
+        self.output_code.push('(');
+        self.visit(condition)?;
+        self.output_code.push_str(") ? ");
+        self.wrap_in_lambda(true_body)?;
+        self.output_code.push_str(" : ");
+        self.wrap_in_lambda(false_body)?;
+
+        Ok(())
+    }
+
     fn body(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::Body(_, statements) = &node.data else { unreachable!() };
         self.output_code.push_str(&format!("{}{{\n", self.tab_string()));
@@ -330,6 +376,23 @@ impl Compiler {
         Ok(())
     }
 
+    fn return_statement(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+        let DecoratedAstData::Return(_, expr) = &node.data else { unreachable!() };
+
+        self.output_code.push_str(&format!(
+            "{}return",
+            self.tab_string(),
+        ));
+
+        if let Some(expr) = expr {
+            self.visit(expr)?;
+        }
+
+        self.output_code.push_str(";\n");
+
+        Ok(())
+    }
+
     fn program(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::Program { source: _, body } = &node.data else { unreachable!() };
         
@@ -366,12 +429,15 @@ impl Compiler {
             DecoratedAstData::VarAssign {..} => self.var_assign(node)?,
             DecoratedAstData::FunctionCall {..} => self.function_call(node)?,
 
+            DecoratedAstData::IfStatement {..} => self.if_statement(node)?,
+            DecoratedAstData::Ternary {..} => self.terary_expression(node)?,
             DecoratedAstData::Body(_, _) => self.body(node)?,
             DecoratedAstData::Function {..} => self.function(node)?,
             DecoratedAstData::ParameterList(_) => self.parameter_list(node)?,
             DecoratedAstData::Parameter(_) => self.parameter(node)?,
             DecoratedAstData::ExpressionStatement(_, _, _) => self.expression_statement(node)?,
 
+            DecoratedAstData::Return(_, _) => self.return_statement(node)?,
             DecoratedAstData::Program {..} => self.program(node)?,
             DecoratedAstData::Comment => self.comment(node)?,
             DecoratedAstData::Empty => {}
@@ -382,6 +448,28 @@ impl Compiler {
             ))),
         }
 
+        Ok(())
+    }
+
+    fn wrap_in_lambda(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+        self.output_code.push_str(&format!(
+            "((Func<{}>)(() => ",
+            Compiler::as_cs_type(match &node.data {
+                DecoratedAstData::Body(kind, _) => kind,
+                DecoratedAstData::Literal(kind, _) => kind,
+                DecoratedAstData::ListLiteral(kind, _) => kind,
+                DecoratedAstData::IfStatement { kind, .. } => kind,
+                DecoratedAstData::Ternary { kind, .. } => kind,
+                _ => return Err(SpruceErr::new(format!(
+                        "Cannot cast node '{:#?}' to type",
+                        node.data,
+                    ),
+                    SpruceErrData::Compiler { file_path: self.source.file_path.to_string() },
+                )),
+            })
+        ));
+        self.visit(node)?;
+        self.output_code.push_str("))()");
         Ok(())
     }
 

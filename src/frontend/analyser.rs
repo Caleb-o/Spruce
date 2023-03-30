@@ -578,7 +578,7 @@ impl Analyser {
     }
 
     fn if_statement(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
-        let AstData::IfStatement { condition, true_body, false_body } = &node.data else { unreachable!() };
+        let AstData::IfStatement { is_expression, condition, true_body, false_body } = &node.data else { unreachable!() };
 
         let condition = self.visit(condition)?;
         let true_body = self.visit(true_body)?;
@@ -616,7 +616,7 @@ impl Analyser {
             None => {},
         };
 
-        Ok(DecoratedAst::new_if_statement(node.token.clone(), condition, true_type, true_body, false_body))
+        Ok(DecoratedAst::new_if_statement(node.token.clone(), *is_expression, condition, true_type, true_body, false_body))
     }
 
 

@@ -2,7 +2,7 @@ use std::{rc::Rc, path::Path, fs, io::Error, collections::HashSet};
 
 use crate::{source::Source, util, RunArgs, error::{SpruceErr, SpruceErrData}};
 
-use super::{lexer::Lexer, token::{Token, TokenKind}, ast::{Ast, AstData, TypeKind}, decorated_ast::DecoratedAst};
+use super::{lexer::Lexer, token::{Token, TokenKind}, ast::{Ast, AstData, TypeKind}};
 
 pub struct Parser {
     lexer: Lexer,
@@ -442,7 +442,7 @@ impl Parser {
             ));
         }
         
-        Ok(Ast::new_if_statement(token, condition, true_body, false_body))
+        Ok(Ast::new_if_statement(token, force_else, condition, true_body, false_body))
     }
 
     fn for_statement(&mut self) -> Result<Box<Ast>, SpruceErr> {

@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use crate::source::Source;
 
-use super::{token::Token, sprucetype::SpruceType, ast::TypeKind, functiondata::FunctionMeta};
+use super::{token::Token, sprucetype::SpruceType};
 
 #[derive(Debug, Clone)]
 pub struct DecoratedAst {
@@ -43,7 +43,7 @@ pub enum DecoratedAstData {
     Type(SpruceType),
 
     Ternary { condition: Box<DecoratedAst>, kind: SpruceType, true_body: Box<DecoratedAst>, false_body: Box<DecoratedAst> },
-    IfStatement { condition: Box<DecoratedAst>, kind: SpruceType, true_body: Box<DecoratedAst>, false_body: Option<Box<DecoratedAst>> },
+    IfStatement { is_expression: bool, condition: Box<DecoratedAst>, kind: SpruceType, true_body: Box<DecoratedAst>, false_body: Option<Box<DecoratedAst>> },
     ForStatement { variable: Option<Box<DecoratedAst>>, condition: Box<DecoratedAst>, increment: Option<Box<DecoratedAst>>, body: Box<DecoratedAst> },
     DoWhileStatement { body: Box<DecoratedAst>, condition: Box<DecoratedAst> },
     TrailingIfStatement { statement: Box<DecoratedAst>, condition: Box<DecoratedAst> },
@@ -238,6 +238,7 @@ impl DecoratedAst {
 
     pub fn new_if_statement(
         token: Token,
+        is_expression: bool,
         condition: Box<DecoratedAst>,
         kind: SpruceType,
         true_body: Box<DecoratedAst>,
@@ -245,7 +246,7 @@ impl DecoratedAst {
     ) -> Box<Self> {
         Box::new(Self {
             token,
-            data: DecoratedAstData::IfStatement { condition, kind, true_body, false_body },
+            data: DecoratedAstData::IfStatement { is_expression, condition, kind, true_body, false_body },
         })
     }
 

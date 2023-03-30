@@ -48,7 +48,7 @@ pub enum AstData {
     Type { kind: TypeKind },
 
     Ternary { condition: Box<Ast>, true_body: Box<Ast>, false_body: Box<Ast> },
-    IfStatement { condition: Box<Ast>, true_body: Box<Ast>, false_body: Option<Box<Ast>> },
+    IfStatement { is_expression: bool, condition: Box<Ast>, true_body: Box<Ast>, false_body: Option<Box<Ast>> },
     ForStatement { variable: Option<Box<Ast>>, condition: Box<Ast>, increment: Option<Box<Ast>>, body: Box<Ast> },
     DoWhileStatement { body: Box<Ast>, condition: Box<Ast> },
     TrailingIfStatement { statement: Box<Ast>, condition: Box<Ast> },
@@ -233,13 +233,14 @@ impl Ast {
 
     pub fn new_if_statement(
         token: Token,
+        is_expression: bool,
         condition: Box<Ast>,
         true_body: Box<Ast>,
         false_body: Option<Box<Ast>>
     ) -> Box<Self> {
         Box::new(Self {
             token,
-            data: AstData::IfStatement { condition, true_body, false_body },
+            data: AstData::IfStatement { is_expression, condition, true_body, false_body },
         })
     }
 
