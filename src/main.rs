@@ -51,14 +51,14 @@ fn main() {
                         let mut compiler = Compiler::new(source, symbols);
                         if let Err(e) = compiler.run(root) {
                             eprintln!("{e}");
-                        }
-
-                        if args.compile {
-                            print!("Compiling output source...");
-                            if let Err(_) = Command::new("csc").args(["out.cs"]).output() {
-                                eprintln!("Could not compile script with csc");
-                            } else {
-                                println!("Done!");
+                        } else {
+                            if args.compile {
+                                print!("Compiling output source...");
+                                if let Err(_) = Command::new("csc").args(["out.cs"]).output() {
+                                    eprintln!("Could not compile script with csc");
+                                } else {
+                                    println!("Done!");
+                                }
                             }
                         }
                     },
