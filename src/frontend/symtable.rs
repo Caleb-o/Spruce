@@ -11,12 +11,6 @@ pub struct Local {
 
 const GLOBAL_DEPTH: u16 = 0;
 
-impl Local {
-    pub fn is_global(&self) -> bool {
-        self.depth == 0
-    }
-}
-
 pub struct SymTable {
     depth: u16,
     depth_limit: u16,

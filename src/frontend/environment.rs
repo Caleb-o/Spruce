@@ -1,8 +1,8 @@
 use std::fmt::Display;
 
-use crate::object::Object;
+use crate::{object::Object, nativefns::ParamKind};
 
-use super::{functiondata::{Function, FunctionMeta}, decorated_ast::DecoratedAst, token::Span};
+use super::{functiondata::{Function, FunctionMeta}, decorated_ast::DecoratedAst};
 
 #[derive(Clone)]
 pub enum ConstantValue {
@@ -17,7 +17,9 @@ impl Display for ConstantValue {
             ConstantValue::Func(ref func) => {
                 if let Function::Native { identifier, param_types, .. } = func {
                     format!("<Function {identifier}({})>", match param_types {
-                        Some(ref types) => {
+                        ParamKind::Any => "any".into(),
+                        ParamKind::None => "none".into(),
+                        ParamKind::With(ref types) => {
                             let mut type_string = String::new();
 
                             for (idx, typ) in types.iter().enumerate() {
@@ -29,7 +31,6 @@ impl Display for ConstantValue {
 
                             type_string
                         },
-                        None => "none".into(),
                     })
                 } else {
                     "<Function>".into()

@@ -1,8 +1,8 @@
 use std::{rc::Rc, mem::discriminant};
 
-use crate::{source::Source, RunArgs, error::{SpruceErr, SpruceErrData}, nativefns, object::Object};
+use crate::{source::Source, RunArgs, error::{SpruceErr, SpruceErrData}, nativefns::{self, ParamKind}, object::Object};
 
-use super::{token::{Token, Span, TokenKind}, functiondata::{Function, FunctionMeta, ParamTypes}, symbols::Symbols, symtable::SymTable, environment::{Environment, ConstantValue}, ast::{Ast, AstData, TypeKind}, decorated_ast::{DecoratedAst, DecoratedAstData, FunctionType}, sprucetype::SpruceType};
+use super::{token::{Token, Span, TokenKind}, functiondata::{Function, FunctionMeta}, symbols::Symbols, symtable::SymTable, environment::{ConstantValue}, ast::{Ast, AstData, TypeKind}, decorated_ast::{DecoratedAst, DecoratedAstData, FunctionType}, sprucetype::SpruceType};
 
 #[derive(Debug, Clone)]
 struct LookAhead {
@@ -65,22 +65,22 @@ impl Analyser {
 
     pub fn add_native_fn(
         &mut self,
-        identifier: &Span,
-        param_types: ParamTypes,
+        identifier: &'static str,
+        param_types: ParamKind,
         return_type: SpruceType,
     ) {
         let function = Function::Native { 
-            identifier: identifier.slice_source().to_string(),
+            identifier,
             param_types,
             return_type,
         };
 
         // Add to function table
-        self.add_function(identifier.clone(), function);
+        self.add_function(identifier.to_string(), function);
     }
 
     #[inline]
-    fn add_function(&mut self, identifier: Span, func: Function) {
+    fn add_function(&mut self, identifier: String, func: Function) {
         self.functable.push(FunctionMeta::new(identifier, func));
     }
 
@@ -141,7 +141,7 @@ impl Analyser {
                         }
 
                         let func = &self.functable[*meta_id as usize];
-                        if func.function.param_count() == lookahead.args {
+                        if func.function.param_count() == lookahead.args.into() {
                             todo!();
                         }
                     }
@@ -195,7 +195,7 @@ impl Analyser {
 
     fn find_function_str(&self, id: &str) -> Option<&FunctionMeta> {
         for func in &self.functable {
-            if func.identifier.compare_str(id) {
+            if func.identifier.as_str() == id {
                 return Some(func);
             }
         }
@@ -251,11 +251,12 @@ impl Analyser {
         }
 
         self.register_local(&identifier, false, SpruceType::Function {
+            is_native: false,
             parameters,
             return_type
         });
         
-        self.add_function(identifier.span.clone(), Function::User {
+        self.add_function(identifier.span.slice_source().to_string(), Function::User {
             meta_id: self.functable.len() as u32,
             param_types: None,
             return_type: SpruceType::None,
@@ -268,7 +269,7 @@ impl Analyser {
     fn mark_function_empty(&mut self, id: &Span) {
         for func in &mut self.functable {
             // Cannot mark native functions as empty
-            if func.identifier.compare(id) {
+            if func.identifier.as_str() == id.slice_source() {
                 func.function.mark_empty();
             }
         }
@@ -681,12 +682,17 @@ impl Analyser {
             Some(local) => {
                 kind = local.kind.clone();
             },
-            None => self.error_no_exit(format!(
-                    "Identifier '{}' does not exist in the current context",
-                    identifier.span.slice_source(),
-                ),
-                &identifier.clone()
-            ),
+            None => {
+                match self.find_function(&identifier.span) {
+                    Some(f) => kind = f.function.to_type(),
+                    None => self.error_no_exit(format!(
+                            "Identifier '{}' does not exist in the current context",
+                            identifier.span.slice_source(),
+                        ),
+                        &identifier.clone()
+                    )
+                }
+            }
         }
 
         DecoratedAst::new_identifier(identifier.clone(), kind)
@@ -840,10 +846,15 @@ impl Analyser {
             AstData::Identifier => {
                 match self.table.find_local(&lhs.token.span, true) {
                     Some(local) => local.kind.clone(),
-                    None => return Err(self.error(format!(
-                        "Find local for '{}'",
-                        lhs.token.span.slice_source(),
-                    )))
+                    None => {
+                        match self.find_function(&lhs.token.span) {
+                            Some(f) => f.function.to_type(),
+                            None => return Err(self.error(format!(
+                                "Find local for '{}'",
+                                lhs.token.span.slice_source(),
+                            )))
+                        }
+                    }
                 }
             }
             _ => return Err(self.error(format!(
@@ -860,36 +871,60 @@ impl Analyser {
             )))
         };
 
-        let SpruceType::Function { parameters, return_type } = function else { unreachable!() };
+        let SpruceType::Function { is_native: _, parameters, return_type } = function else { unreachable!() };
+        let mut is_any = false;
 
-        if parameters.is_none() && arguments.len() > 0 {
-            self.error_no_exit(format!(
-                    "Function '{}' requires {} arguments, but receieved {}",
-                    node.token.span.slice_source(),
-                    if parameters.is_some() { parameters.as_ref().unwrap().len() } else { 0 },
-                    arguments.len(),
-                ),
-                &node.token,
-            );
+        match &parameters {
+            Some(parameters) => {
+                if parameters.len() == 1 {
+                    let p1 = &parameters[0];
+                    if p1.is_same(&SpruceType::Any) {
+                        is_any = true;
+                    } else if arguments.len() > 1 {
+                        self.error_no_exit(format!(
+                                "Function '{}' requires {} arguments, but receieved {}",
+                                lhs.token.span.slice_source(),
+                                parameters.len(),
+                                arguments.len(),
+                            ),
+                            &node.token,
+                        );
+                    }
+                }
+            }
+            None => {
+                if arguments.len() > 0 {
+                    self.error_no_exit(format!(
+                            "Function '{}' requires {} arguments, but receieved {}",
+                            lhs.token.span.slice_source(),
+                            if parameters.is_some() { parameters.as_ref().unwrap().len() } else { 0 },
+                            arguments.len(),
+                        ),
+                        &node.token,
+                    );
+                }
+            }
         }
         
         let mut args = Vec::new();
         for (idx, arg) in arguments.iter().enumerate() {
             args.push(self.visit(arg)?);
 
-            if let Some(parameters) = &parameters {
-                if idx < parameters.len() {
-                    let lhs = self.find_type_of(args.last().unwrap())?;
-                    if !lhs.is_same(&parameters[idx]) {
-                        self.error_no_exit(format!(
-                                "Argument {} in call to '{}' expects type {} but received {}",
-                                idx + 1,
-                                left.token.span.slice_source(),
-                                lhs,
-                                parameters[idx],
-                            ),
-                            &arg.token,
-                        );
+            if !is_any {
+                if let Some(parameters) = &parameters {
+                    if idx < parameters.len() {
+                        let lhs = self.find_type_of(args.last().unwrap())?;
+                        if !lhs.is_same(&parameters[idx]) {
+                            self.error_no_exit(format!(
+                                    "Argument {} in call to '{}' expects type {} but received {}",
+                                    idx + 1,
+                                    left.token.span.slice_source(),
+                                    lhs,
+                                    parameters[idx],
+                                ),
+                                &arg.token,
+                            );
+                        }
                     }
                 }
             }
@@ -1128,6 +1163,7 @@ impl Analyser {
             TypeKind::List(ref inner) => SpruceType::List(Box::new(self.get_type_from_ast(inner)?)),
             TypeKind::Function { parameters, return_type } => {
                 SpruceType::Function {
+                    is_native: false,
                     parameters: match parameters {
                         Some(ref parameters) => {
                             let mut types = Vec::new();

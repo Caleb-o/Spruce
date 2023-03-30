@@ -76,9 +76,8 @@ impl Compiler {
     }
 
     fn boiler_plate(&mut self, root: Box<DecoratedAst>) -> Result<(), SpruceErr> {
-        self.output_code.push_str("using System;\n");
-        self.output_code.push_str("using System.Collections.Generic;\n\n");
-        self.output_code.push_str("namespace Application;\n\n");
+        self.output_code.push_str(&fs::read_to_string("prelude/prelude.cs").unwrap());
+        self.output_code.push_str("\n\n");
         self.generate_symbol_enum();
         self.output_code.push_str("sealed class Program\n{\n");
         
@@ -163,7 +162,24 @@ impl Compiler {
     }
 
     fn identifier(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
-        self.output_code.push_str(node.token.span.slice_source());
+        let DecoratedAstData::Identifier(kind) = &node.data else { unreachable!() };
+
+        match kind {
+            SpruceType::Function { is_native, .. } => {
+                if *is_native {
+                    let identifier = node.token.span.slice_source();
+                    let identifier = identifier[0..1].to_uppercase() + &identifier[1..];
+                    self.output_code.push_str(&format!(
+                        "Prelude.{}",
+                        identifier,
+                    ));
+                } else {
+                    self.output_code.push_str(node.token.span.slice_source());
+                }
+            }
+            _ => self.output_code.push_str(node.token.span.slice_source()),
+        }
+
         Ok(())
     }
 
@@ -393,7 +409,7 @@ impl Compiler {
             SpruceType::List(inner) => {
                 format!("List<{}>", Compiler::as_cs_type(inner))
             }
-            SpruceType::Function { parameters, return_type } => {
+            SpruceType::Function { is_native: _, parameters, return_type } => {
                 let mut string = String::from("Func<");
 
                 if let Some(parameters) = parameters {

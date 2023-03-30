@@ -13,6 +13,7 @@ pub enum SpruceType {
     List(Box<SpruceType>),
     Symbol,
     Function {
+        is_native: bool,
         parameters: Option<Vec<Box<SpruceType>>>,
         return_type: Box<SpruceType>,
     },
@@ -50,7 +51,7 @@ impl SpruceType {
 
                 true
             }
-            Self::Function { parameters, return_type } => {
+            Self::Function { is_native: _, parameters, return_type } => {
                 if discriminant(self) != discriminant(other) {
                     return false;
                 }
@@ -58,7 +59,7 @@ impl SpruceType {
                 let s_parameters = parameters;
                 let s_return_type = return_type;
 
-                let SpruceType::Function { parameters, return_type } = other else { unreachable!() };
+                let SpruceType::Function { is_native: _, parameters, return_type } = other else { unreachable!() };
 
                 if (s_parameters.is_some() && parameters.is_none()) ||
                     (s_parameters.is_none() && parameters.is_some()) {
@@ -118,7 +119,7 @@ impl Display for SpruceType {
                 tuplestr.push(')');
                 tuplestr
             },
-            Self::Function { parameters, return_type } => {
+            Self::Function { is_native: _, parameters, return_type } => {
                 let mut fnstr = String::from("fn(");
 
                 if let Some(parameters) = parameters {
