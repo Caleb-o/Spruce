@@ -292,7 +292,7 @@ impl Parser {
                     let operator = self.current.clone();
                     self.consume_here();
                     match node.data {
-                        AstData::Identifier => Ast::new_var_assign_equal(node.token.clone(), operator, node, self.expression()?),
+                        AstData::Identifier => Ast::new_var_assign_equal(node.token.clone(), operator, node, self.conditional()?),
                         _ => return Err(self.error(format!(
                             "Cannot use '{}':{:?} on lhs of assignment operator '{}'",
                             node.token.span.slice_source(),

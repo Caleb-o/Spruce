@@ -161,6 +161,18 @@ impl Compiler {
         Ok(())
     }
 
+    fn logical_op(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+        let DecoratedAstData::LogicalOp { kind: _, lhs, rhs } = &node.data else { unreachable!() };
+        
+        self.visit(lhs)?;
+        self.output_code.push_str(&format!(
+            " {} ",
+            node.token.span.slice_source(),
+        ));
+        self.visit(rhs)?;
+        Ok(())
+    }
+
     fn identifier(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::Identifier(kind) = &node.data else { unreachable!() };
 
@@ -219,6 +231,19 @@ impl Compiler {
         
         self.visit(lhs)?;
         self.output_code.push_str(" = ");
+        self.visit(expression)?;
+        
+        Ok(())
+    }
+
+    fn var_assign_equal(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+        let DecoratedAstData::VarAssignEqual { operator, lhs, expression } = &node.data else { unreachable!() };
+        
+        self.visit(lhs)?;
+        self.output_code.push_str(&format!(
+            " {} ",
+            operator.span.slice_source(),
+        ));
         self.visit(expression)?;
         
         Ok(())
@@ -287,6 +312,34 @@ impl Compiler {
         self.output_code.push_str(" : ");
         self.wrap_in_lambda(false_body)?;
 
+        Ok(())
+    }
+
+    fn for_statement(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+        let DecoratedAstData::ForStatement { variable, condition, increment, body } = &node.data else { unreachable!() };
+
+        self.output_code.push_str(&format!(
+            "{}for (",
+            self.tab_string(),
+        ));
+
+        if let Some(variable) = variable {
+            self.visit(variable)?;
+            self.output_code.pop();
+        } else {
+            self.output_code.push(';');
+        }
+        
+        self.visit(condition)?;
+        self.output_code.push_str("; ");
+            
+        if let Some(increment) = increment {
+            self.visit(increment)?;
+        }
+
+        self.output_code.push_str(") ");
+
+        self.visit(body)?;
         Ok(())
     }
 
@@ -422,15 +475,18 @@ impl Compiler {
             DecoratedAstData::ListLiteral(_, _) => self.list_literal(node)?,
             DecoratedAstData::SymbolLiteral(_) => self.symbol_literal(node)?,
             DecoratedAstData::BinaryOp {..} => self.binary_op(node)?,
+            DecoratedAstData::LogicalOp {..} => self.logical_op(node)?,
             DecoratedAstData::Identifier(_) => self.identifier(node)?,
 
             DecoratedAstData::VarDeclaration {..} => self.var_declaration(node)?,
             DecoratedAstData::VarDeclarations(_) => self.var_declarations(node)?,
             DecoratedAstData::VarAssign {..} => self.var_assign(node)?,
+            DecoratedAstData::VarAssignEqual {..} => self.var_assign_equal(node)?,
             DecoratedAstData::FunctionCall {..} => self.function_call(node)?,
 
             DecoratedAstData::IfStatement {..} => self.if_statement(node)?,
             DecoratedAstData::Ternary {..} => self.terary_expression(node)?,
+            DecoratedAstData::ForStatement {..} => self.for_statement(node)?,
             DecoratedAstData::Body(_, _) => self.body(node)?,
             DecoratedAstData::Function {..} => self.function(node)?,
             DecoratedAstData::ParameterList(_) => self.parameter_list(node)?,

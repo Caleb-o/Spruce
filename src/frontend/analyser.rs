@@ -619,6 +619,29 @@ impl Analyser {
         Ok(DecoratedAst::new_if_statement(node.token.clone(), *is_expression, condition, true_type, true_body, false_body))
     }
 
+    fn for_statement(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+        let AstData::ForStatement { variable, condition, increment, body } = &node.data else { unreachable!() };
+
+        self.push_scope();
+
+        let variable = match variable {
+            Some(variable) => Some(self.visit(variable)?),
+            None => None,
+        };
+
+        let condition = self.visit(condition)?;
+
+        let increment = match increment {
+            Some(increment) => Some(self.visit(increment)?),
+            None => None,
+        };
+
+        let body = self.visit(body)?;
+
+        self.pop_scope();
+
+        Ok(DecoratedAst::new_for_statement(node.token.clone(), variable, condition, increment, body))
+    }
 
     fn body(&mut self, node: &Box<Ast>, new_scope: bool) -> Result<Box<DecoratedAst>, SpruceErr> {
         let AstData::Body(inner) = &node.data else { unreachable!() };
@@ -835,6 +858,57 @@ impl Analyser {
         }
 
         Ok(DecoratedAst::new_var_assign(node.token.clone(), setter, expr))
+    }
+
+    fn var_assign_equal(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+        let AstData::VarAssignEqual { operator, lhs, expression } = &node.data else { unreachable!() };
+        let identifier = &node.token;
+
+        let lhs = self.visit(&lhs)?;
+        let expression = self.visit(&expression)?;
+
+        match self.table.find_local(&identifier.span, true) {
+            Some(local) => {
+                let is_mutable = local.mutable;
+                let kind = local.kind.clone();
+                let expr_type = self.find_type_of(&expression)?;
+
+                if !is_mutable {
+                    self.error_no_exit(format!(
+                            "Cannot re-assign an immutable value '{}'",
+                            identifier.span.slice_source(),
+                        ),
+                        &identifier
+                    );
+                }
+                
+                if discriminant(&kind) == discriminant(&SpruceType::Any) {
+                    self.error_no_exit(format!(
+                        "Currently cannot assign value to un-initialised variable '{}'",
+                        identifier.span.slice_source(),
+                    ),
+                    &identifier
+                );
+                } else if !expr_type.is_same(&kind) {
+                    self.error_no_exit(format!(
+                            "Cannot assign type {} to '{}' where type {} is expected",
+                            expr_type,
+                            identifier.span.slice_source(),
+                            kind,
+                        ),
+                        &identifier
+                    );
+                }
+            }
+            None => self.error_no_exit(format!(
+                    "Cannot assign to variable '{}' as it does not exist or is not in the correct context",
+                    identifier.span.slice_source(),
+                ),
+                &identifier
+            ),
+        }
+
+        Ok(DecoratedAst::new_var_assign_equal(node.token.clone(), operator.clone(), lhs, expression))
     }
 
     fn function_call(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
@@ -1077,10 +1151,12 @@ impl Analyser {
             AstData::VarDeclaration {..} => self.var_declaration(node)?,
             AstData::VarDeclarations(_) => self.var_declarations(node)?,
             AstData::VarAssign {..} => self.var_assign(node)?,
+            AstData::VarAssignEqual {..} => self.var_assign_equal(node)?,
             AstData::FunctionCall {..} => self.function_call(node)?,
 
             AstData::Ternary {..} => self.ternary(node)?,
             AstData::IfStatement {..} => self.if_statement(node)?,
+            AstData::ForStatement {..} => self.for_statement(node)?,
             AstData::Body(_) => self.body(node, true)?,
             AstData::ExpressionStatement(_, _) => self.expr_statement(node)?,
 
@@ -1108,10 +1184,12 @@ impl Analyser {
             DecoratedAstData::FunctionCall { kind, .. } => kind.clone(),
             DecoratedAstData::Identifier(kind) => kind.clone(),
             DecoratedAstData::VarAssign { lhs, .. } => self.find_type_of(lhs)?,
+            DecoratedAstData::VarAssignEqual { lhs, .. } => self.find_type_of(lhs)?,
             DecoratedAstData::Type(kind) => kind.clone(),
             
             DecoratedAstData::Ternary { kind, ..} => kind.clone(),
             DecoratedAstData::IfStatement { kind, ..} => kind.clone(),
+            DecoratedAstData::ForStatement {..} => SpruceType::None,
             DecoratedAstData::Body(kind, _) => kind.clone(),
             DecoratedAstData::ExpressionStatement(kind, _, _) => kind.clone(),
             DecoratedAstData::Return(kind, _) => kind.clone(),
