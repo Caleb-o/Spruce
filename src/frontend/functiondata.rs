@@ -21,7 +21,6 @@ impl FunctionMeta {
 #[repr(u8)]
 pub enum Function {
     User {
-        meta_id: u32,
         param_types: ParamTypes,
         return_type: SpruceType,
         empty: bool,
@@ -36,7 +35,7 @@ pub enum Function {
 impl Function {
     pub fn to_type(&self) -> SpruceType {
         match self {
-            Self::User { meta_id: _, param_types, return_type, empty: _ } => {
+            Self::User { param_types, return_type, empty: _ } => {
                 SpruceType::Function {
                     is_native: false,
                     parameters: param_types.as_ref()

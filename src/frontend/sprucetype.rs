@@ -3,6 +3,7 @@ use std::{mem::discriminant, fmt::Display};
 #[derive(Debug, Clone)]
 pub enum SpruceType {
     Error,
+    Unresolved,
     None,
     Any,
     Int,
@@ -135,7 +136,7 @@ impl Display for SpruceType {
                 fnstr.push_str(&format!("): {}", return_type));
                 fnstr
             },
-            n @ _ => unimplemented!("Display for {n:?}"),
+            n @ _ => unimplemented!("{n:?}"),
         })
     }
 }

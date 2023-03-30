@@ -7,7 +7,7 @@ use super::{token::{Token, Span, TokenKind}, functiondata::{Function, FunctionMe
 #[derive(Debug, Clone)]
 struct LookAhead {
     token: Token,
-    args: u8,
+    args: Vec<SpruceType>,
 }
 
 enum ScopeType {
@@ -129,7 +129,7 @@ impl Analyser {
             match self.find_function(&lookahead.token.span) {
                 Some(func) => {
                     // Cannot resolve native calls, since they're part of the compiler
-                    if let Function::User { meta_id, empty, ..} = &func.function {
+                    if let Function::User { param_types, empty, .. } = &func.function {
                         // Generate the function if it is not empty
                         if *empty {
                             self.warning(format!(
@@ -140,34 +140,63 @@ impl Analyser {
                             );
                         }
 
-                        let func = &self.functable[*meta_id as usize];
-                        if func.function.param_count() == lookahead.args.into() {
-                            todo!();
+                        let is_any = match param_types {
+                            Some(parameters) => {
+                                if parameters.len() == 1 {
+                                    parameters[0].is_same(&SpruceType::Any)
+                                } else {
+                                    false
+                                }
+                            }
+                            None => false,
+                        };
+
+                        if !is_any {
+                            let param_c = match param_types { Some(p) => p.len(), _ => 0};
+                            if param_c != lookahead.args.len() {
+                                println!(
+                                    "Wrong count of args '{}' {} / {}",
+                                    lookahead.token.span.slice_source(),
+                                    lookahead.args.len(),
+                                    param_c,
+                                );
+                                unresolved.push((lookahead.token.clone(), lookahead.args.clone()));
+                            }
+                        }
+
+                        for (idx, arg) in lookahead.args.iter().enumerate() {
+                            if !is_any {
+                                if let Some(parameters) = &param_types {
+                                    if idx < parameters.len() && !arg.is_same(&parameters[idx]) {
+                                        println!(
+                                            "Wrong type of arg at {idx} for '{}' of {} - {:?} {:?}",
+                                            lookahead.token.span.slice_source(),
+                                            parameters.len(),
+                                            arg,
+                                            parameters[idx],
+                                        );
+                                        unresolved.push((lookahead.token.clone(), lookahead.args.clone()));
+                                        break;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
 
-                None => unresolved.push((lookahead.token.clone(), 0, lookahead.args)),
+                None => unresolved.push((lookahead.token.clone(), lookahead.args.clone())),
             }
         }
 
         // Identifiers that were still not found
-        for (token, params, args) in unresolved {
-            let id = token.span.slice_source().to_string();
-
-            if params != args {
-                self.error_no_exit(format!(
-                    "Function '{id}' expected {params} argument(s), but received {args}",
-                    ),
-                    &token
-                );
-            } else {
-                self.error_no_exit(format!(
-                    "Function '{id}' does not exist",
-                    ),
-                    &token
-                );
-            }
+        // TODO: Print function signature
+        for (token, _args) in unresolved {
+            self.error_no_exit(format!(
+                    "Function '{}' does not exist",
+                    token.span.slice_source(),
+                ),
+                &token
+            );
         }
     }
 
@@ -252,14 +281,13 @@ impl Analyser {
 
         self.register_local(&identifier, false, SpruceType::Function {
             is_native: false,
-            parameters,
-            return_type
+            parameters: parameters.clone(),
+            return_type: return_type.clone(),
         });
         
         self.add_function(identifier.span.slice_source().to_string(), Function::User {
-            meta_id: self.functable.len() as u32,
-            param_types: None,
-            return_type: SpruceType::None,
+            param_types: parameters.and_then(|p| Some(p.iter().map(|k| *k.clone()).collect())),
+            return_type: *return_type,
             empty: false
         });
 
@@ -914,51 +942,66 @@ impl Analyser {
     fn function_call(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
         let AstData::FunctionCall { lhs, arguments } = &node.data else { unreachable!() };
 
-        let left = self.visit(lhs)?;
-
-        let function = match lhs.data {
+        let (lhs, function) = match lhs.data {
             AstData::Identifier => {
-                match self.table.find_local(&lhs.token.span, true) {
+                let kind = match self.table.find_local(&lhs.token.span, true) {
                     Some(local) => local.kind.clone(),
                     None => {
                         match self.find_function(&lhs.token.span) {
                             Some(f) => f.function.to_type(),
-                            None => return Err(self.error(format!(
-                                "Find local for '{}'",
-                                lhs.token.span.slice_source(),
-                            )))
+                            None => SpruceType::Unresolved,
+                        }
+                    }
+                };
+
+                let id = DecoratedAst::new_identifier(lhs.token.clone(), kind.clone());
+                (id, kind)
+            }
+
+            _ => {
+                let lhs = self.visit(lhs)?;
+                let kind = self.find_type_of(&lhs)?;
+                (lhs, kind)
+            }
+        };
+
+        let mut is_any = function.is_same(&SpruceType::Unresolved);
+
+        if !is_any {
+            let function = match function {
+                SpruceType::Function {..} => &function,
+                _ => return Err(self.error(format!(
+                    "Cannot call non-function '{}'",
+                    lhs.token.span.slice_source(),
+                )))
+            };
+
+            let SpruceType::Function { parameters, .. } = &function else { unreachable!() };
+    
+            match &parameters {
+                Some(parameters) => {
+                    if parameters.len() == 1 {
+                        let p1 = &parameters[0];
+                        if p1.is_same(&SpruceType::Any) {
+                            is_any = true;
+                        } else if arguments.len() > 1 {
+                            self.error_no_exit(format!(
+                                    "Function '{}' requires {} arguments, but receieved {}",
+                                    lhs.token.span.slice_source(),
+                                    parameters.len(),
+                                    arguments.len(),
+                                ),
+                                &node.token,
+                            );
                         }
                     }
                 }
-            }
-            _ => return Err(self.error(format!(
-                "Cannot collect function information about '{:#?}' just yet",
-                lhs,
-            )))
-        };
-
-        let function = match function {
-            SpruceType::Function {..} => function,
-            _ => return Err(self.error(format!(
-                "Cannot call non-function '{}'",
-                lhs.token.span.slice_source(),
-            )))
-        };
-
-        let SpruceType::Function { is_native: _, parameters, return_type } = function else { unreachable!() };
-        let mut is_any = false;
-
-        match &parameters {
-            Some(parameters) => {
-                if parameters.len() == 1 {
-                    let p1 = &parameters[0];
-                    if p1.is_same(&SpruceType::Any) {
-                        is_any = true;
-                    } else if arguments.len() > 1 {
+                None => {
+                    if arguments.len() > 0 {
                         self.error_no_exit(format!(
                                 "Function '{}' requires {} arguments, but receieved {}",
                                 lhs.token.span.slice_source(),
-                                parameters.len(),
+                                if parameters.is_some() { parameters.as_ref().unwrap().len() } else { 0 },
                                 arguments.len(),
                             ),
                             &node.token,
@@ -966,34 +1009,28 @@ impl Analyser {
                     }
                 }
             }
-            None => {
-                if arguments.len() > 0 {
-                    self.error_no_exit(format!(
-                            "Function '{}' requires {} arguments, but receieved {}",
-                            lhs.token.span.slice_source(),
-                            if parameters.is_some() { parameters.as_ref().unwrap().len() } else { 0 },
-                            arguments.len(),
-                        ),
-                        &node.token,
-                    );
-                }
-            }
         }
         
         let mut args = Vec::new();
+        let mut args_kind = Vec::new();
+
         for (idx, arg) in arguments.iter().enumerate() {
             args.push(self.visit(arg)?);
 
+            args_kind.push(self.find_type_of(&args.last().unwrap())?);
+
             if !is_any {
+                let SpruceType::Function { parameters, .. } = &function else { unreachable!() };
+
                 if let Some(parameters) = &parameters {
                     if idx < parameters.len() {
-                        let lhs = self.find_type_of(args.last().unwrap())?;
-                        if !lhs.is_same(&parameters[idx]) {
+                        let left_type = self.find_type_of(args.last().unwrap())?;
+                        if !left_type.is_same(&parameters[idx]) {
                             self.error_no_exit(format!(
                                     "Argument {} in call to '{}' expects type {} but received {}",
                                     idx + 1,
-                                    left.token.span.slice_source(),
-                                    lhs,
+                                    lhs.token.span.slice_source(),
+                                    left_type,
                                     parameters[idx],
                                 ),
                                 &arg.token,
@@ -1004,7 +1041,18 @@ impl Analyser {
             }
         }
 
-        Ok(DecoratedAst::new_function_call(lhs.token.clone(), *return_type, left, args))
+        if function.is_same(&SpruceType::Unresolved) {
+            self.unresolved.push(LookAhead {
+                token: lhs.token.clone(),
+                args: args_kind,
+            });
+        }
+
+        Ok(DecoratedAst::new_function_call(lhs.token.clone(), match function {
+            SpruceType::Function { return_type, ..} => *return_type.clone(),
+            _ => SpruceType::Unresolved,
+            }, 
+        lhs, args))
     }
 
     #[inline]
@@ -1092,7 +1140,6 @@ impl Analyser {
         self.pop_scope();
         self.table.reset_mark();
         
-        // Don't generate pointless returns
         if let DecoratedAstData::Body(_, ref statements) = &body_ast.data {
             if statements.len() == 0 {
                 self.mark_function_empty(&identifier.span);
