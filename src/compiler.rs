@@ -344,7 +344,7 @@ impl Compiler {
 
     fn body(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::Body(_, statements) = &node.data else { unreachable!() };
-        self.output_code.push_str(&format!("{}{{\n", self.tab_string()));
+        self.output_code.push_str("{\n");
 
         self.indent();
 
@@ -378,7 +378,7 @@ impl Compiler {
         
         self.visit(parameters)?;
 
-        self.output_code.push_str(")\n");
+        self.output_code.push_str(&format!(")\n{}", self.tab_string()));
         self.visit(body)?;
         self.output_code.push_str("\n\n");
 
@@ -416,10 +416,20 @@ impl Compiler {
     fn expression_statement(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::ExpressionStatement(_, is_statement, expr) = &node.data else { unreachable!() };
 
-        self.output_code.push_str(&self.tab_string());
         if *is_statement {
-            self.visit(expr)?;
+            if let DecoratedAstData::Body(_, statements) = &expr.data {
+                if statements.len() > 0 {
+                    self.output_code.push_str(&self.tab_string());
+                    self.body(expr)?;
+                    self.output_code.push_str("\n\n");
+                }
+                return Ok(());
+            } else {
+                self.output_code.push_str(&self.tab_string());
+                self.visit(expr)?;
+            }
         } else {
+            self.output_code.push_str(&self.tab_string());
             self.output_code.push_str("return ");
 
             match expr.data {
@@ -429,7 +439,6 @@ impl Compiler {
         }
 
         self.output_code.push_str(";\n");
-        
         Ok(())
     }
 

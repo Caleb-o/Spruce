@@ -433,7 +433,6 @@ impl NameResolver {
     #[inline]
     fn evaluate_params(
         &mut self,
-        token: Token,
         parameters: &Option<Vec<Box<Ast>>>,
     ) -> Result<Option<Vec<Box<Ast>>>, SpruceErr> {
         // Register locals from parameters
@@ -445,7 +444,7 @@ impl NameResolver {
                 
                 self.register_local(&param.token, false);
                 // Kinda gross here, might need to use Rc instead of box
-                out.push(param.clone());
+                out.push(type_name.clone());
             }
             return Ok(Some(out));
         }
@@ -464,9 +463,9 @@ impl NameResolver {
         if *anonymous {
             self.push_scope();
             self.table.mark_depth_limit();
-            self.evaluate_params(identifier.clone(), parameters)?;
+            self.evaluate_params(parameters)?;
         } else {
-            let params = self.evaluate_params(identifier.clone(), parameters)?;
+            let params = self.evaluate_params(parameters)?;
             
             if self.table.is_global() {
                 self.register_function(identifier, params, match return_type {

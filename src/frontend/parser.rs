@@ -547,10 +547,14 @@ impl Parser {
             }
             _ => {
                 let node = self.expression()?;
-                let is_stmt = if self.current.kind == TokenKind::SemiColon {
-                    self.consume_here();
-                    true
-                } else { false };
+                let is_stmt = match node.data {
+                    AstData::Body(_) => true,
+                    _ if self.current.kind == TokenKind::SemiColon => {
+                        self.consume_here();
+                        true
+                    },
+                    _ => false,
+                };
                 return Ok(Ast::new_expr_statement(is_stmt, node));
             },
         };
