@@ -354,7 +354,7 @@ impl Compiler {
 
         self.dedent();
 
-        self.output_code.push_str(&format!("{}}}\n\n", self.tab_string()));
+        self.output_code.push_str(&format!("{}}}", self.tab_string()));
         Ok(())
     }
 
@@ -380,6 +380,7 @@ impl Compiler {
 
         self.output_code.push_str(")\n");
         self.visit(body)?;
+        self.output_code.push_str("\n\n");
 
         Ok(())
     }
@@ -420,8 +421,11 @@ impl Compiler {
             self.visit(expr)?;
         } else {
             self.output_code.push_str("return ");
-            self.wrap_in_lambda(expr)?;
-            // self.visit(expr)?;
+
+            match expr.data {
+                DecoratedAstData::Body(_, _) => self.wrap_in_lambda(expr)?,
+                _ => self.visit(expr)?,
+            }
         }
 
         self.output_code.push_str(";\n");
@@ -511,6 +515,9 @@ impl Compiler {
         self.output_code.push_str(&format!(
             "((Func<{}>)(() => ",
             Compiler::as_cs_type(match &node.data {
+                DecoratedAstData::BinaryOp { kind, .. } => kind,
+                DecoratedAstData::UnaryOp { kind, .. } => kind,
+                DecoratedAstData::LogicalOp { kind, .. } => kind,
                 DecoratedAstData::Body(kind, _) => kind,
                 DecoratedAstData::Literal(kind, _) => kind,
                 DecoratedAstData::ListLiteral(kind, _) => kind,
