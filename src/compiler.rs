@@ -421,7 +421,8 @@ impl Compiler {
             self.visit(expr)?;
         } else {
             self.output_code.push_str("return ");
-            self.visit(expr)?;
+            self.wrap_in_lambda(expr)?;
+            // self.visit(expr)?;
         }
 
         self.output_code.push_str(";\n");

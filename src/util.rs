@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use crate::{source::Source, error::SpruceErr, RunArgs, frontend::{parser::Parser, analyser::Analyser, decorated_ast::DecoratedAst, ast::Ast, symbols::Symbols}};
+use crate::{source::Source, error::SpruceErr, RunArgs, frontend::{parser::Parser, analyser::Analyser, decorated_ast::DecoratedAst, ast::Ast, symbols::Symbols, name_resolution::NameResolver}};
 
 pub fn check_code(file_path: String, source: String, args: RunArgs) -> Result<(Rc<Source>, (Box<DecoratedAst>, Symbols)), SpruceErr> {
     let source = Rc::new(Source::new(file_path, source));
@@ -15,7 +15,10 @@ pub fn check_code(file_path: String, source: String, args: RunArgs) -> Result<(R
         Err(e) => return Err(e.into()),
     };
 
-    let mut analyser = Analyser::new(Rc::clone(&source), args);
+    let mut resolver = NameResolver::new(Rc::clone(&source), args.clone());
+    let table = resolver.run(&root)?;
+
+    let mut analyser = Analyser::new(Rc::clone(&source), args, table);
     let root = analyser.run(&root)?;
 
     Ok((source, root))

@@ -2,7 +2,7 @@ use std::{rc::Rc, mem::discriminant};
 
 use crate::{source::Source, RunArgs, error::{SpruceErr, SpruceErrData}, nativefns::{self, ParamKind}, object::Object};
 
-use super::{token::{Token, Span, TokenKind}, functiondata::{Function, FunctionMeta}, symbols::Symbols, symtable::SymTable, environment::{ConstantValue}, ast::{Ast, AstData, TypeKind}, decorated_ast::{DecoratedAst, DecoratedAstData, FunctionType}, sprucetype::SpruceType};
+use super::{token::{Token, Span, TokenKind}, functiondata::{Function, FunctionMeta}, symbols::Symbols, symtable::SymTable, environment::{ConstantValue}, ast::{Ast, AstData, TypeKind}, decorated_ast::{DecoratedAst, DecoratedAstData, FunctionType}, sprucetype::SpruceType, name_resolution::ResolutionTable};
 
 #[derive(Debug, Clone)]
 struct LookAhead {
@@ -20,15 +20,14 @@ pub struct Analyser {
     args: RunArgs,
     unresolved: Vec<LookAhead>,
     constants: Vec<ConstantValue>,
-    functable: Vec<FunctionMeta>,
-    table: SymTable,
-    symbol_values: Symbols,
+    functable: Vec<FunctionMeta>, // Type resolved table
+    res_table: Rc<ResolutionTable>,
     last_return: bool,
     scope_type: ScopeType,
 }
 
 impl Analyser {
-    pub fn new(source: Rc<Source>, args: RunArgs) -> Self {
+    pub fn new(source: Rc<Source>, args: RunArgs, res_table: Rc<ResolutionTable>) -> Self {
         Self {
             had_error: false,
             source,
@@ -36,8 +35,7 @@ impl Analyser {
             unresolved: Vec::new(),
             constants: Vec::new(),
             functable: Vec::new(),
-            table: SymTable::new(),
-            symbol_values: Symbols::new(),
+            res_table,
             last_return: false,
             scope_type: ScopeType::None,
         }
@@ -45,7 +43,7 @@ impl Analyser {
 
     pub fn run(&mut self, program: &Box<Ast>) -> Result<(Box<DecoratedAst>, Symbols), SpruceErr> {
         nativefns::register_native_functions(self);
-
+        
         let program = self.visit(program)?;
 
         match self.find_function_str("main") {
@@ -110,16 +108,6 @@ impl Analyser {
     #[inline]
     fn error(&mut self, message: String) -> SpruceErr {
         SpruceErr::new(message, SpruceErrData::Analyser { file_path: (*self.source.file_path).clone() })
-    }
-
-    #[inline]
-    fn push_scope(&mut self) {
-        self.table.new_scope();
-    }
-
-    #[inline]
-    fn pop_scope(&mut self) {
-        self.table.close_scope();
     }
 
     fn resolve_function_calls(&mut self) {

@@ -9,3 +9,4 @@ pub mod symbols;
 pub mod functiondata;
 pub mod decorated_ast;
 pub mod sprucetype;
+pub mod name_resolution;
