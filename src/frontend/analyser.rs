@@ -4,8 +4,9 @@ use crate::{source::Source, RunArgs, error::{SpruceErr, SpruceErrData}, nativefn
 
 use super::{token::{Token, Span, TokenKind}, functiondata::{Function, FunctionMeta}, symbols::Symbols, environment::{ConstantValue}, ast::{Ast, AstData, TypeKind}, decorated_ast::{DecoratedAst, DecoratedAstData, FunctionType}, sprucetype::SpruceType, name_resolution::{ResolutionTable, FunctionSignatureKind}, symtable::SymTable};
 
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum ScopeType {
-    None, Function,
+    None, Function, Defer,
 }
 
 pub struct Analyser {
@@ -130,6 +131,18 @@ impl Analyser {
                 self.constants.len() as u32 - 1
             }
         }
+    }
+
+    #[inline]
+    fn push_scope_type(&mut self, kind: ScopeType) -> ScopeType {
+        let prev = self.scope_type;
+        self.scope_type = kind;
+        prev
+    }
+
+    #[inline]
+    fn pop_scope_type(&mut self, kind: ScopeType) {
+        self.scope_type = kind;
     }
 
     #[inline]
@@ -1017,6 +1030,8 @@ impl Analyser {
     fn function(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
         let AstData::Function { anonymous, parameters, return_type, body } = &node.data else { unreachable!() };
         let identifier = &node.token;
+
+        let prev = self.push_scope_type(ScopeType::Function);
         
         let return_type = match *return_type {
             Some(ref return_) => {
@@ -1049,12 +1064,14 @@ impl Analyser {
             _ => unreachable!("BODY AST"),
         };
         let body_type = self.find_type_of(&body_ast)?;
+
+        self.pop_scope_type(prev);
         
         // Make sure the body matches the return type
         if !body_type.is_same(&return_type) {
             self.error_no_exit(format!(
                     "Function '{}' expects the return type {}, but has {}",
-                    node.token.span.slice_source(),
+                    if *anonymous { "anonymous" } else { node.token.span.slice_source() },
                     return_type,
                     body_type,
                 ),
@@ -1084,12 +1101,39 @@ impl Analyser {
 
     fn defer(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
         let AstData::Defer(expression) = &node.data else { unreachable!() };
+        
+        let prev = self.push_scope_type(ScopeType::Defer);
+
         self.defer_count += 1;
-        Ok(DecoratedAst::new_defer(node.token.clone(), self.defer_count - 1, self.visit(expression)?))
+        let body = self.visit(expression)?;
+
+        if let DecoratedAstData::Body(_, statements) = &body.data {
+            if statements.len() > 0 {
+                if let DecoratedAstData::ExpressionStatement(_, is_statement, _) = statements.last().unwrap().data {
+                    if !is_statement {
+                        self.error_no_exit(
+                            "Cannot use expression as last item in defer block".into(),
+                            &node.token,
+                        );
+                    }
+                }
+            }
+        }
+
+        self.pop_scope_type(prev);
+
+        Ok(DecoratedAst::new_defer(node.token.clone(), self.defer_count - 1, body))
     }
 
     fn return_statement(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
         let AstData::Return(expression) = &node.data else { unreachable!() };
+
+        if self.scope_type == ScopeType::Defer {
+            self.error_no_exit(
+                "Cannot return inside of a defer block".into(),
+                &node.token,
+            )
+        }
 
         let (kind, expression) = match expression {
             Some(expr) => {
@@ -1167,6 +1211,34 @@ impl Analyser {
             DecoratedAstData::VarAssignEqual { lhs, .. } => self.find_type_of(lhs)?,
             DecoratedAstData::Type(kind) => kind.clone(),
             
+            DecoratedAstData::Function { function_type, parameters, kind, .. } => {
+                if *function_type == FunctionType::Anonymous {
+                    SpruceType::Function {
+                        is_native: false,
+                        parameters: match &parameters.data {
+                            DecoratedAstData::ParameterList(parameters) => {
+                                if let Some(parameters) = parameters {
+                                    let mut kinds = Vec::new();
+
+                                    for item in parameters {
+                                        let DecoratedAstData::Parameter(kind) = &item.data else { unreachable!() };
+                                        kinds.push(Box::new(kind.clone()));
+                                    }
+
+                                    Some(kinds)
+                                } else {
+                                    None
+                                }
+                            }
+                            _ => unreachable!(),
+                        },
+                        return_type: Box::new(kind.clone()),
+                    }
+                } else {
+                    let func = self.find_function(&node.token.span).unwrap();
+                    func.function.to_type()
+                }
+            },
             DecoratedAstData::Ternary { kind, ..} => kind.clone(),
             DecoratedAstData::IfStatement { kind, ..} => kind.clone(),
             DecoratedAstData::ForStatement {..} => SpruceType::None,

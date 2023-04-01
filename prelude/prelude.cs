@@ -5,9 +5,9 @@ using System.Collections.Generic;
 namespace Application;
 
 public static class SprucePrelude {
-    public class Deferable : IDisposable {
+    public class Defer : IDisposable {
         readonly Action _action;
-        public Deferable(Action action) => _action = action;
+        public Defer(Action action) => _action = action;
         public void Dispose() => _action.Invoke();
     }
 

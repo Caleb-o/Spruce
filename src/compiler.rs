@@ -377,6 +377,48 @@ impl Compiler {
         Ok(())
     }
 
+    fn anonymous_function(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+        let DecoratedAstData::Function { parameters, kind, body, .. } = &node.data else { unreachable!() };
+        let DecoratedAstData::ParameterList(params) = &parameters.data else { unreachable!() };
+
+        let kind = Compiler::as_cs_type(&kind);
+
+        if kind == "void" && (params.is_none() || params.as_ref().unwrap().len() == 0) {
+           self.output_code.push_str("((Action)((");
+        } else {
+            self.output_code.push_str("((Func<");
+            
+            if let Some(params) = params {
+                for item in params {
+                    let DecoratedAstData::Parameter(kind) = &item.data else { unreachable!() };
+
+                    self.output_code.push_str(&Compiler::as_cs_type(kind));
+                    self.output_code.push_str(", ");
+                }
+            }
+
+            self.output_code.push_str(&format!("{kind}>)(("));
+        }
+
+        if let Some(params) = params {
+            for (idx, item) in params.iter().enumerate() {
+                let DecoratedAstData::Parameter(_) = &item.data else { unreachable!() };
+
+                self.output_code.push_str(item.token.span.slice_source());
+
+                if idx < params.len() - 1 {
+                    self.output_code.push_str(", ");
+                }
+            }
+        }
+        self.output_code.push_str(") => ");
+
+        self.visit(body)?;
+        self.output_code.push_str("))");
+
+        Ok(())
+    }
+
     fn function(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::Function { function_type, parameters, kind, body } = &node.data else { unreachable!() };
 
@@ -384,8 +426,12 @@ impl Compiler {
             FunctionType::Standard => {
                 self.output_code.push_str(&format!("{}public ", self.tab_string()));
             }
-            FunctionType::Anonymous | FunctionType::Inner => {
+            FunctionType::Inner => {
                 self.output_code.push_str(&format!("{}", self.tab_string()));
+            }
+            FunctionType::Anonymous => {
+                self.anonymous_function(node)?;
+                return Ok(());
             }
         }
 
@@ -465,7 +511,7 @@ impl Compiler {
         let DecoratedAstData::Defer(count, expression) = &node.data else { unreachable!() };
 
         self.output_code.push_str(&format!(
-            "{}using var __spruce_defer_{} = new {}.Deferable(",
+            "{}using var __spruce_defer_{} = new {}.Defer(",
             self.tab_string(),
             count,
             SPRUCE_PRE,
@@ -563,7 +609,7 @@ impl Compiler {
         Ok(())
     }
 
-    fn wrap_in_lambda(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn get_type_from_ast(&self, node: &Box<DecoratedAst>) -> Result<String, SpruceErr> {
         let kind = Compiler::as_cs_type(match &node.data {
             DecoratedAstData::BinaryOp { kind, .. } => kind,
             DecoratedAstData::UnaryOp { kind, .. } => kind,
@@ -582,21 +628,28 @@ impl Compiler {
             )),
         });
 
-        if &kind == "void" {
-            self.output_code.push_str(
-                "((Action)(() => ",
-            );
+        Ok(kind)
+    }
+
+    #[inline]
+    fn lambda_prefix(kind: &String) -> String {
+        if kind == "void" {
+            "((Action)(() => ".into()
         } else {
-            self.output_code.push_str(&format!(
-                "((Func<{kind}>)(() => ",
-            ));
+            format!("((Func<{kind}>)(() => ")
         }
+    }
+
+    fn wrap_in_lambda(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+        let kind = self.get_type_from_ast(node)?;
+        self.output_code.push_str(&Compiler::lambda_prefix(&kind));
 
         self.visit(node)?;
         self.output_code.push_str("))");
         Ok(())
     }
 
+    #[inline]
     fn wrap_in_lambda_call(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
         self.wrap_in_lambda(node)?;
         self.output_code.push_str("()");

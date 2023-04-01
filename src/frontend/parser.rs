@@ -661,10 +661,7 @@ impl Parser {
         let parameters = self.collect_params(TokenKind::Pipe, TokenKind::Pipe)?;
         let return_type = match self.current.kind {
             TokenKind::LCurly | TokenKind::Equal => None,
-            _ => {
-                self.consume(TokenKind::Colon, "Expect ':' before return type")?;
-                Some(self.collect_type()?)
-            },
+            _ => Some(self.collect_type()?),
         };
         let body = self.collect_body()?;
 
