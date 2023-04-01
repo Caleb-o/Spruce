@@ -406,6 +406,15 @@ impl NameResolver {
         Ok(())
     }
 
+    fn do_while_statement(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+        let AstData::DoWhileStatement { body, condition } = &node.data else { unreachable!() };
+
+        self.visit(body)?;
+        self.visit(condition)?;
+
+        Ok(())
+    }
+
     fn body(&mut self, node: &Box<Ast>, new_scope: bool) -> Result<(), SpruceErr> {
         let AstData::Body(inner) = &node.data else { unreachable!() };
 
@@ -425,7 +434,7 @@ impl NameResolver {
     }
 
     fn expr_statement(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
-        let AstData::ExpressionStatement(is_statement, inner) = &node.data else { unreachable!() };
+        let AstData::ExpressionStatement(_, inner) = &node.data else { unreachable!() };
         self.visit(inner)?;
         Ok(())
     }
@@ -494,6 +503,12 @@ impl NameResolver {
         Ok(())
     }
 
+    fn defer(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+        let AstData::Defer(expression) = &node.data else { unreachable!() };
+        self.visit(expression)?;
+        Ok(())
+    }
+
     fn return_statement(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
         let AstData::Return(expression) = &node.data else { unreachable!() };
 
@@ -531,15 +546,17 @@ impl NameResolver {
             AstData::VarDeclarations(_) => self.var_declarations(node)?,
             AstData::VarAssign {..} => self.var_assign(node)?,
             AstData::VarAssignEqual {..} => self.var_assign_equal(node)?,
-            AstData::FunctionCall {..} => self.function_call(node)?,
 
+            AstData::FunctionCall {..} => self.function_call(node)?,
             AstData::Ternary {..} => self.ternary(node)?,
             AstData::IfStatement {..} => self.if_statement(node)?,
             AstData::ForStatement {..} => self.for_statement(node)?,
+            AstData::DoWhileStatement {..} => self.do_while_statement(node)?,
             AstData::Body(_) => self.body(node, true)?,
             AstData::ExpressionStatement(_, _) => self.expr_statement(node)?,
 
             AstData::Function {..} => self.function(node)?,
+            AstData::Defer(_) => self.defer(node)?,
             AstData::Return(_) => self.return_statement(node)?,
             AstData::Program {..} => self.program(node)?,
 

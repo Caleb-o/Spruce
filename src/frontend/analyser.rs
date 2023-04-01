@@ -16,6 +16,7 @@ pub struct Analyser {
     functable: Vec<FunctionMeta>, // Type resolved table
     table: SymTable,
     res_table: Box<ResolutionTable>,
+    defer_count: u32,
     last_return: bool,
     scope_type: ScopeType,
 }
@@ -30,6 +31,7 @@ impl Analyser {
             functable: Vec::new(),
             table: SymTable::new(),
             res_table,
+            defer_count: 0,
             last_return: false,
             scope_type: ScopeType::None,
         }
@@ -589,6 +591,15 @@ impl Analyser {
         Ok(DecoratedAst::new_for_statement(node.token.clone(), variable, condition, increment, body))
     }
 
+    fn do_while_statement(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+        let AstData::DoWhileStatement { body, condition } = &node.data else { unreachable!() };
+
+        let condition = self.visit(condition)?;
+        let body = self.visit(body)?;
+
+        Ok(DecoratedAst::new_do_while_statement(node.token.clone(), body, condition))
+    }
+
     fn body(&mut self, node: &Box<Ast>, new_scope: bool) -> Result<Box<DecoratedAst>, SpruceErr> {
         let AstData::Body(inner) = &node.data else { unreachable!() };
         let mut statements = Vec::new();
@@ -1071,6 +1082,12 @@ impl Analyser {
         Ok(DecoratedAst::new_function(node.token.clone(), function_type, parameters, body_type, body_ast))
     }
 
+    fn defer(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+        let AstData::Defer(expression) = &node.data else { unreachable!() };
+        self.defer_count += 1;
+        Ok(DecoratedAst::new_defer(node.token.clone(), self.defer_count - 1, self.visit(expression)?))
+    }
+
     fn return_statement(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
         let AstData::Return(expression) = &node.data else { unreachable!() };
 
@@ -1118,10 +1135,12 @@ impl Analyser {
             AstData::Ternary {..} => self.ternary(node)?,
             AstData::IfStatement {..} => self.if_statement(node)?,
             AstData::ForStatement {..} => self.for_statement(node)?,
+            AstData::DoWhileStatement {..} => self.do_while_statement(node)?,
             AstData::Body(_) => self.body(node, true)?,
             AstData::ExpressionStatement(_, _) => self.expr_statement(node)?,
 
             AstData::Function {..} => self.function(node)?,
+            AstData::Defer(_) => self.defer(node)?,
             AstData::Return(_) => self.return_statement(node)?,
             AstData::Program {..} => self.program(node)?,
             AstData::Empty => DecoratedAst::new_empty(node.token.clone()),
@@ -1151,8 +1170,10 @@ impl Analyser {
             DecoratedAstData::Ternary { kind, ..} => kind.clone(),
             DecoratedAstData::IfStatement { kind, ..} => kind.clone(),
             DecoratedAstData::ForStatement {..} => SpruceType::None,
+            DecoratedAstData::DoWhileStatement {..} => SpruceType::None,
             DecoratedAstData::Body(kind, _) => kind.clone(),
             DecoratedAstData::ExpressionStatement(kind, _, _) => kind.clone(),
+            DecoratedAstData::Defer(_, _) => SpruceType::None,
             DecoratedAstData::Return(kind, _) => kind.clone(),
             DecoratedAstData::Empty => SpruceType::Any,
 

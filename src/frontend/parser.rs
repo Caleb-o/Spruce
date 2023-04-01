@@ -523,6 +523,18 @@ impl Parser {
         Ok(Ast::new_return(token, expression))
     }
 
+    fn defer(&mut self) -> Result<Box<Ast>, SpruceErr> {
+        let token = self.current.clone();
+        self.consume_here();
+
+        let expression = match self.current.kind {
+            TokenKind::LCurly => self.body()?,
+            _ => self.expression()?,
+        };
+
+        Ok(Ast::new_defer(token, expression))
+    }
+
     fn statement(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let mut node = match self.current.kind {
             TokenKind::Function => {
@@ -545,6 +557,7 @@ impl Parser {
                 self.consume_here();
                 Ast::new_comment(current)
             }
+            TokenKind::Defer => self.defer()?,
             _ => {
                 let node = self.expression()?;
                 let is_stmt = match node.data {

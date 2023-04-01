@@ -59,6 +59,7 @@ pub enum DecoratedAstData {
     SwitchStatement { condition: Box<DecoratedAst>, cases: Vec<Box<DecoratedAst>> },
     SwitchCase { case: Option<Box<DecoratedAst>>, body: Box<DecoratedAst> },
 
+    Defer(u32, Box<DecoratedAst>),
     Return(SpruceType, Option<Box<DecoratedAst>>),
     Body(SpruceType, Vec<Box<DecoratedAst>>),
     StdInclude,
@@ -206,6 +207,13 @@ impl DecoratedAst {
         Box::new(Self {
             token,
             data: DecoratedAstData::ParameterList(parameters),
+        })
+    }
+
+    pub fn new_defer(token: Token, count: u32, expression: Box<DecoratedAst>) -> Box<Self> {
+        Box::new(Self {
+            token,
+            data: DecoratedAstData::Defer(count, expression),
         })
     }
 

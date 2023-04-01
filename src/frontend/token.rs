@@ -34,16 +34,6 @@ impl Span {
 
         self.slice_source() == other.slice_source()
     }
-
-    pub fn compare_str(&self, string: &str) -> bool {
-        let aend = self.start + self.len;
-
-        if aend >= self.source.content.len() || string.len() >= self.source.content.len() {
-            return false;
-        }
-
-        self.slice_source() == string
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -63,7 +53,7 @@ pub enum TokenKind {
     // Literal types
     Int, Float, String, True, False, None,
     
-    If, Else, For, Val, Var,
+    If, Else, For, Val, Var, Defer,
     Do, While, Include, Switch,
     Function, Struct, Is, Return,
     Ensure, Identifier, And, Or,

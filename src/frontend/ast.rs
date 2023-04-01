@@ -62,6 +62,7 @@ pub enum AstData {
     SwitchStatement { condition: Box<Ast>, cases: Vec<Box<Ast>> },
     SwitchCase { case: Option<Box<Ast>>, body: Box<Ast> },
 
+    Defer(Box<Ast>),
     Return(Option<Box<Ast>>),
     Body(Vec<Box<Ast>>),
     StdInclude,
@@ -209,6 +210,13 @@ impl Ast {
         Box::new(Self {
             token,
             data: AstData::Parameter { type_name },
+        })
+    }
+
+    pub fn new_defer(token: Token, expression: Box<Ast>) -> Box<Self> {
+        Box::new(Self {
+            token,
+            data: AstData::Defer(expression),
         })
     }
 

@@ -276,9 +276,9 @@ impl Compiler {
             self.output_code.push_str(" (");
             self.visit(condition)?;
             self.output_code.push_str(") ? ");
-            self.wrap_in_lambda(true_body)?;
+            self.wrap_in_lambda_call(true_body)?;
             self.output_code.push_str(" : ");
-            self.wrap_in_lambda(false_body.as_ref().unwrap())?;
+            self.wrap_in_lambda_call(false_body.as_ref().unwrap())?;
         } else {
             self.output_code.push_str(&format!(
                 "{}if (",
@@ -307,9 +307,9 @@ impl Compiler {
         self.output_code.push('(');
         self.visit(condition)?;
         self.output_code.push_str(") ? ");
-        self.wrap_in_lambda(true_body)?;
+        self.wrap_in_lambda_call(true_body)?;
         self.output_code.push_str(" : ");
-        self.wrap_in_lambda(false_body)?;
+        self.wrap_in_lambda_call(false_body)?;
 
         Ok(())
     }
@@ -339,6 +339,18 @@ impl Compiler {
         self.output_code.push_str(") ");
 
         self.visit(body)?;
+        Ok(())
+    }
+
+    fn do_while_statement(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+        let DecoratedAstData::DoWhileStatement { body, condition } = &node.data else { unreachable!() };
+
+        self.output_code.push_str(&format!("{}do ", self.tab_string()));
+        self.visit(body)?;
+
+        self.output_code.push_str(" while (");
+        self.visit(condition)?;
+        self.output_code.push_str(");\n");
         Ok(())
     }
 
@@ -433,12 +445,29 @@ impl Compiler {
             self.output_code.push_str("return ");
 
             match expr.data {
-                DecoratedAstData::Body(_, _) => self.wrap_in_lambda(expr)?,
+                DecoratedAstData::Body(_, _) => self.wrap_in_lambda_call(expr)?,
                 _ => self.visit(expr)?,
             }
         }
 
         self.output_code.push_str(";\n");
+        Ok(())
+    }
+
+    fn defer(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+        let DecoratedAstData::Defer(count, expression) = &node.data else { unreachable!() };
+
+        self.output_code.push_str(&format!(
+            "{}using var __spruce_defer_{} = new {}.Deferable(",
+            self.tab_string(),
+            count,
+            SPRUCE_PRE,
+        ));
+
+        self.wrap_in_lambda(expression)?;
+
+        self.output_code.push_str(");\n");
+
         Ok(())
     }
 
@@ -500,12 +529,14 @@ impl Compiler {
             DecoratedAstData::IfStatement {..} => self.if_statement(node)?,
             DecoratedAstData::Ternary {..} => self.terary_expression(node)?,
             DecoratedAstData::ForStatement {..} => self.for_statement(node)?,
+            DecoratedAstData::DoWhileStatement {..} => self.do_while_statement(node)?,
             DecoratedAstData::Body(_, _) => self.body(node)?,
             DecoratedAstData::Function {..} => self.function(node)?,
             DecoratedAstData::ParameterList(_) => self.parameter_list(node)?,
             DecoratedAstData::Parameter(_) => self.parameter(node)?,
             DecoratedAstData::ExpressionStatement(_, _, _) => self.expression_statement(node)?,
 
+            DecoratedAstData::Defer(_, _) => self.defer(node)?,
             DecoratedAstData::Return(_, _) => self.return_statement(node)?,
             DecoratedAstData::Program {..} => self.program(node)?,
             DecoratedAstData::Comment => self.comment(node)?,
@@ -521,27 +552,41 @@ impl Compiler {
     }
 
     fn wrap_in_lambda(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
-        self.output_code.push_str(&format!(
-            "((Func<{}>)(() => ",
-            Compiler::as_cs_type(match &node.data {
-                DecoratedAstData::BinaryOp { kind, .. } => kind,
-                DecoratedAstData::UnaryOp { kind, .. } => kind,
-                DecoratedAstData::LogicalOp { kind, .. } => kind,
-                DecoratedAstData::Body(kind, _) => kind,
-                DecoratedAstData::Literal(kind, _) => kind,
-                DecoratedAstData::ListLiteral(kind, _) => kind,
-                DecoratedAstData::IfStatement { kind, .. } => kind,
-                DecoratedAstData::Ternary { kind, .. } => kind,
-                _ => return Err(SpruceErr::new(format!(
-                        "Cannot cast node '{:#?}' to type",
-                        node.data,
-                    ),
-                    SpruceErrData::Compiler { file_path: self.source.file_path.to_string() },
-                )),
-            })
-        ));
+        let kind = Compiler::as_cs_type(match &node.data {
+            DecoratedAstData::BinaryOp { kind, .. } => kind,
+            DecoratedAstData::UnaryOp { kind, .. } => kind,
+            DecoratedAstData::LogicalOp { kind, .. } => kind,
+            DecoratedAstData::Body(kind, _) => kind,
+            DecoratedAstData::Literal(kind, _) => kind,
+            DecoratedAstData::ListLiteral(kind, _) => kind,
+            DecoratedAstData::IfStatement { kind, .. } => kind,
+            DecoratedAstData::Ternary { kind, .. } => kind,
+            _ => return Err(SpruceErr::new(format!(
+                    "Cannot cast node '{:#?}' to type",
+                    node.data,
+                ),
+                SpruceErrData::Compiler { file_path: self.source.file_path.to_string() },
+            )),
+        });
+
+        if &kind == "void" {
+            self.output_code.push_str(
+                "((Action)(() => ",
+            );
+        } else {
+            self.output_code.push_str(&format!(
+                "((Func<{kind}>)(() => ",
+            ));
+        }
+
         self.visit(node)?;
-        self.output_code.push_str("))()");
+        self.output_code.push_str("))");
+        Ok(())
+    }
+
+    fn wrap_in_lambda_call(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+        self.wrap_in_lambda(node)?;
+        self.output_code.push_str("()");
         Ok(())
     }
 
