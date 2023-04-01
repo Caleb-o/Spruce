@@ -7,17 +7,19 @@ use super::{token::{Span, Token}, symtable::SymTable, symbols::Symbols, ast::{As
 #[derive(Debug, Clone)]
 pub enum FunctionSignatureKind {
     User {
-        parameters: Option<Vec<(Span, Span)>>,
-        return_id: Option<Span>,
+        parameters: Option<Vec<Box<Ast>>>,
+        return_id: Option<Box<Ast>>,
     },
     Native,
 }
 
+#[derive(Debug, Clone)]
 pub struct FunctionSignature {
     pub identifier: String,
     pub kind: FunctionSignatureKind,
 }
 
+#[derive(Debug, Clone)]
 pub struct ResolutionTable {
     pub symbol_values: Symbols,
     pub signatures: Vec<FunctionSignature>,
@@ -44,7 +46,7 @@ pub struct NameResolver {
     args: RunArgs,
     table: SymTable,
     unresolved: Vec<LookAhead>,
-    res_table: Rc<ResolutionTable>,
+    res_table: Box<ResolutionTable>,
 }
 
 impl NameResolver {
@@ -55,12 +57,14 @@ impl NameResolver {
             args,
             table: SymTable::new(),
             unresolved: Vec::new(),
-            res_table: Rc::new(ResolutionTable::new()),
+            res_table: Box::new(ResolutionTable::new()),
         }
     }
 
-    pub fn run(&mut self, program: &Box<Ast>) -> Result<Rc<ResolutionTable>, SpruceErr> {
+    pub fn run(&mut self, program: &Box<Ast>) -> Result<Box<ResolutionTable>, SpruceErr> {
         nativefns::register_native_functions_ids(self);
+
+        self.visit(program)?;
 
         // Try to resolve calls that were not during compilation
         self.resolve_function_calls();
@@ -69,7 +73,7 @@ impl NameResolver {
             return Err(self.error("Error(s) occured".into()));
         }
         
-        Ok(Rc::clone(&self.res_table))
+        Ok(self.res_table.clone())
     }
 
     #[inline]
@@ -124,7 +128,7 @@ impl NameResolver {
     }
 
     fn find_function_str(&self, id: &str) -> Option<()> {
-        for func in self.res_table.signatures {
+        for func in &self.res_table.signatures {
             if func.identifier.as_str() == id {
                 return Some(());
             }
@@ -159,9 +163,9 @@ impl NameResolver {
     fn resolve_function_calls(&mut self) {
         let mut unresolved = Vec::new();
 
-        for lookahead in self.unresolved {
+        for lookahead in &self.unresolved {
             match self.find_function(&lookahead.token.span) {
-                Some(func) => {}
+                Some(_) => {}
                 None => unresolved.push((lookahead.token.clone(), lookahead.args.clone())),
             }
         }
@@ -211,10 +215,10 @@ impl NameResolver {
         let identifier = &node.token;
 
         match self.table.find_local(&identifier.span, true) {
-            Some(local) => {},
+            Some(_) => {},
             None => {
                 match self.find_function(&identifier.span) {
-                    Some(f) => {},
+                    Some(_) => {},
                     None => self.error_no_exit(format!(
                             "Identifier '{}' does not exist in the current context",
                             identifier.span.slice_source(),
@@ -247,7 +251,7 @@ impl NameResolver {
     }
 
     fn var_declaration(&mut self, var_decl: &Box<Ast>) -> Result<(), SpruceErr> {
-        let AstData::VarDeclaration { is_mutable, kind, expression } = &var_decl.data else { unreachable!() };
+        let AstData::VarDeclaration { is_mutable, kind: _, expression } = &var_decl.data else { unreachable!() };
         let identifier = &var_decl.token;
         
         if !is_mutable && expression.is_none() {
@@ -308,7 +312,7 @@ impl NameResolver {
         self.visit(&expression)?;
 
         match self.table.find_local(&identifier.span, true) {
-            Some(local) => {},
+            Some(_) => {},
             None => self.error_no_exit(format!(
                     "Cannot assign to variable '{}' as it does not exist or is not in the correct context",
                     identifier.span.slice_source(),
@@ -321,13 +325,13 @@ impl NameResolver {
     }
 
     fn var_assign_equal(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
-        let AstData::VarAssignEqual { operator, lhs, expression } = &node.data else { unreachable!() };
+        let AstData::VarAssignEqual { operator: _, lhs, expression } = &node.data else { unreachable!() };
 
         self.visit(&lhs)?;
         self.visit(&expression)?;
 
         match self.table.find_local(&node.token.span, true) {
-            Some(local) => {}
+            Some(_) => {}
             None => self.error_no_exit(format!(
                     "Cannot assign to variable '{}' as it does not exist or is not in the correct context",
                     node.token.span.slice_source(),
@@ -442,18 +446,17 @@ impl NameResolver {
         &mut self,
         token: Token,
         parameters: &Option<Vec<Box<Ast>>>,
-    ) -> Result<Option<Vec<(Span, Span)>>, SpruceErr> {
+    ) -> Result<Option<Vec<Box<Ast>>>, SpruceErr> {
         // Register locals from parameters
         if let Some(parameters) = parameters {
             let mut out = Vec::new();
             for param in parameters {
                 let AstData::Parameter { type_name } = &param.data else { unreachable!("{:#?}", param.data) };
+                self.get_type_from_ast(type_name)?;
+                
                 self.register_local(&param.token, false);
-
-                out.push((
-                    param.token.span.clone(),
-                    type_name.token.span.clone(),
-                ));
+                // Kinda gross here, might need to use Rc instead of box
+                out.push(param.clone());
             }
             return Ok(Some(out));
         }
@@ -469,17 +472,16 @@ impl NameResolver {
             self.visit(return_type)?;
         }
         
-        let parameters = if *anonymous {
+        if *anonymous {
             self.push_scope();
             self.table.mark_depth_limit();
             self.evaluate_params(identifier.clone(), parameters)?;
-            parameters
         } else {
             let params = self.evaluate_params(identifier.clone(), parameters)?;
             
             if self.table.is_global() {
                 self.register_function(identifier, params, match return_type {
-                    Some(ret) => Some(ret.token.span.clone()),
+                    Some(ret) => Some(ret.clone()),
                     None => None,
                 })?;
             } else {
@@ -490,11 +492,9 @@ impl NameResolver {
             if !self.table.is_global() {
                 self.table.mark_depth_limit();
             }
-
-            parameters
         };
         
-        let body_ast = match &body.data {
+        match &body.data {
             AstData::Return(_) => self.return_statement(body)?,
             AstData::Body(_) => self.body(body, false)?,
             _ => unreachable!("BODY AST"),
@@ -517,7 +517,7 @@ impl NameResolver {
     }
 
     fn program(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
-        let AstData::Program { source, body } = &node.data else { unreachable!() };
+        let AstData::Program { source: _, body } = &node.data else { unreachable!() };
         let mut statements = Vec::new();
 
         for item in body {
@@ -563,8 +563,8 @@ impl NameResolver {
     fn register_function(
         &mut self,
         identifier: &Token,
-        parameters: Option<Vec<(Span, Span)>>,
-        return_id: Option<Span>,
+        parameters: Option<Vec<Box<Ast>>>,
+        return_id: Option<Box<Ast>>,
     ) -> Result<(), SpruceErr>
     {
         // Function already exists
@@ -576,10 +576,7 @@ impl NameResolver {
                 ),
                 &identifier
             );
-            return Err(self.error(format!(
-                "Function with identifier '{}' already exists",
-                identifier.span.slice_source()
-            )));
+            return Ok(());
         }
 
         self.register_local(&identifier, false);

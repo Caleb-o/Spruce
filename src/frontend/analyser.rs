@@ -2,13 +2,7 @@ use std::{rc::Rc, mem::discriminant};
 
 use crate::{source::Source, RunArgs, error::{SpruceErr, SpruceErrData}, nativefns::{self, ParamKind}, object::Object};
 
-use super::{token::{Token, Span, TokenKind}, functiondata::{Function, FunctionMeta}, symbols::Symbols, symtable::SymTable, environment::{ConstantValue}, ast::{Ast, AstData, TypeKind}, decorated_ast::{DecoratedAst, DecoratedAstData, FunctionType}, sprucetype::SpruceType, name_resolution::ResolutionTable};
-
-#[derive(Debug, Clone)]
-struct LookAhead {
-    token: Token,
-    args: Vec<SpruceType>,
-}
+use super::{token::{Token, Span, TokenKind}, functiondata::{Function, FunctionMeta}, symbols::Symbols, environment::{ConstantValue}, ast::{Ast, AstData, TypeKind}, decorated_ast::{DecoratedAst, DecoratedAstData, FunctionType}, sprucetype::SpruceType, name_resolution::{ResolutionTable, FunctionSignatureKind}, symtable::SymTable};
 
 enum ScopeType {
     None, Function,
@@ -18,23 +12,23 @@ pub struct Analyser {
     had_error: bool,
     source: Rc<Source>,
     args: RunArgs,
-    unresolved: Vec<LookAhead>,
     constants: Vec<ConstantValue>,
     functable: Vec<FunctionMeta>, // Type resolved table
-    res_table: Rc<ResolutionTable>,
+    table: SymTable,
+    res_table: Box<ResolutionTable>,
     last_return: bool,
     scope_type: ScopeType,
 }
 
 impl Analyser {
-    pub fn new(source: Rc<Source>, args: RunArgs, res_table: Rc<ResolutionTable>) -> Self {
+    pub fn new(source: Rc<Source>, args: RunArgs, res_table: Box<ResolutionTable>) -> Self {
         Self {
             had_error: false,
             source,
             args,
-            unresolved: Vec::new(),
             constants: Vec::new(),
             functable: Vec::new(),
+            table: SymTable::new(),
             res_table,
             last_return: false,
             scope_type: ScopeType::None,
@@ -43,6 +37,8 @@ impl Analyser {
 
     pub fn run(&mut self, program: &Box<Ast>) -> Result<(Box<DecoratedAst>, Symbols), SpruceErr> {
         nativefns::register_native_functions(self);
+
+        self.register_all_functions()?;
         
         let program = self.visit(program)?;
 
@@ -51,14 +47,12 @@ impl Analyser {
             None => return Err(self.error("Cannot find function 'main'".into())),
         }
 
-        // Try to resolve calls that were not during compilation
-        self.resolve_function_calls();
-
         if self.had_error {
             return Err(self.error("Error(s) occured".into()));
         }
 
-        Ok((program, self.symbol_values.clone()))
+        let ResolutionTable { symbol_values, .. } = &*self.res_table;
+        Ok((program, symbol_values.clone()))
     }
 
     pub fn add_native_fn(
@@ -75,6 +69,37 @@ impl Analyser {
 
         // Add to function table
         self.add_function(identifier.to_string(), function);
+    }
+
+    fn register_all_functions(&mut self) -> Result<(), SpruceErr> {
+        let signatures = self.res_table.signatures.clone();
+
+        for func in signatures.into_iter() {
+            if let FunctionSignatureKind::User { parameters, return_id } = &func.kind {
+
+                let param_types = if let Some(parameters) = parameters {
+                    let mut inner = Vec::new();
+                    for item in parameters {
+                        inner.push(self.get_type_from_ast(item)?);
+                    }
+
+                    Some(inner)
+                } else { None };
+
+                let return_type = match return_id {
+                    Some(return_id) => self.get_type_from_ast(return_id)?,
+                    None => SpruceType::None,
+                };
+
+                self.add_function(func.identifier.clone(), Function::User {
+                    param_types,
+                    return_type,
+                    empty: false,
+                })
+            }
+        }
+
+        Ok(())
     }
 
     #[inline]
@@ -104,88 +129,20 @@ impl Analyser {
             }
         }
     }
+
+    #[inline]
+    fn push_scope(&mut self) {
+        self.table.new_scope();
+    }
+
+    #[inline]
+    fn pop_scope(&mut self) {
+        self.table.close_scope();
+    }
     
     #[inline]
     fn error(&mut self, message: String) -> SpruceErr {
         SpruceErr::new(message, SpruceErrData::Analyser { file_path: (*self.source.file_path).clone() })
-    }
-
-    fn resolve_function_calls(&mut self) {
-        let mut unresolved = Vec::new();
-
-        for lookahead in self.unresolved.iter() {
-            match self.find_function(&lookahead.token.span) {
-                Some(func) => {
-                    // Cannot resolve native calls, since they're part of the compiler
-                    if let Function::User { param_types, empty, .. } = &func.function {
-                        // Generate the function if it is not empty
-                        if *empty {
-                            self.warning(format!(
-                                    "Calling empty function '{}'",
-                                    lookahead.token.span.slice_source()
-                                ),
-                                &lookahead.token
-                            );
-                        }
-
-                        let is_any = match param_types {
-                            Some(parameters) => {
-                                if parameters.len() == 1 {
-                                    parameters[0].is_same(&SpruceType::Any)
-                                } else {
-                                    false
-                                }
-                            }
-                            None => false,
-                        };
-
-                        if !is_any {
-                            let param_c = match param_types { Some(p) => p.len(), _ => 0};
-                            if param_c != lookahead.args.len() {
-                                println!(
-                                    "Wrong count of args '{}' {} / {}",
-                                    lookahead.token.span.slice_source(),
-                                    lookahead.args.len(),
-                                    param_c,
-                                );
-                                unresolved.push((lookahead.token.clone(), lookahead.args.clone()));
-                            }
-                        }
-
-                        for (idx, arg) in lookahead.args.iter().enumerate() {
-                            if !is_any {
-                                if let Some(parameters) = &param_types {
-                                    if idx < parameters.len() && !arg.is_same(&parameters[idx]) {
-                                        println!(
-                                            "Wrong type of arg at {idx} for '{}' of {} - {:?} {:?}",
-                                            lookahead.token.span.slice_source(),
-                                            parameters.len(),
-                                            arg,
-                                            parameters[idx],
-                                        );
-                                        unresolved.push((lookahead.token.clone(), lookahead.args.clone()));
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                None => unresolved.push((lookahead.token.clone(), lookahead.args.clone())),
-            }
-        }
-
-        // Identifiers that were still not found
-        // TODO: Print function signature
-        for (token, _args) in unresolved {
-            self.error_no_exit(format!(
-                    "Function '{}' does not exist",
-                    token.span.slice_source(),
-                ),
-                &token
-            );
-        }
     }
 
     fn error_no_exit(&mut self, msg: String, token: &Token) {
@@ -193,16 +150,6 @@ impl Analyser {
 
         println!("{}", format!(
             "[\x1b[31mError\x1b[0m] {} - '{}' [{}:{}]",
-            msg,
-            token.span.source.file_path,
-            token.line,
-            token.column,
-        ));
-    }
-
-    fn warning(&self, msg: String, token: &Token) {
-        println!("{}", format!(
-            "[\x1b[33mWarning\x1b[0m] {} '{}' [{}:{}]",
             msg,
             token.span.source.file_path,
             token.line,
@@ -250,23 +197,6 @@ impl Analyser {
         return_type: Box<SpruceType>,
     ) -> Result<(), SpruceErr>
     {
-        let func = self.find_function(&identifier.span);
-
-        // Function already exists
-        if func.is_some() {
-            self.error_no_exit(
-                format!(
-                    "Function with identifier '{}' already exists",
-                    identifier.span.slice_source()
-                ),
-                &identifier
-            );
-            return Err(self.error(format!(
-                "Function with identifier '{}' already exists",
-                identifier.span.slice_source()
-        )));
-        }
-
         self.register_local(&identifier, false, SpruceType::Function {
             is_native: false,
             parameters: parameters.clone(),
@@ -386,7 +316,7 @@ impl Analyser {
 
     fn symbol_literal(&mut self, node: &Box<Ast>) -> Box<DecoratedAst> {
         let AstData::SymbolLiteral = &node.data else { unreachable!() };
-        let index = self.symbol_values.find_or_add(&node.token.span);
+        let index = self.res_table.symbol_values.find_or_add(&node.token.span);
 
         DecoratedAst::new_symbol(node.token.clone(), index)
     }
@@ -937,7 +867,10 @@ impl Analyser {
                     None => {
                         match self.find_function(&lhs.token.span) {
                             Some(f) => f.function.to_type(),
-                            None => SpruceType::Unresolved,
+                            None => return Err(self.error(format!(
+                                "Cannot call non-function '{}'",
+                                lhs.token.span.slice_source(),
+                            )))
                         }
                     }
                 };
@@ -1027,13 +960,6 @@ impl Analyser {
                     }
                 }
             }
-        }
-
-        if function.is_same(&SpruceType::Unresolved) {
-            self.unresolved.push(LookAhead {
-                token: lhs.token.clone(),
-                args: args_kind,
-            });
         }
 
         Ok(DecoratedAst::new_function_call(lhs.token.clone(), match function {

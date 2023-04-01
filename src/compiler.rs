@@ -2,6 +2,8 @@ use std::{rc::Rc, fs};
 
 use crate::{source::Source, frontend::{decorated_ast::{DecoratedAst, DecoratedAstData, FunctionType}, sprucetype::SpruceType, token::TokenKind, symbols::Symbols}, error::{SpruceErr, SpruceErrData}};
 
+const SPRUCE_PRE: &'static str = "SprucePrelude";
+
 pub struct Compiler {
     source: Rc<Source>,
     depth: u32,
@@ -181,10 +183,7 @@ impl Compiler {
                 if *is_native {
                     let identifier = node.token.span.slice_source();
                     let identifier = identifier[0..1].to_uppercase() + &identifier[1..];
-                    self.output_code.push_str(&format!(
-                        "Prelude.{}",
-                        identifier,
-                    ));
+                    self.output_code.push_str(&format!("{SPRUCE_PRE}.{identifier}"));
                 } else {
                     self.output_code.push_str(node.token.span.slice_source());
                 }

@@ -4,13 +4,13 @@ use crate::source::Source;
 
 use super::token::Token;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Ast {
     pub token: Token,
     pub data: AstData,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum TypeKind {
     Standard,
     Tuple(Vec<Box<Ast>>),
@@ -21,7 +21,7 @@ pub enum TypeKind {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum AstData {
     Identifier,
     Literal,

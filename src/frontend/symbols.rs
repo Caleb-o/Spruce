@@ -1,6 +1,6 @@
 use super::token::Span;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Symbols {
     table: Vec<Span>,
 }
