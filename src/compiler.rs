@@ -1,23 +1,30 @@
-use std::{rc::Rc, fs};
+use std::{rc::Rc, fs::{self, File}, path::Path, io::Write};
 
 use crate::{source::Source, frontend::{decorated_ast::{DecoratedAst, DecoratedAstData, FunctionType}, sprucetype::SpruceType, token::TokenKind, symbols::Symbols}, error::{SpruceErr, SpruceErrData}};
 
 const SPRUCE_PRE: &'static str = "SprucePrelude";
+const BYTES_BEFORE_WRITE: usize = 1024 * 1024;
 
 pub struct Compiler {
     source: Rc<Source>,
     depth: u32,
     symbols: Symbols,
+    file: File,
     output_code: String,
 }
 
 impl Compiler {
     pub fn new(source: Rc<Source>, symbols: Symbols) -> Self {
+        if Path::new("out.cs").exists() {
+            fs::remove_file("out.cs").unwrap();
+        }
+
         Self {
             source,
             depth: 0,
             symbols,
-            output_code: String::new(),
+            file: fs::OpenOptions::new().append(true).create(true).open("out.cs").unwrap(),
+            output_code: String::with_capacity(BYTES_BEFORE_WRITE),
         }
     }
 
@@ -548,6 +555,11 @@ impl Compiler {
             ))),
         }
 
+        if self.output_code.len() >= BYTES_BEFORE_WRITE {
+            write!(self.file, "{}", &self.output_code).unwrap();
+            self.output_code.clear();
+        }
+
         Ok(())
     }
 
@@ -561,6 +573,7 @@ impl Compiler {
             DecoratedAstData::ListLiteral(kind, _) => kind,
             DecoratedAstData::IfStatement { kind, .. } => kind,
             DecoratedAstData::Ternary { kind, .. } => kind,
+            DecoratedAstData::FunctionCall { kind, .. } => kind,
             _ => return Err(SpruceErr::new(format!(
                     "Cannot cast node '{:#?}' to type",
                     node.data,
