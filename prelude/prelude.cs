@@ -2,7 +2,7 @@ using System;
 using System.Text;
 using System.Collections.Generic;
 
-namespace Application;
+namespace Application {
 
 public static class SprucePrelude {
     public sealed class Defer : IDisposable {
@@ -13,19 +13,22 @@ public static class SprucePrelude {
 
     public sealed class Lazy<T> {
         Func<T> _func;
+        bool calculated;
         T _result;
 
         public Lazy(Func<T> func) {
             _func = func;
-            _result = null;
+            calculated = false;
+            _result = default(T);
         }
 
         public T Get() {
             // Calculate result if it hasn't already been
-            if (_result == null) {
+            if (!calculated) {
                 _result = _func();
                 // Free the function
                 _func = null;
+                calculated = true;
             }
 
             return _result;
@@ -41,4 +44,5 @@ public static class SprucePrelude {
 
         Console.WriteLine(sb.ToString());
     }
+}
 }

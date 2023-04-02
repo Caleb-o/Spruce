@@ -88,6 +88,7 @@ impl Compiler {
         self.output_code.push_str(&fs::read_to_string("prelude/prelude.cs").unwrap());
         self.output_code.push_str("\n\n");
         self.generate_symbol_enum();
+        self.output_code.push_str("namespace Application\n{\n");
         self.output_code.push_str("sealed class Program\n{\n");
         
         self.indent();
@@ -100,7 +101,7 @@ impl Compiler {
         ));
         self.dedent();
 
-        self.output_code.push_str("}\n");
+        self.output_code.push_str("}\n}");
         Ok(())
     }
 
@@ -523,12 +524,7 @@ impl Compiler {
     fn lazy(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::Lazy(expression) = &node.data else { unreachable!() };
 
-        self.output_code.push_str(&format!(
-            "new {}.Lazy<{}>(",
-            SPRUCE_PRE,
-            self.get_type_from_ast(expression)?,
-        ));
-
+        self.output_code.push_str("new(");
         self.wrap_in_lambda(expression)?;
         self.output_code.push(')');
 
@@ -717,7 +713,11 @@ impl Compiler {
                 format!("List<{}>", Compiler::as_cs_type(inner))
             }
             SpruceType::Lazy(inner) => {
-                format!("Lazy<{}>", Compiler::as_cs_type(inner))
+                format!(
+                    "{}.Lazy<{}>",
+                    SPRUCE_PRE,
+                    Compiler::as_cs_type(inner)
+                )
             }
             SpruceType::Function { is_native: _, parameters, return_type } => {
                 let mut string = String::from("Func<");
