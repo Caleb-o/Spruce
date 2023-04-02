@@ -289,6 +289,46 @@ impl Compiler {
         Ok(())
     }
 
+    fn struct_definition(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+        let DecoratedAstData::StructDefinition { is_ref, items, .. } = &node.data else { unreachable!() };
+
+        self.output_code.push_str(&format!(
+            "{}{} {} {{\n",
+            self.tab_string(),
+            if *is_ref { "sealed class" } else { "struct" },
+            node.token.span.slice_source(),
+        ));
+
+        self.indent();
+
+        if let Some(items) = items {
+            for item in items {
+                if let DecoratedAstData::Parameter(_) = &item.data {
+                    self.output_code.push_str(&self.tab_string());
+                    self.visit(item)?;
+                    self.output_code.push_str(";\n");
+                } else {
+                    self.visit(item)?;
+                }
+            }
+
+            if items.len() > 0 {
+                if let DecoratedAstData::Function {..} = &items.last().unwrap().data {
+                    self.output_code.pop();
+                }
+            }
+        }
+
+        self.dedent();
+
+        self.output_code.push_str(&format!(
+            "{}}}\n\n",
+            self.tab_string(),
+        ));
+
+        Ok(())
+    }
+
     fn if_statement(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::IfStatement { is_expression, condition, kind: _, true_body, false_body } = &node.data else { unreachable!() };
 
@@ -602,6 +642,8 @@ impl Compiler {
             DecoratedAstData::VarAssign {..} => self.var_assign(node)?,
             DecoratedAstData::VarAssignEqual {..} => self.var_assign_equal(node)?,
             DecoratedAstData::FunctionCall {..} => self.function_call(node)?,
+
+            DecoratedAstData::StructDefinition {..} => self.struct_definition(node)?,
 
             DecoratedAstData::IfStatement {..} => self.if_statement(node)?,
             DecoratedAstData::Ternary {..} => self.terary_expression(node)?,

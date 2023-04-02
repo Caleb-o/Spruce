@@ -48,6 +48,9 @@ pub enum AstData {
     VarAssignEqual { operator: Token, lhs: Box<Ast>, expression: Box<Ast> },
     Type { kind: TypeKind },
 
+    TypeDefinition { inner: Box<Ast> },
+    StructDefinition { is_ref: bool, items: Option<Vec<Box<Ast>>> },
+
     Ternary { condition: Box<Ast>, true_body: Box<Ast>, false_body: Box<Ast> },
     IfStatement { is_expression: bool, condition: Box<Ast>, true_body: Box<Ast>, false_body: Option<Box<Ast>> },
     ForStatement { variable: Option<Box<Ast>>, condition: Box<Ast>, increment: Option<Box<Ast>>, body: Box<Ast> },
@@ -185,6 +188,20 @@ impl Ast {
         Box::new(Self {
             token,
             data: AstData::Type { kind },
+        })
+    }
+
+    pub fn new_type_definition(token: Token, inner: Box<Ast>) -> Box<Self> {
+        Box::new(Self {
+            token,
+            data: AstData::TypeDefinition { inner },
+        })
+    }
+
+    pub fn new_struct_definition(token: Token, is_ref: bool, items: Option<Vec<Box<Ast>>>) -> Box<Self> {
+        Box::new(Self {
+            token,
+            data: AstData::StructDefinition { is_ref, items },
         })
     }
 

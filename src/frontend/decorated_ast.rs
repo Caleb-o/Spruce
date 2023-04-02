@@ -42,6 +42,9 @@ pub enum DecoratedAstData {
     VarAssignEqual { operator: Token, lhs: Box<DecoratedAst>, expression: Box<DecoratedAst> },
     Type(SpruceType),
 
+    TypeDefinition { inner: Box<DecoratedAst> },
+    StructDefinition { kind: SpruceType, is_ref: bool, items: Option<Vec<Box<DecoratedAst>>> },
+
     Ternary { condition: Box<DecoratedAst>, kind: SpruceType, true_body: Box<DecoratedAst>, false_body: Box<DecoratedAst> },
     IfStatement { is_expression: bool, condition: Box<DecoratedAst>, kind: SpruceType, true_body: Box<DecoratedAst>, false_body: Option<Box<DecoratedAst>> },
     ForStatement { variable: Option<Box<DecoratedAst>>, condition: Box<DecoratedAst>, increment: Option<Box<DecoratedAst>>, body: Box<DecoratedAst> },
@@ -234,6 +237,20 @@ impl DecoratedAst {
         Box::new(Self {
             token,
             data: DecoratedAstData::Type(kind),
+        })
+    }
+
+    pub fn new_type_definition(token: Token, inner: Box<DecoratedAst>) -> Box<Self> {
+        Box::new(Self {
+            token,
+            data: DecoratedAstData::TypeDefinition { inner },
+        })
+    }
+
+    pub fn new_struct_definition(token: Token, kind: SpruceType, is_ref: bool, items: Option<Vec<Box<DecoratedAst>>>) -> Box<Self> {
+        Box::new(Self {
+            token,
+            data: DecoratedAstData::StructDefinition { kind, is_ref, items },
         })
     }
 

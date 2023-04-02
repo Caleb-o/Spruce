@@ -55,8 +55,9 @@ pub enum TokenKind {
     
     If, Else, For, Val, Var, Defer,
     Do, While, Include, Switch, Lazy,
-    Function, Struct, Is, Return,
-    Ensure, Identifier, And, Or,
+    Function, Struct, Return,
+    Identifier, And, Or, Type, Ref,
+    
     
     Comment,
     EndOfFile,

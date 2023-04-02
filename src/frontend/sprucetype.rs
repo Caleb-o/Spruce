@@ -1,5 +1,7 @@
 use std::{mem::discriminant, fmt::Display};
 
+use super::token::Span;
+
 #[derive(Debug, Clone)]
 pub enum SpruceType {
     Error,
@@ -18,6 +20,12 @@ pub enum SpruceType {
         is_native: bool,
         parameters: Option<Vec<Box<SpruceType>>>,
         return_type: Box<SpruceType>,
+    },
+    Struct {
+        is_ref: bool,
+        identifier: Span,
+        fields: Option<Vec<(Span, Box<SpruceType>)>>,
+        methods: Option<Vec<Box<SpruceType>>>,
     },
 }
 
@@ -98,6 +106,7 @@ impl SpruceType {
 
                 true
             }
+            Self::Struct { is_ref, identifier, fields, methods } => todo!(),
             _ => discriminant(self) == discriminant(other),
         }
     }
@@ -145,6 +154,7 @@ impl Display for SpruceType {
                 fnstr.push_str(&format!("): {}", return_type));
                 fnstr
             },
+            Self::Struct { is_ref, identifier, fields, methods } => todo!(),
             n @ _ => unimplemented!("{n:?}"),
         })
     }

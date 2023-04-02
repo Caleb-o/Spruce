@@ -1,4 +1,4 @@
-use std::{rc::Rc, mem::discriminant};
+use std::{rc::Rc, mem::discriminant, collections::HashSet};
 
 use crate::{source::Source, RunArgs, error::{SpruceErr, SpruceErrData}, nativefns::{self, ParamKind}, object::Object};
 
@@ -6,7 +6,7 @@ use super::{token::{Token, Span, TokenKind}, functiondata::{Function, FunctionMe
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ScopeType {
-    None, Function, Defer,
+    None, Function, Method, Defer,
 }
 
 pub struct Analyser {
@@ -693,6 +693,73 @@ impl Analyser {
         Ok(DecoratedAst::new_expr_statement(*is_statement, inner, kind))
     }
 
+    fn struct_definition(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+        let AstData::StructDefinition { is_ref, items } = &node.data else { unreachable!() };
+
+        self.push_scope();
+
+        let mut kind = SpruceType::Error;
+
+        let items = if items.is_some() {
+            let mut inner = Vec::new();
+
+            let mut field_names = HashSet::new();
+            let mut func_names = HashSet::new();
+
+            let mut field_types = Vec::new();
+            let mut func_types = Vec::new();
+
+            for item in items.as_ref().unwrap() {
+                match &item.data {
+                    AstData::Parameter { type_name } => {
+                        if !field_names.insert(item.token.span.slice_source()) {
+                            self.error_no_exit(format!(
+                                "Struct '{}' already contains field '{}'",
+                                node.token.span.slice_source(),
+                                item.token.span.slice_source(),
+                            ), &item.token);
+                        }
+
+                        let kind = self.get_type_from_ast(type_name)?;
+                        field_types.push((item.token.span.clone(), Box::new(kind.clone())));
+                        
+                        inner.push(DecoratedAst::new_parameter(item.token.clone(), kind));
+                    }
+                    AstData::Function {..} => {
+                        if !func_names.insert(item.token.span.slice_source()) {
+                            self.error_no_exit(format!(
+                                "Struct '{}' already contains method '{}'",
+                                node.token.span.slice_source(),
+                                item.token.span.slice_source(),
+                            ), &item.token);
+                        }
+
+                        let func = self.function(item, ScopeType::Method)?;
+                        func_types.push(Box::new(self.find_type_of(&func)?));
+                        inner.push(func);
+                    }
+                    _ => return Err(self.error(format!(
+                        "Unknown item in struct body {:#?}",
+                        item,
+                    )))
+                }
+            }
+
+            kind = SpruceType::Struct {
+                is_ref: *is_ref,
+                identifier: node.token.span.clone(),
+                fields: Some(field_types),
+                methods: Some(func_types),
+            };
+
+            Some(inner)
+        } else { None };
+
+        self.pop_scope();
+
+        Ok(DecoratedAst::new_struct_definition(node.token.clone(), kind, *is_ref, items))
+    } 
+
     fn type_id(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
         Ok(DecoratedAst::new_type(node.token.clone(), self.get_type_from_ast(&node)?))
     }
@@ -1057,11 +1124,11 @@ impl Analyser {
         }
     }
 
-    fn function(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn function(&mut self, node: &Box<Ast>, scope_kind: ScopeType) -> Result<Box<DecoratedAst>, SpruceErr> {
         let AstData::Function { anonymous, parameters, return_type, body } = &node.data else { unreachable!() };
         let identifier = &node.token;
 
-        let prev = self.push_scope_type(ScopeType::Function);
+        let prev = self.push_scope_type(scope_kind);
         
         let return_type = match *return_type {
             Some(ref return_) => {
@@ -1194,7 +1261,7 @@ impl Analyser {
     }
 
     fn visit(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
-        Ok(match node.data {
+        Ok(match &node.data {
             AstData::Literal => self.literal(node)?,
             AstData::TupleLiteral(_) => self.tuple_literal(node)?,
             AstData::ListLiteral(_) => self.list_literal(node)?,
@@ -1219,7 +1286,10 @@ impl Analyser {
             AstData::Body(_) => self.body(node, true)?,
             AstData::ExpressionStatement(_, _) => self.expr_statement(node)?,
 
-            AstData::Function {..} => self.function(node)?,
+            AstData::TypeDefinition { inner } => self.visit(inner)?,
+            AstData::StructDefinition {..} => self.struct_definition(node)?,
+
+            AstData::Function {..} => self.function(node, ScopeType::Function)?,
             AstData::Lazy(_) => self.lazy(node)?,
             AstData::Defer(_) => self.defer(node)?,
             AstData::Return(_) => self.return_statement(node)?,
@@ -1258,7 +1328,8 @@ impl Analyser {
             DecoratedAstData::VarAssign { lhs, .. } => self.find_type_of(lhs)?,
             DecoratedAstData::VarAssignEqual { lhs, .. } => self.find_type_of(lhs)?,
             DecoratedAstData::Type(kind) => kind.clone(),
-            
+
+            DecoratedAstData::Parameter(kind) => kind.clone(),
             DecoratedAstData::Function { function_type, parameters, kind, .. } => {
                 if *function_type == FunctionType::Anonymous {
                     SpruceType::Function {
@@ -1343,6 +1414,7 @@ impl Analyser {
             },
             TypeKind::List(ref inner) => SpruceType::List(Box::new(self.get_type_from_ast(inner)?)),
             TypeKind::Lazy(inner) => SpruceType::Lazy(Box::new(self.get_type_from_ast(inner)?)),
+            // TypeKind::
             TypeKind::Function { parameters, return_type } => {
                 SpruceType::Function {
                     is_native: false,

@@ -861,6 +861,70 @@ impl Parser {
         Ok(Ast::new_var_decls(decls))
     }
 
+    fn struct_def(&mut self, identifier: Token) -> Result<Box<Ast>, SpruceErr> {
+        self.consume_here();
+
+        let is_ref = if self.current.kind == TokenKind::Ref {
+            self.consume_here();
+            true
+        } else { false };
+
+        self.consume(TokenKind::LCurly, "Expect '{' after struct")?;
+
+        let items = if self.current.kind != TokenKind::RCurly {
+            let mut items = Vec::new();
+
+            while self.current.kind != TokenKind::RCurly {
+                match self.current.kind {
+                    TokenKind::Function => {
+                        let func = self.function()?;
+                        if let AstData::Function { body, .. } = &func.data {
+                            if let AstData::Return(_) = &body.data {
+                                self.consume(TokenKind::SemiColon, "Expect ';' after function statement")?;
+                            }
+                        }
+                        items.push(func);
+                    }
+                    TokenKind::Identifier => {
+                        items.push(self.consume_parameter()?);
+                        self.consume(TokenKind::SemiColon, "Expect ';' after field statement")?;
+                    }
+                    TokenKind::Comment => {
+                        let current = self.current.clone();
+                        self.consume_here();
+                        items.push(Ast::new_comment(current));
+                    }
+                    _ => return Err(self.error(format!(
+                        "Unknown item in type definition scope {:?}",
+                        self.current.kind
+                    ))),
+                }
+            }
+
+            Some(items)
+        } else { None };
+
+        self.consume(TokenKind::RCurly, "Expect '}' after struct items")?;
+        
+        Ok(Ast::new_struct_definition(identifier, is_ref, items))
+    }
+
+    fn type_def(&mut self) -> Result<Box<Ast>, SpruceErr> {
+        self.consume_here();
+        let identifier = self.current.clone();
+        self.consume(TokenKind::Identifier, "Expect identifier after 'type'")?;
+
+        self.consume(TokenKind::Colon, "Expect ':' after type def identifier")?;
+
+        Ok(match self.current.kind {
+            TokenKind::Struct => self.struct_def(identifier)?,
+            _ => return Err(self.error(format!(
+                "Unexpected item after type def '{}'",
+                self.current.span.slice_source(),
+            )))
+        })
+    }
+
     fn outer_statements(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let token = self.current.clone();
         let mut statements = Vec::new();
@@ -884,6 +948,7 @@ impl Parser {
                     statements.push(self.var_declaration()?);
                     self.consume(TokenKind::SemiColon, "Expect ';' after variable statement")?;
                 }
+                TokenKind::Type => statements.push(self.type_def()?),
                 TokenKind::Comment => {
                     let current = self.current.clone();
                     self.consume_here();

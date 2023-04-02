@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{rc::Rc, collections::HashSet};
 
 use crate::{source::Source, RunArgs, error::{SpruceErr, SpruceErrData}, nativefns};
 
@@ -20,9 +20,18 @@ pub struct FunctionSignature {
 }
 
 #[derive(Debug, Clone)]
+pub struct StructSignature {
+    pub identifier: String,
+    pub is_ref: bool,
+    pub fields: Option<Vec<Box<Ast>>>,
+    pub functions: Option<Vec<FunctionSignatureKind>>,
+}
+
+#[derive(Debug, Clone)]
 pub struct ResolutionTable {
     pub symbol_values: Symbols,
     pub signatures: Vec<FunctionSignature>,
+    pub struct_types: Vec<StructSignature>,
 }
 
 impl ResolutionTable {
@@ -30,6 +39,7 @@ impl ResolutionTable {
         Self {
             symbol_values: Symbols::new(),
             signatures: Vec::new(),
+            struct_types: Vec::new(),
         }
     }
 }
@@ -337,20 +347,14 @@ impl NameResolver {
 
         match lhs.data {
             AstData::Identifier => {
-                match self.table.find_local(&lhs.token.span, true) {
-                    Some(local) => {},
-                    None => {
-                        match self.find_function(&lhs.token.span) {
-                            Some(f) => {},
-                            None => {
-                                self.unresolved.push(LookAhead {
-                                    token: lhs.token.clone(),
-                                    args: arguments.len() as u8,
-                                });
-                            },
-                        }
+                if let None = self.table.find_local(&lhs.token.span, true) {
+                    if let None = self.find_function(&lhs.token.span) {
+                        self.unresolved.push(LookAhead {
+                            token: lhs.token.clone(),
+                            args: arguments.len() as u8,
+                        });
                     }
-                };
+                }
             }
 
             _ => self.visit(lhs)?,
@@ -374,7 +378,7 @@ impl NameResolver {
     }
 
     fn if_statement(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
-        let AstData::IfStatement { is_expression, condition, true_body, false_body } = &node.data else { unreachable!() };
+        let AstData::IfStatement { condition, true_body, false_body, .. } = &node.data else { unreachable!() };
 
         self.visit(condition)?;
         self.visit(true_body)?;
@@ -442,14 +446,28 @@ impl NameResolver {
     #[inline]
     fn evaluate_params(
         &mut self,
+        function_name: &Token,
         parameters: &Option<Vec<Box<Ast>>>,
     ) -> Result<Option<Vec<Box<Ast>>>, SpruceErr> {
         // Register locals from parameters
         if let Some(parameters) = parameters {
             let mut out = Vec::new();
+            let mut param_names = HashSet::new();
+
             for param in parameters {
                 let AstData::Parameter { type_name } = &param.data else { unreachable!("{:#?}", param.data) };
                 self.get_type_from_ast(type_name)?;
+                
+                if !param_names.insert(param.token.span.slice_source()) {
+                    self.error_no_exit(
+                        format!(
+                            "Function with identifier '{}' already contains a parameter '{}'",
+                            function_name.span.slice_source(),
+                            param.token.span.slice_source(),
+                        ),
+                        function_name
+                    );
+                }
                 
                 self.register_local(&param.token, false);
                 // Kinda gross here, might need to use Rc instead of box
@@ -472,9 +490,9 @@ impl NameResolver {
         if *anonymous {
             self.push_scope();
             self.table.mark_depth_limit();
-            self.evaluate_params(parameters)?;
+            self.evaluate_params(identifier, parameters)?;
         } else {
-            let params = self.evaluate_params(parameters)?;
+            let params = self.evaluate_params(identifier, parameters)?;
             
             if self.table.is_global() {
                 self.register_function(identifier, params, match return_type {
@@ -500,6 +518,58 @@ impl NameResolver {
         self.pop_scope();
         self.table.reset_mark();
         
+        Ok(())
+    }
+
+    fn struct_definition(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+        let AstData::StructDefinition { is_ref, items } = &node.data else { unreachable!() };
+
+        self.push_scope();
+
+        let signature = StructSignature {
+            identifier: node.token.span.slice_source().to_string(),
+            is_ref: *is_ref,
+            fields: if let Some(items) = items {
+                let mut fields = Vec::new();
+
+                for item in items {
+                    if let AstData::Parameter {..} = &item.data {
+                        fields.push(Box::new(*item.clone()));
+                    }
+                }
+
+                Some(fields)
+            } else { None },
+            functions: if let Some(items) = items {
+                let mut functions = Vec::new();
+
+                for item in items {
+                    if let AstData::Function { parameters, return_type, body, .. } = &item.data {
+                        let parameters = self.evaluate_params(&item.token, parameters)?;
+
+                        if let Some(return_type) = return_type {
+                            self.visit(return_type)?;
+                        }
+
+                        self.visit(body)?;
+
+                        functions.push(FunctionSignatureKind::User {
+                            parameters,
+                            return_id: match return_type {
+                                Some(ret) => Some(ret.clone()),
+                                None => None,
+                            }
+                        });
+                    }
+                }
+
+                Some(functions)
+            } else { None },
+        };
+
+        self.pop_scope();
+        self.add_struct_type(signature);
+
         Ok(())
     }
 
@@ -531,7 +601,7 @@ impl NameResolver {
     }
 
     fn visit(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
-        Ok(match node.data {
+        Ok(match &node.data {
             AstData::TupleLiteral(_) => self.tuple_literal(node)?,
             AstData::ListLiteral(_) => self.list_literal(node)?,
             AstData::SymbolLiteral => self.symbol_literal(node),
@@ -556,13 +626,16 @@ impl NameResolver {
             AstData::ExpressionStatement(_, _) => self.expr_statement(node)?,
 
             AstData::Function {..} => self.function(node)?,
-            AstData::Lazy(ref inner) => self.visit(inner)?,
+            AstData::TypeDefinition { inner } => self.visit(inner)?,
+            AstData::StructDefinition {..} => self.struct_definition(node)?,
+
+            AstData::Lazy(inner) => self.visit(inner)?,
             AstData::Defer(_) => self.defer(node)?,
             AstData::Return(_) => self.return_statement(node)?,
             AstData::Program {..} => self.program(node)?,
 
             AstData::Literal | AstData::Comment | AstData::Empty => {},
-            _ => return Err(self.error(format!("Unknown node in check: {:#?}", node))),
+            _ => return Err(self.error(format!("Unknown node in resolver: {:#?}", node))),
         })
     }
 
@@ -593,6 +666,20 @@ impl NameResolver {
         );
 
         Ok(())
+    }
+
+    fn add_struct_type(&mut self, signature: StructSignature) {
+        for item in &self.res_table.struct_types {
+            if item.identifier.as_str() == signature.identifier.as_str() {
+                self.error(format!(
+                    "Type '{}' has already been defined",
+                    signature.identifier,
+                ));
+                return;
+            }
+        }
+
+        self.res_table.struct_types.push(signature);
     }
 
     fn get_type_from_ast(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
