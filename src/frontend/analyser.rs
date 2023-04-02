@@ -1005,8 +1005,8 @@ impl Analyser {
                                     "Argument {} in call to '{}' expects type {} but received {}",
                                     idx + 1,
                                     lhs.token.span.slice_source(),
-                                    left_type,
                                     parameters[idx],
+                                    left_type,
                                 ),
                                 &arg.token,
                             );
