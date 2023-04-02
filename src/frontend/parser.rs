@@ -106,13 +106,7 @@ impl Parser {
             TokenKind::Lazy => {
                 let token = self.current.clone();
                 self.consume_here();
-
-                let body = match self.current.kind {
-                    TokenKind::LCurly => self.body()?,
-                    _ => self.expression()?,
-                };
-
-                Ok(Ast::new_lazy(token, body))
+                Ok(Ast::new_lazy(token, self.body()?))
             }
 
             TokenKind::LSquare => self.list_literal(),
