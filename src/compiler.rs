@@ -195,10 +195,17 @@ impl Compiler {
                     self.output_code.push_str(node.token.span.slice_source());
                 }
             }
-            SpruceType::Lazy(_) => {
+            SpruceType::Lazy(inner) => {
+                let mut get_str = String::new();
+
+                for _ in 0..(1 + self.get_inner_lazy(inner)) {
+                    get_str.push_str(".Get()");
+                }
+
                 self.output_code.push_str(&format!(
-                    "{}.Get()",
+                    "{}{}",
                     node.token.span.slice_source(),
+                    get_str,
                 ));
             }
             _ => self.output_code.push_str(node.token.span.slice_source()),
@@ -629,6 +636,13 @@ impl Compiler {
         }
 
         Ok(())
+    }
+
+    fn get_inner_lazy(&self, kind: &Box<SpruceType>) -> u32 {
+        match &**kind {
+            SpruceType::Lazy(inner) => 1 + self.get_inner_lazy(inner),
+            _ => 0,
+        }
     }
 
     fn get_type_from_ast(&self, node: &Box<DecoratedAst>) -> Result<String, SpruceErr> {

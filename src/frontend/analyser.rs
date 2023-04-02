@@ -1214,7 +1214,15 @@ impl Analyser {
             
             DecoratedAstData::FunctionCall { kind, .. } => kind.clone(),
             DecoratedAstData::Identifier(kind) => match kind {
-                SpruceType::Lazy(inner) => *inner.clone(),
+                SpruceType::Lazy(inner) => {
+                    let mut inner = inner;
+
+                    while let SpruceType::Lazy(i) = &**inner {
+                        inner = i;
+                    }
+
+                    *inner.clone()
+                },
                 _ => kind.clone(),
             },
             DecoratedAstData::VarAssign { lhs, .. } => self.find_type_of(lhs)?,
