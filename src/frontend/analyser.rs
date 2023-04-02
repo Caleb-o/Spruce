@@ -338,6 +338,17 @@ impl Analyser {
 
     fn binary_op(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
         let AstData::BinaryOp { lhs, rhs } = &node.data  else { unreachable!() };
+
+        match (&lhs.data, &rhs.data) {
+            (AstData::Lazy(_), _) | (_, AstData::Lazy(_)) => {
+                self.error_no_exit(
+                    "Binary operation cannot contain lazy expressions".into(),
+                    &node.token
+                )
+            }
+            _ => {}
+        }
+
         let lhs = self.visit(&lhs)?;
         let rhs = self.visit(&rhs)?;
 
@@ -405,6 +416,14 @@ impl Analyser {
 
     fn unary_op(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
         let AstData::UnaryOp { rhs } = &node.data  else { unreachable!() };
+        
+        if let AstData::Lazy(_) = &rhs.data {
+            self.error_no_exit(
+                "Unary operation cannot contain lazy expressions".into(),
+                &node.token
+            )
+        }
+        
         let rhs = self.visit(&rhs)?;
         let kind = self.find_type_of(&rhs)?;
 
@@ -473,6 +492,17 @@ impl Analyser {
 
     fn logical_op(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
         let AstData::LogicalOp { lhs, rhs } = &node.data else { unreachable!() };
+
+        match (&lhs.data, &rhs.data) {
+            (AstData::Lazy(_), _) | (_, AstData::Lazy(_)) => {
+                self.error_no_exit(
+                    "Logical operation cannot contain lazy expressions".into(),
+                    &node.token
+                )
+            }
+            _ => {}
+        }
+
         let lhs = self.visit(&lhs)?;
         let rhs = self.visit(&rhs)?;
 
