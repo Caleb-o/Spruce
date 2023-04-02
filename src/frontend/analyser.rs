@@ -1099,6 +1099,12 @@ impl Analyser {
         Ok(DecoratedAst::new_function(node.token.clone(), function_type, parameters, body_type, body_ast))
     }
 
+    fn lazy(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+        let AstData::Lazy(expression) = &node.data else { unreachable!() };
+        let body = self.visit(expression)?;
+        Ok(DecoratedAst::new_lazy(node.token.clone(), body))
+    }
+
     fn defer(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
         let AstData::Defer(expression) = &node.data else { unreachable!() };
         
@@ -1184,6 +1190,7 @@ impl Analyser {
             AstData::ExpressionStatement(_, _) => self.expr_statement(node)?,
 
             AstData::Function {..} => self.function(node)?,
+            AstData::Lazy(_) => self.lazy(node)?,
             AstData::Defer(_) => self.defer(node)?,
             AstData::Return(_) => self.return_statement(node)?,
             AstData::Program {..} => self.program(node)?,
@@ -1206,7 +1213,10 @@ impl Analyser {
             DecoratedAstData::LogicalOp {..} => SpruceType::Bool,
             
             DecoratedAstData::FunctionCall { kind, .. } => kind.clone(),
-            DecoratedAstData::Identifier(kind) => kind.clone(),
+            DecoratedAstData::Identifier(kind) => match kind {
+                SpruceType::Lazy(inner) => *inner.clone(),
+                _ => kind.clone(),
+            },
             DecoratedAstData::VarAssign { lhs, .. } => self.find_type_of(lhs)?,
             DecoratedAstData::VarAssignEqual { lhs, .. } => self.find_type_of(lhs)?,
             DecoratedAstData::Type(kind) => kind.clone(),
@@ -1245,6 +1255,7 @@ impl Analyser {
             DecoratedAstData::DoWhileStatement {..} => SpruceType::None,
             DecoratedAstData::Body(kind, _) => kind.clone(),
             DecoratedAstData::ExpressionStatement(kind, _, _) => kind.clone(),
+            DecoratedAstData::Lazy(inner) => SpruceType::Lazy(Box::new(self.find_type_of(inner)?)),
             DecoratedAstData::Defer(_, _) => SpruceType::None,
             DecoratedAstData::Return(kind, _) => kind.clone(),
             DecoratedAstData::Empty => SpruceType::Any,
@@ -1293,6 +1304,7 @@ impl Analyser {
                 SpruceType::Tuple(types)
             },
             TypeKind::List(ref inner) => SpruceType::List(Box::new(self.get_type_from_ast(inner)?)),
+            TypeKind::Lazy(inner) => SpruceType::Lazy(Box::new(self.get_type_from_ast(inner)?)),
             TypeKind::Function { parameters, return_type } => {
                 SpruceType::Function {
                     is_native: false,

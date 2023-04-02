@@ -13,6 +13,7 @@ pub enum SpruceType {
     Tuple(Vec<Box<SpruceType>>),
     List(Box<SpruceType>),
     Symbol,
+    Lazy(Box<SpruceType>),
     Function {
         is_native: bool,
         parameters: Option<Vec<Box<SpruceType>>>,
@@ -24,7 +25,6 @@ impl SpruceType {
     pub fn is_same(&self, other: &SpruceType) -> bool {
         match self {
             Self::Any => true,
-            // TODO: List, Function
             Self::List(k) => {
                 if discriminant(self) != discriminant(other) {
                     return false;
@@ -52,6 +52,14 @@ impl SpruceType {
 
                 true
             }
+            Self::Lazy(inner) => {
+                if discriminant(self) != discriminant(other) {
+                    return false;
+                }
+
+                let Self::Lazy(other_inner) = other else { unreachable!() };
+                inner.is_same(other_inner)
+            }
             Self::Function { is_native: _, parameters, return_type } => {
                 if discriminant(self) != discriminant(other) {
                     return false;
@@ -60,7 +68,7 @@ impl SpruceType {
                 let s_parameters = parameters;
                 let s_return_type = return_type;
 
-                let SpruceType::Function { is_native: _, parameters, return_type } = other else { unreachable!() };
+                let Self::Function { is_native: _, parameters, return_type } = other else { unreachable!() };
 
                 if (s_parameters.is_some() && parameters.is_none()) ||
                     (s_parameters.is_none() && parameters.is_some()) {
@@ -120,6 +128,7 @@ impl Display for SpruceType {
                 tuplestr.push(')');
                 tuplestr
             },
+            Self::Lazy(inner) => format!("lazy {inner}"),
             Self::Function { is_native: _, parameters, return_type } => {
                 let mut fnstr = String::from("fn(");
 

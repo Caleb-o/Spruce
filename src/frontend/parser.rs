@@ -103,6 +103,18 @@ impl Parser {
                 Ok(expr)
             },
 
+            TokenKind::Lazy => {
+                let token = self.current.clone();
+                self.consume_here();
+
+                let body = match self.current.kind {
+                    TokenKind::LCurly => self.body()?,
+                    _ => self.expression()?,
+                };
+
+                Ok(Ast::new_lazy(token, body))
+            }
+
             TokenKind::LSquare => self.list_literal(),
             TokenKind::At => self.map_literal(),
             TokenKind::Pipe => self.anon_function(),
@@ -803,6 +815,12 @@ impl Parser {
 
                 self.consume(TokenKind::RParen, "Expect closing ')' after type")?;
                 Ast::new_type(self.current.clone(), TypeKind::Tuple(types))
+            }
+            TokenKind::Lazy => {
+                let token = self.current.clone();
+                self.consume_here();
+
+                Ast::new_type(token, TypeKind::Lazy(self.collect_type()?))
             }
             TokenKind::Function => {
                 let token = self.current.clone();

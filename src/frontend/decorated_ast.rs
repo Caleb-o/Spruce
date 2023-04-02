@@ -48,8 +48,6 @@ pub enum DecoratedAstData {
     DoWhileStatement { body: Box<DecoratedAst>, condition: Box<DecoratedAst> },
     TrailingIfStatement { statement: Box<DecoratedAst>, condition: Box<DecoratedAst> },
 
-    TypeCheck { is_assert: bool, expression: Box<DecoratedAst> },
-
     IndexGetter { expression: Box<DecoratedAst>, index: Box<DecoratedAst> },
     IndexSetter { expression: Box<DecoratedAst>, rhs: Box<DecoratedAst> },
 
@@ -59,6 +57,7 @@ pub enum DecoratedAstData {
     SwitchStatement { condition: Box<DecoratedAst>, cases: Vec<Box<DecoratedAst>> },
     SwitchCase { case: Option<Box<DecoratedAst>>, body: Box<DecoratedAst> },
 
+    Lazy(Box<DecoratedAst>),
     Defer(u32, Box<DecoratedAst>),
     Return(SpruceType, Option<Box<DecoratedAst>>),
     Body(SpruceType, Vec<Box<DecoratedAst>>),
@@ -210,6 +209,13 @@ impl DecoratedAst {
         })
     }
 
+    pub fn new_lazy(token: Token, expression: Box<DecoratedAst>) -> Box<Self> {
+        Box::new(Self {
+            token,
+            data: DecoratedAstData::Lazy(expression),
+        })
+    }
+
     pub fn new_defer(token: Token, count: u32, expression: Box<DecoratedAst>) -> Box<Self> {
         Box::new(Self {
             token,
@@ -310,20 +316,6 @@ impl DecoratedAst {
         Box::new(Self {
             token,
             data: DecoratedAstData::FunctionCall { kind, lhs, arguments },
-        })
-    }
-
-    pub fn new_type_check(
-        is_assert: bool,
-        expression: Box<DecoratedAst>,
-        type_name: Token
-    ) -> Box<Self> {
-        Box::new(Self {
-            token: type_name,
-            data: DecoratedAstData::TypeCheck {
-                is_assert,
-                expression,
-             },
         })
     }
 

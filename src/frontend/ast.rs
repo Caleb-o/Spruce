@@ -15,6 +15,7 @@ pub enum TypeKind {
     Standard,
     Tuple(Vec<Box<Ast>>),
     List(Box<Ast>),
+    Lazy(Box<Ast>),
     Function {
         parameters: Option<Vec<Box<Ast>>>,
         return_type: Box<Ast>,
@@ -62,6 +63,7 @@ pub enum AstData {
     SwitchStatement { condition: Box<Ast>, cases: Vec<Box<Ast>> },
     SwitchCase { case: Option<Box<Ast>>, body: Box<Ast> },
 
+    Lazy(Box<Ast>),
     Defer(Box<Ast>),
     Return(Option<Box<Ast>>),
     Body(Vec<Box<Ast>>),
@@ -210,6 +212,13 @@ impl Ast {
         Box::new(Self {
             token,
             data: AstData::Parameter { type_name },
+        })
+    }
+
+    pub fn new_lazy(token: Token, expression: Box<Ast>) -> Box<Self> {
+        Box::new(Self {
+            token,
+            data: AstData::Lazy(expression),
         })
     }
 

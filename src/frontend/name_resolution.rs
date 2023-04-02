@@ -556,6 +556,7 @@ impl NameResolver {
             AstData::ExpressionStatement(_, _) => self.expr_statement(node)?,
 
             AstData::Function {..} => self.function(node)?,
+            AstData::Lazy(ref inner) => self.visit(inner)?,
             AstData::Defer(_) => self.defer(node)?,
             AstData::Return(_) => self.return_statement(node)?,
             AstData::Program {..} => self.program(node)?,
@@ -612,15 +613,16 @@ impl NameResolver {
                     },
                 }
             }
-            TypeKind::Tuple(ref inner) => {
+            TypeKind::Tuple(inner) => {
                 for item in inner {
                     self.get_type_from_ast(item)?;
                 }
             },
-            TypeKind::List(ref inner) => self.get_type_from_ast(inner)?,
+            TypeKind::List(inner) => self.get_type_from_ast(inner)?,
+            TypeKind::Lazy(inner) => self.get_type_from_ast(inner)?,
             TypeKind::Function { parameters, return_type } => {
                 match parameters {
-                    Some(ref parameters) => {
+                    Some(parameters) => {
                         for kind in parameters {
                             self.get_type_from_ast(kind)?;
                         }

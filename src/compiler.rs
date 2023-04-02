@@ -195,6 +195,12 @@ impl Compiler {
                     self.output_code.push_str(node.token.span.slice_source());
                 }
             }
+            SpruceType::Lazy(_) => {
+                self.output_code.push_str(&format!(
+                    "{}.Get()",
+                    node.token.span.slice_source(),
+                ));
+            }
             _ => self.output_code.push_str(node.token.span.slice_source()),
         }
 
@@ -507,6 +513,21 @@ impl Compiler {
         Ok(())
     }
 
+    fn lazy(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+        let DecoratedAstData::Lazy(expression) = &node.data else { unreachable!() };
+
+        self.output_code.push_str(&format!(
+            "new {}.Lazy<{}>(",
+            SPRUCE_PRE,
+            self.get_type_from_ast(expression)?,
+        ));
+
+        self.wrap_in_lambda(expression)?;
+        self.output_code.push(')');
+
+        Ok(())
+    }
+
     fn defer(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::Defer(count, expression) = &node.data else { unreachable!() };
 
@@ -589,6 +610,7 @@ impl Compiler {
             DecoratedAstData::Parameter(_) => self.parameter(node)?,
             DecoratedAstData::ExpressionStatement(_, _, _) => self.expression_statement(node)?,
 
+            DecoratedAstData::Lazy(_) => self.lazy(node)?,
             DecoratedAstData::Defer(_, _) => self.defer(node)?,
             DecoratedAstData::Return(_, _) => self.return_statement(node)?,
             DecoratedAstData::Program {..} => self.program(node)?,
@@ -679,6 +701,9 @@ impl Compiler {
             }
             SpruceType::List(inner) => {
                 format!("List<{}>", Compiler::as_cs_type(inner))
+            }
+            SpruceType::Lazy(inner) => {
+                format!("Lazy<{}>", Compiler::as_cs_type(inner))
             }
             SpruceType::Function { is_native: _, parameters, return_type } => {
                 let mut string = String::from("Func<");

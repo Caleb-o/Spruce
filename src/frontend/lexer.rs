@@ -174,6 +174,7 @@ impl Lexer {
                     ("s", TokenKind::Is),
                     ("nclude", TokenKind::Include),
                 ]),
+            'l' => self.check_if_matches(start, len, &[("azy", TokenKind::Lazy)]),
             'n' => self.check_if_matches(start, len, &[("one", TokenKind::None)]),
             'o' => self.check_if_matches(start, len, &[("r", TokenKind::Or)]),
             'r' => self.check_if_matches(start, len, &[("eturn", TokenKind::Return)]),
