@@ -395,6 +395,10 @@ impl Analyser {
                     "symbol" => SpruceType::Symbol,
                     // TODO: Check for custom type before error - struct
                     _ => {
+                        if let Some(struct_) = self.find_struct(&node.token.span) {
+                            return Ok(struct_.clone());
+                        }
+
                         self.error_no_exit(format!(
                                 "Unknown type identifier '{}'",
                                 node.token.span.slice_source(),

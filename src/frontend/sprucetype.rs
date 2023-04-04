@@ -106,8 +106,15 @@ impl SpruceType {
 
                 true
             }
-            Self::Struct { is_ref, identifier, fields, methods } => {
-                todo!()
+            Self::Struct { identifier, .. } => {
+                if discriminant(self) != discriminant(other) {
+                    return false;
+                }
+                
+                let s_identifier = identifier;
+                let Self::Struct { identifier, .. } = other else { unreachable!() };
+                
+                s_identifier.as_ref().unwrap().slice_source() == identifier.as_ref().unwrap().slice_source()
             },
             _ => discriminant(self) == discriminant(other),
         }
@@ -156,7 +163,7 @@ impl Display for SpruceType {
                 fnstr.push_str(&format!("): {}", return_type));
                 fnstr
             },
-            Self::Struct { is_ref, identifier, fields, methods } => todo!(),
+            Self::Struct { identifier, .. } => identifier.as_ref().unwrap().slice_source().into(),
             n @ _ => unimplemented!("{n:?}"),
         })
     }
