@@ -291,6 +291,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
             DecoratedAstData::IndexSetter {..} => self.visit_index_setter(node)?,
 
             DecoratedAstData::GetProperty {..} => self.visit_property_getter(node)?,
+            DecoratedAstData::SetProperty {..} => self.visit_property_setter(node)?,
 
             DecoratedAstData::Lazy(_) => self.visit_lazy(node)?,
             DecoratedAstData::Defer(_, _) => self.visit_defer(node)?,
@@ -834,7 +835,13 @@ impl Visitor<DecoratedAst, ()> for Compiler {
     }
 
     fn visit_property_setter(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
-        todo!()
+        let DecoratedAstData::SetProperty { lhs, expression } = &node.data else { unreachable!() };
+
+        self.visit(lhs)?;
+        self.output_code.push_str(" = ");
+        self.visit(expression)?;
+
+        Ok(())
     }
 
     fn visit_switch_statement(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {

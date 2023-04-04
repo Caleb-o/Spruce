@@ -364,6 +364,9 @@ impl Analyser {
             DecoratedAstData::GetProperty { lhs, property } => {
                 *self.find_struct_field(&self.find_type_of(lhs)?, &property.token.span).unwrap()
             }
+            DecoratedAstData::SetProperty { lhs, .. } => {
+                self.find_type_of(lhs)?
+            }
             DecoratedAstData::Ternary { kind, ..} => kind.clone(),
             DecoratedAstData::IfStatement { kind, ..} => kind.clone(),
             DecoratedAstData::ForStatement {..} => SpruceType::None,
@@ -482,6 +485,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
             AstData::IndexSetter {..} => self.visit_index_setter(node)?,
 
             AstData::PropertyGetter {..} => self.visit_property_getter(node)?,
+            AstData::PropertySetter {..} => self.visit_property_setter(node)?,
 
             AstData::Function {..} => {
                 let prev = self.push_scope_type(ScopeType::Function);
@@ -1533,7 +1537,23 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
     }
 
     fn visit_property_setter(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
-        todo!()
+        let AstData::PropertySetter { lhs, expression } = &node.data else { unreachable!() };
+
+        let lhs = self.visit(lhs)?;
+        let rhs = self.visit(expression)?;
+
+        let lhs_type = self.find_type_of(&lhs)?;
+        let rhs_type = self.find_type_of(&rhs)?;
+
+        if !lhs_type.is_same(&rhs_type) {
+            self.error_no_exit(format!(
+                "Property setter expected type {} but received {}",
+                lhs_type,
+                rhs_type,
+            ), &node.token);
+        }
+
+        Ok(DecoratedAst::new_property_setter(node.token.clone(), lhs, rhs))
     }
 
     fn visit_switch_statement(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {

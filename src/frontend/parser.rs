@@ -286,7 +286,7 @@ impl Parser {
                         AstData::IndexGetter {..} => Ast::new_index_setter(node.token.clone(), node, self.expression()?),
                         AstData::PropertyGetter {..} => Ast::new_property_setter(
                             node.token.clone(),
-                            Ast::new_identifier(node.token.clone()),
+                            node,
                             self.expression()?
                         ),
                         _ => return Err(self.error(format!(

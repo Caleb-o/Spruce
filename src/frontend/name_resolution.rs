@@ -363,6 +363,7 @@ impl Visitor<Ast, ()> for NameResolver {
             AstData::IndexSetter {..} => self.visit_index_setter(node)?,
 
             AstData::PropertyGetter {..} => self.visit_property_getter(node)?,
+            AstData::PropertySetter {..} => self.visit_property_setter(node)?,
 
             AstData::Defer {..} => self.visit_defer(node)?,
             AstData::Lazy {..} => self.visit_lazy(node)?,
@@ -836,12 +837,14 @@ impl Visitor<Ast, ()> for NameResolver {
 
     fn visit_property_getter(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
         let AstData::PropertyGetter { lhs, .. } = &node.data else { unreachable!() };
-        // TODO: Check identifier is valid field name
         self.visit(lhs)
     }
 
     fn visit_property_setter(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
-        todo!()
+        let AstData::PropertySetter { lhs, expression } = &node.data else { unreachable!() };
+        self.visit(lhs)?;
+        self.visit(expression)?;
+        Ok(())
     }
 
     fn visit_switch_statement(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
