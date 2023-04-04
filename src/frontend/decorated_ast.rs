@@ -53,8 +53,8 @@ pub enum DecoratedAstData {
     IndexGetter { expression: Box<DecoratedAst>, index: Box<DecoratedAst> },
     IndexSetter { expression: Box<DecoratedAst>, rhs: Box<DecoratedAst> },
 
+    GetProperty { lhs: Box<DecoratedAst>, property: Box<DecoratedAst> },
     SetProperty { lhs: Box<DecoratedAst>, expression: Box<DecoratedAst> },
-    GetProperty { lhs: Box<DecoratedAst> },
 
     SwitchStatement { condition: Box<DecoratedAst>, cases: Vec<Box<DecoratedAst>> },
     SwitchCase { case: Option<Box<DecoratedAst>>, body: Box<DecoratedAst> },
@@ -370,10 +370,10 @@ impl DecoratedAst {
         })
     }
 
-    pub fn new_property_getter(token: Token, lhs: Box<DecoratedAst>) -> Box<Self> {
+    pub fn new_property_getter(token: Token, lhs: Box<DecoratedAst>, property: Box<DecoratedAst>) -> Box<Self> {
         Box::new(Self {
             token,
-            data: DecoratedAstData::GetProperty { lhs },
+            data: DecoratedAstData::GetProperty { lhs, property },
         })
     }
 

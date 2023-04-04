@@ -361,6 +361,9 @@ impl Analyser {
             },
             DecoratedAstData::IndexGetter { expression, ..} => self.find_type_of(expression)?,
             DecoratedAstData::IndexSetter { expression, ..} => self.find_type_of(expression)?,
+            DecoratedAstData::GetProperty { lhs, property } => {
+                *self.find_struct_field(&self.find_type_of(lhs)?, &property.token.span).unwrap()
+            }
             DecoratedAstData::Ternary { kind, ..} => kind.clone(),
             DecoratedAstData::IfStatement { kind, ..} => kind.clone(),
             DecoratedAstData::ForStatement {..} => SpruceType::None,
@@ -477,6 +480,8 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
 
             AstData::IndexGetter {..} => self.visit_index_getter(node)?,
             AstData::IndexSetter {..} => self.visit_index_setter(node)?,
+
+            AstData::PropertyGetter {..} => self.visit_property_getter(node)?,
 
             AstData::Function {..} => {
                 let prev = self.push_scope_type(ScopeType::Function);
@@ -1488,7 +1493,43 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
     }
 
     fn visit_property_getter(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
-        todo!()
+        let AstData::PropertyGetter { lhs, property } = &node.data else { unreachable!() };
+
+        let lhs = self.visit(lhs)?;
+        let lhs_type = self.find_type_of(&lhs)?;
+
+        if discriminant(&lhs_type) != discriminant(&SpruceType::Struct {is_ref: false, identifier: None, fields: None, methods: None }) {
+            self.error_no_exit(format!(
+                "Left-hand side of index must be a struct, but received {}",
+                lhs_type,
+            ), &node.token);
+        }
+
+        let kind = if let SpruceType::Struct { identifier, .. } = &lhs_type {
+            if let Some(field) = self.find_struct_field(&lhs_type, &property.token.span) {
+                *field
+            } else {
+                self.error_no_exit(format!(
+                    "Struct '{}' does not contain any fields to get",
+                    identifier.as_ref().unwrap().slice_source(),
+                ), &node.token);
+
+                SpruceType::Error
+            }
+        } else {
+            self.error_no_exit(format!(
+                "Cannot index field of non-struct type {}",
+                lhs_type,
+            ), &node.token);
+
+            SpruceType::Error
+        };
+
+        Ok(DecoratedAst::new_property_getter(
+            node.token.clone(),
+            lhs,
+            DecoratedAst::new_identifier(property.token.clone(), kind),
+        ))
     }
 
     fn visit_property_setter(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {

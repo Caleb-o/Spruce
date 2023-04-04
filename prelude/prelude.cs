@@ -35,7 +35,7 @@ public static class SprucePrelude {
         }
 
         public override string ToString() {
-            var inner = calculated ? _result.ToString() : "None";
+            var inner = calculated ? _result.ToString() : "Uncalculated";
             return $"Lazy<{inner}>";
         }
     }

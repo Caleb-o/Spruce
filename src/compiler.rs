@@ -290,6 +290,8 @@ impl Visitor<DecoratedAst, ()> for Compiler {
             DecoratedAstData::IndexGetter {..} => self.visit_index_getter(node)?,
             DecoratedAstData::IndexSetter {..} => self.visit_index_setter(node)?,
 
+            DecoratedAstData::GetProperty {..} => self.visit_property_getter(node)?,
+
             DecoratedAstData::Lazy(_) => self.visit_lazy(node)?,
             DecoratedAstData::Defer(_, _) => self.visit_defer(node)?,
             DecoratedAstData::Return(_, _) => self.visit_return_statement(node)?,
@@ -666,7 +668,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         }
 
         let SpruceType::Struct { fields, .. } = kind else { unreachable!() };
-        self.output_code.push_str(&format!("{}public override string ToString(){{\n", self.tab_string()));
+        self.output_code.push_str(&format!("\n{}public override string ToString(){{\n", self.tab_string()));
         self.indent();
 
         if let Some(fields) = fields {
@@ -822,7 +824,13 @@ impl Visitor<DecoratedAst, ()> for Compiler {
     }
 
     fn visit_property_getter(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
-        todo!()
+        let DecoratedAstData::GetProperty { lhs, property } = &node.data else { unreachable!() };
+
+        self.visit(lhs)?;
+        self.output_code.push('.');
+        self.visit(property)?;
+
+        Ok(())
     }
 
     fn visit_property_setter(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
