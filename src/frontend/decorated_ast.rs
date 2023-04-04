@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use crate::source::Source;
 
-use super::{token::Token, sprucetype::SpruceType};
+use super::{token::{Token, Span}, sprucetype::SpruceType};
 
 #[derive(Debug, Clone)]
 pub struct DecoratedAst {
@@ -20,7 +20,7 @@ pub enum DecoratedAstData {
     Identifier(SpruceType),
     Literal(SpruceType, u32), // Constant index
     SymbolLiteral(u32), // Symbol Index
-    MapLiteral(Vec<(Token, Option<Box<DecoratedAst>>)>),
+    StructLiteral(SpruceType, Vec<(Span, Option<Box<DecoratedAst>>)>),
     TupleLiteral(SpruceType, Vec<Box<DecoratedAst>>),
     ListLiteral(SpruceType, Vec<Box<DecoratedAst>>),
     ExpressionStatement(SpruceType, bool, Box<DecoratedAst>),
@@ -114,10 +114,10 @@ impl DecoratedAst {
         })
     }
 
-    pub fn new_map_literal(token: Token, values: Vec<(Token, Option<Box<DecoratedAst>>)>) -> Box<Self> {
+    pub fn new_struct_literal(token: Token, kind: SpruceType, values: Vec<(Span, Option<Box<DecoratedAst>>)>) -> Box<Self> {
         Box::new(Self {
             token,
-            data: DecoratedAstData::MapLiteral(values),
+            data: DecoratedAstData::StructLiteral(kind, values),
         })
     }
 

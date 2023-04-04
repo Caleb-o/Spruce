@@ -23,7 +23,7 @@ pub enum SpruceType {
     },
     Struct {
         is_ref: bool,
-        identifier: Span,
+        identifier: Option<Span>,
         fields: Option<Vec<(Span, Box<SpruceType>)>>,
         methods: Option<Vec<Box<SpruceType>>>,
     },
@@ -106,7 +106,9 @@ impl SpruceType {
 
                 true
             }
-            Self::Struct { is_ref, identifier, fields, methods } => todo!(),
+            Self::Struct { is_ref, identifier, fields, methods } => {
+                todo!()
+            },
             _ => discriminant(self) == discriminant(other),
         }
     }

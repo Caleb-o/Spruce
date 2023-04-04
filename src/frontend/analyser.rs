@@ -15,6 +15,7 @@ pub struct Analyser {
     args: RunArgs,
     constants: Vec<ConstantValue>,
     functable: Vec<FunctionMeta>, // Type resolved table
+    struct_table: Vec<(Span, SpruceType)>,
     table: SymTable,
     res_table: Box<ResolutionTable>,
     defer_count: u32,
@@ -30,6 +31,7 @@ impl Analyser {
             args,
             constants: Vec::new(),
             functable: Vec::new(),
+            struct_table: Vec::new(),
             table: SymTable::new(),
             res_table,
             defer_count: 0,
@@ -187,6 +189,34 @@ impl Analyser {
         self.find_function_str(span.slice_source())
     }
 
+    fn find_struct_str(&self, id: &str) -> Option<&SpruceType> {
+        for (identifier, kind) in &self.struct_table {
+            if identifier.slice_source() == id {
+                return Some(kind);
+            }
+        }
+
+        None
+    }
+
+    #[inline]
+    fn find_struct(&self, span: &Span) -> Option<&SpruceType> {
+        self.find_struct_str(span.slice_source())
+    }
+
+    fn find_struct_field(&self, signature: &SpruceType, field_name: &Span) -> Option<Box<SpruceType>> {
+        let SpruceType::Struct { fields, ..} = signature else { unreachable!() };
+        if let Some(fields) = fields {
+            for (field, kind) in fields {
+                if field.slice_source() == field_name.slice_source() {
+                    return Some(kind.clone());
+                }
+            }
+        }
+
+        None
+    }
+
     fn register_local(&mut self, token: &Token, mutable: bool, kind: SpruceType) {
         let local = self.table.find_local(&token.span, false);
 
@@ -276,7 +306,8 @@ impl Analyser {
             DecoratedAstData::TupleLiteral(kind, _) => kind.clone(),
             DecoratedAstData::ListLiteral(kind, _) => kind.clone(),
             DecoratedAstData::SymbolLiteral(_) => SpruceType::Symbol,
-            
+            DecoratedAstData::StructLiteral(kind, _) => kind.clone(),
+
             DecoratedAstData::BinaryOp { kind, .. } => kind.clone(),
             DecoratedAstData::UnaryOp { kind, .. } => kind.clone(),
             DecoratedAstData::LogicalOp {..} => SpruceType::Bool,
@@ -297,6 +328,7 @@ impl Analyser {
             DecoratedAstData::VarAssign { lhs, .. } => self.find_type_of(lhs)?,
             DecoratedAstData::VarAssignEqual { lhs, .. } => self.find_type_of(lhs)?,
             DecoratedAstData::Type(kind) => kind.clone(),
+            DecoratedAstData::StructDefinition { kind, .. } => kind.clone(),
 
             DecoratedAstData::Parameter(kind) => kind.clone(),
             DecoratedAstData::Function { function_type, parameters, kind, .. } => {
@@ -361,7 +393,7 @@ impl Analyser {
                     "bool" => SpruceType::Bool,
                     "string" => SpruceType::String,
                     "symbol" => SpruceType::Symbol,
-                    // TODO: Check for custom type before error
+                    // TODO: Check for custom type before error - struct
                     _ => {
                         self.error_no_exit(format!(
                                 "Unknown type identifier '{}'",
@@ -384,7 +416,6 @@ impl Analyser {
             },
             TypeKind::List(ref inner) => SpruceType::List(Box::new(self.get_type_from_ast(inner)?)),
             TypeKind::Lazy(inner) => SpruceType::Lazy(Box::new(self.get_type_from_ast(inner)?)),
-            // TypeKind::
             TypeKind::Function { parameters, return_type } => {
                 SpruceType::Function {
                     is_native: false,
@@ -415,6 +446,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
             AstData::TupleLiteral(_) => self.visit_tuple_literal(node)?,
             AstData::ListLiteral(_) => self.visit_list_literal(node)?,
             AstData::SymbolLiteral => self.visit_symbol_literal(node)?,
+            AstData::StructLiteral(_, _) => self.visit_struct_literal(node)?,
 
             AstData::Type {..} => self.visit_type(node)?,
             AstData::Identifier => self.visit_identifier(node)?,
@@ -534,8 +566,46 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
         Ok(DecoratedAst::new_symbol(node.token.clone(), index))
     }
 
-    fn visit_map_literal(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
-        todo!()
+    fn visit_struct_literal(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+        let AstData::StructLiteral(identifier, arguments) = &node.data else { unreachable!() };
+
+        let signature = self.find_struct(&identifier.span).unwrap().clone();
+        let mut items = Vec::new();
+
+        for (field_name, arg) in arguments {
+            if let Some(kind) = self.find_struct_field(&signature, &field_name.span) {
+                if let Some(arg) = arg {
+                    let arg = self.visit(arg)?;
+                    let arg_type = self.find_type_of(&arg)?;
+
+                    items.push((field_name.span.clone(), Some(arg)));
+
+                    if !kind.is_same(&arg_type) {
+                        self.error_no_exit(format!(
+                            "Field '{}' in struct '{}' expected type {} but received {}",
+                            field_name.span.slice_source(),
+                            identifier.span.slice_source(),
+                            kind,
+                            arg_type,
+                        ), identifier);
+                    }
+                } else {
+                    items.push((field_name.span.clone(), None));
+                }
+            } else {
+                if let Some(arg) = arg {
+                    self.visit(arg)?;
+                }
+
+                self.error_no_exit(format!(
+                    "Field '{}' does not exist in struct '{}'",
+                    field_name.span.slice_source(),
+                    identifier.span.slice_source(),
+                ), identifier);
+            }
+        }
+
+        Ok(DecoratedAst::new_struct_literal(identifier.clone(), signature, items))
     }
 
     fn visit_tuple_literal(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
@@ -1239,7 +1309,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
 
             kind = SpruceType::Struct {
                 is_ref: *is_ref,
-                identifier: node.token.span.clone(),
+                identifier: Some(node.token.span.clone()),
                 fields: Some(field_types),
                 methods: Some(func_types),
             };
@@ -1248,6 +1318,9 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
         } else { None };
 
         self.pop_scope();
+
+        // FIXME: Might need to use an Rc for kinds, so we can make a simple clone of the pointer
+        self.struct_table.push((node.token.span.clone(), kind.clone()));
 
         Ok(DecoratedAst::new_struct_definition(node.token.clone(), kind, *is_ref, items))
     }

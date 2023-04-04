@@ -27,7 +27,7 @@ pub enum AstData {
     Identifier,
     Literal,
     SymbolLiteral,
-    MapLiteral(Vec<(Token, Option<Box<Ast>>)>),
+    StructLiteral(Token, Vec<(Token, Option<Box<Ast>>)>),
     TupleLiteral(Vec<Box<Ast>>),
     ListLiteral(Vec<Box<Ast>>),
     ExpressionStatement(bool, Box<Ast>),
@@ -120,10 +120,10 @@ impl Ast {
         })
     }
 
-    pub fn new_map_literal(token: Token, values: Vec<(Token, Option<Box<Ast>>)>) -> Box<Self> {
+    pub fn new_struct_literal(token: Token, identifier: Token, values: Vec<(Token, Option<Box<Ast>>)>) -> Box<Self> {
         Box::new(Self {
             token,
-            data: AstData::MapLiteral(values),
+            data: AstData::StructLiteral(identifier, values),
         })
     }
 

@@ -110,7 +110,7 @@ impl Parser {
             }
 
             TokenKind::LSquare => self.list_literal(),
-            TokenKind::At => self.map_literal(),
+            TokenKind::At => self.struct_literal(),
             TokenKind::Pipe => self.anon_function(),
             TokenKind::Backtick => self.symbol(),
             TokenKind::LCurly => self.body(),
@@ -344,9 +344,13 @@ impl Parser {
         Ok(Ast::new_list_literal(token, values))
     }
 
-    fn map_literal(&mut self) -> Result<Box<Ast>, SpruceErr> {
+    fn struct_literal(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let token = self.current.clone();
         self.consume_here();
+
+        let identifier = self.current.clone();
+        self.consume(TokenKind::Identifier, "Expect identifier after '@' in struct literal")?;
+        
         self.consume(TokenKind::LCurly, "Expect '{' after '@' to start map literal")?;
 
         let mut values = Vec::new();
@@ -380,7 +384,7 @@ impl Parser {
 
         self.consume(TokenKind::RCurly, "Expect '}' after map literal")?;
 
-        Ok(Ast::new_map_literal(token, values))
+        Ok(Ast::new_struct_literal(token, identifier, values))
     }
 
     fn function_call(&mut self, lhs: Box<Ast>) -> Result<Box<Ast>, SpruceErr> {

@@ -251,6 +251,7 @@ impl Compiler {
 
                 string
             }
+            SpruceType::Struct { identifier, ..} => identifier.as_ref().unwrap().slice_source().into(),
             _ => unimplemented!(),
         }
     }
@@ -263,6 +264,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
             DecoratedAstData::TupleLiteral(_, _) => self.visit_tuple_literal(node)?,
             DecoratedAstData::ListLiteral(_, _) => self.visit_list_literal(node)?,
             DecoratedAstData::SymbolLiteral(_) => self.visit_symbol_literal(node)?,
+            DecoratedAstData::StructLiteral(_, _) => self.visit_struct_literal(node)?,
             DecoratedAstData::BinaryOp {..} => self.visit_binary_op(node)?,
             DecoratedAstData::LogicalOp {..} => self.visit_logical_op(node)?,
             DecoratedAstData::Identifier(_) => self.visit_identifier(node)?,
@@ -359,8 +361,34 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_map_literal(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
-        todo!()
+    fn visit_struct_literal(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+        let DecoratedAstData::StructLiteral(_, items) = &node.data else { unreachable!() };
+
+        self.output_code.push_str(&format!(
+            "new {}(){{ ",
+            node.token.span.slice_source(),
+        ));
+
+        for (idx, (field_name, arg)) in items.iter().enumerate() {
+            self.output_code.push_str(&format!(
+                "{} = ",
+                field_name.slice_source(),
+            ));
+
+            if let Some(arg) = arg {
+                self.visit(arg)?;
+            } else {
+                self.output_code.push_str(field_name.slice_source());
+            }
+
+            if idx < items.len() - 1 {
+                self.output_code.push_str(", ");
+            }
+        }
+
+        self.output_code.push_str(" }");
+
+        Ok(())
     }
 
     fn visit_tuple_literal(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {

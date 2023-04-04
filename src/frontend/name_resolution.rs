@@ -1,4 +1,4 @@
-use std::{rc::Rc, collections::HashSet};
+use std::{rc::Rc, collections::{HashSet, HashMap}};
 
 use crate::{source::Source, RunArgs, error::{SpruceErr, SpruceErrData}, nativefns, visitor::Visitor};
 
@@ -139,6 +139,33 @@ impl NameResolver {
     #[inline]
     fn find_function(&self, span: &Span) -> Option<()> {
         self.find_function_str(span.slice_source())
+    }
+
+    fn find_struct_str(&self, id: &str) -> Option<StructSignature> {
+        for struct_ in &self.res_table.struct_types {
+            if struct_.identifier.as_str() == id {
+                return Some(struct_.clone());
+            }
+        }
+
+        None
+    }
+
+    #[inline]
+    fn find_struct(&self, span: &Span) -> Option<StructSignature> {
+        self.find_struct_str(span.slice_source())
+    }
+
+    fn find_struct_field(&self, signature: &StructSignature, field_name: &Span) -> bool {
+        if let Some(fields) = &signature.fields {
+            for field in fields {
+                if field.token.span.slice_source() == field_name.slice_source() {
+                    return true;
+                }
+            }
+        }
+
+        false
     }
 
     fn register_local(&mut self, token: &Token, mutable: bool) {
@@ -307,6 +334,7 @@ impl Visitor<Ast, ()> for NameResolver {
             AstData::TupleLiteral(_) => self.visit_tuple_literal(node)?,
             AstData::ListLiteral(_) => self.visit_list_literal(node)?,
             AstData::SymbolLiteral => self.visit_symbol_literal(node)?,
+            AstData::StructLiteral(_, _) => self.visit_struct_literal(node)?,
 
             AstData::Type {..} => self.visit_type(node)?,
             AstData::Identifier => self.visit_identifier(node)?,
@@ -364,7 +392,7 @@ impl Visitor<Ast, ()> for NameResolver {
         Ok(())
     }
 
-    fn visit_literal(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_literal(&mut self, _node: &Box<Ast>) -> Result<(), SpruceErr> {
         unreachable!()
     }
 
@@ -375,8 +403,74 @@ impl Visitor<Ast, ()> for NameResolver {
         Ok(())
     }
 
-    fn visit_map_literal(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
-        todo!()
+    fn visit_struct_literal(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+        let AstData::StructLiteral(identifier, arguments) = &node.data else { unreachable!() };
+        let mut fields = HashSet::new();
+
+        let signature = if let Some(signature) = self.find_struct(&identifier.span) {
+            Some(signature)
+        } else {
+            self.error_no_exit(format!(
+                "Cannot find struct with identifier '{}'",
+                identifier.span.slice_source(),
+            ), identifier);
+            None
+        };
+
+        if let Some(signature) = &signature {
+            if let Some(fields) = &signature.fields {
+                if fields.len() != arguments.len() {
+                    self.error_no_exit(format!(
+                        "Struct '{}' expected {} fields but received {}",
+                        signature.identifier,
+                        fields.len(),
+                        arguments.len(),
+                    ), &node.token);
+                }
+            } else {
+                if arguments.len() > 0 {
+                    self.error_no_exit(format!(
+                        "Struct '{}' expected 0 fields but received {}",
+                        signature.identifier,
+                        arguments.len(),
+                    ), &node.token);
+                }
+            }
+        }
+        for (argument_identifier, arg) in arguments {
+            if !fields.insert(argument_identifier.span.slice_source()) {
+                self.error_no_exit(format!(
+                    "Field '{}' has already been defined in struct literal",
+                    argument_identifier.span.slice_source(),
+                ), argument_identifier);
+            }
+
+            if let Some(signature) = &signature {
+                if !self.find_struct_field(signature, &argument_identifier.span) {
+                    self.error_no_exit(format!(
+                        "Struct '{}' does not contain a field named '{}'",
+                        signature.identifier,
+                        argument_identifier.span.slice_source(),
+                    ), argument_identifier);
+                }
+
+                if arg.is_none() {
+                    if let None = self.table.find_local(&argument_identifier.span, true) {
+                        self.error_no_exit(format!(
+                            "Cannot find local '{}' to insert as field in struct '{}'",
+                            argument_identifier.span.slice_source(),
+                            signature.identifier,
+                        ), argument_identifier);
+                    }
+                }
+            }
+
+            if let Some(arg) = arg {
+                self.visit(arg)?;
+            }
+        }
+
+        Ok(())
     }
 
     fn visit_tuple_literal(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
@@ -405,7 +499,7 @@ impl Visitor<Ast, ()> for NameResolver {
         Ok(())
     }
 
-    fn visit_comment(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_comment(&mut self, _node: &Box<Ast>) -> Result<(), SpruceErr> {
         unreachable!()
     }
 
@@ -429,11 +523,11 @@ impl Visitor<Ast, ()> for NameResolver {
         Ok(())
     }
 
-    fn visit_parameter(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_parameter(&mut self, _node: &Box<Ast>) -> Result<(), SpruceErr> {
         unreachable!()
     }
 
-    fn visit_parameter_list(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_parameter_list(&mut self, _node: &Box<Ast>) -> Result<(), SpruceErr> {
         unreachable!()
     }
 
@@ -616,10 +710,19 @@ impl Visitor<Ast, ()> for NameResolver {
             is_ref: *is_ref,
             fields: if let Some(items) = items {
                 let mut fields = Vec::new();
+                let mut field_names = HashSet::new();
 
                 for item in items {
                     if let AstData::Parameter {..} = &item.data {
-                        fields.push(Box::new(*item.clone()));
+                        if !field_names.insert(item.token.span.slice_source()) {
+                            self.error_no_exit(format!(
+                                "Struct definition of '{}' already contains the field '{}'",
+                                node.token.span.slice_source(),
+                                item.token.span.slice_source(),
+                            ), &item.token);
+                        } else {
+                            fields.push(Box::new(*item.clone()));
+                        }
                     }
                 }
 
@@ -740,7 +843,8 @@ impl Visitor<Ast, ()> for NameResolver {
     }
 
     fn visit_lazy(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
-        todo!()
+        let AstData::Lazy(inner) = &node.data else { unreachable!() };
+        self.visit(inner)
     }
 
     fn visit_defer(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {

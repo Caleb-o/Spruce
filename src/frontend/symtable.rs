@@ -89,6 +89,7 @@ impl SymTable {
         None
     }
 
+    #[inline]
     fn find_count(&self) -> u16 {
         if self.depth > GLOBAL_DEPTH {
             self.find_local_count()

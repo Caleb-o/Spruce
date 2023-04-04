@@ -6,7 +6,7 @@ pub trait Visitor<T, U> {
     fn visit_identifier(&mut self, node: &Box<T>) -> Result<U, SpruceErr>;
     fn visit_literal(&mut self, node: &Box<T>) -> Result<U, SpruceErr>;
     fn visit_symbol_literal(&mut self, node: &Box<T>) -> Result<U, SpruceErr>;
-    fn visit_map_literal(&mut self, node: &Box<T>) -> Result<U, SpruceErr>;
+    fn visit_struct_literal(&mut self, node: &Box<T>) -> Result<U, SpruceErr>;
     fn visit_tuple_literal(&mut self, node: &Box<T>) -> Result<U, SpruceErr>;
     fn visit_list_literal(&mut self, node: &Box<T>) -> Result<U, SpruceErr>;
     fn visit_expression_statement(&mut self, node: &Box<T>) -> Result<U, SpruceErr>;
