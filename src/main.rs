@@ -5,6 +5,7 @@ mod compiler;
 mod source;
 mod util;
 mod error;
+mod visitor;
 
 use std::{fs, process::Command};
 

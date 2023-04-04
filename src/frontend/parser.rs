@@ -284,7 +284,7 @@ impl Parser {
                     match node.data {
                         AstData::Identifier => Ast::new_var_assign(node.token.clone(), node, self.expression()?),
                         AstData::IndexGetter {..} => Ast::new_index_setter(node.token.clone(), node, self.expression()?),
-                        AstData::GetProperty {..} => Ast::new_property_setter(node.token.clone(), node, self.expression()?),
+                        AstData::PropertyGetter {..} => Ast::new_property_setter(node.token.clone(), node, self.expression()?),
                         _ => return Err(self.error(format!(
                             "Cannot use '{}':{:?} on lhs of assignment",
                             node.token.span.slice_source(),
