@@ -784,6 +784,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         self.output_code.push_str(") ");
 
         self.visit(body)?;
+        self.output_code.push('\n');
         Ok(())
     }
 

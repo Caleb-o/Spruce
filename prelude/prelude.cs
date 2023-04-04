@@ -33,6 +33,11 @@ public static class SprucePrelude {
 
             return _result;
         }
+
+        public override string ToString() {
+            var inner = calculated ? _result.ToString() : "None";
+            return $"Lazy<{inner}>";
+        }
     }
 
     public static void Print(params object[] items) {
