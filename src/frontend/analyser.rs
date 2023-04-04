@@ -793,7 +793,11 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
     }
 
     fn visit_parameter(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
-        todo!()
+        unreachable!()
+    }
+
+    fn visit_parameter_list(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+        unreachable!()
     }
 
     fn visit_function(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
@@ -1172,7 +1176,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
     }
 
     fn visit_type_def(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
-        todo!()
+        unreachable!()
     }
 
     fn visit_struct_def(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {

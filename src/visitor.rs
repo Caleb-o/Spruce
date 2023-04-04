@@ -18,6 +18,7 @@ pub trait Visitor<T, U> {
     fn visit_logical_op(&mut self, node: &Box<T>) -> Result<U, SpruceErr>;
     
     fn visit_parameter(&mut self, node: &Box<T>) -> Result<U, SpruceErr>;
+    fn visit_parameter_list(&mut self, node: &Box<T>) -> Result<U, SpruceErr>;
     fn visit_function(&mut self, node: &Box<T>) -> Result<U, SpruceErr>;
     fn visit_function_call(&mut self, node: &Box<T>) -> Result<U, SpruceErr>;
     

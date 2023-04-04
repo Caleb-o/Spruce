@@ -428,7 +428,11 @@ impl Visitor<Ast, ()> for NameResolver {
     }
 
     fn visit_parameter(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
-        todo!()
+        unreachable!()
+    }
+
+    fn visit_parameter_list(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+        unreachable!()
     }
 
     fn visit_function(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
