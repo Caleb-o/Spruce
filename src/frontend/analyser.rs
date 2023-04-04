@@ -360,6 +360,7 @@ impl Analyser {
                 }
             },
             DecoratedAstData::IndexGetter { expression, ..} => self.find_type_of(expression)?,
+            DecoratedAstData::IndexSetter { expression, ..} => self.find_type_of(expression)?,
             DecoratedAstData::Ternary { kind, ..} => kind.clone(),
             DecoratedAstData::IfStatement { kind, ..} => kind.clone(),
             DecoratedAstData::ForStatement {..} => SpruceType::None,
@@ -475,6 +476,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
             AstData::StructDefinition {..} => self.visit_struct_def(node)?,
 
             AstData::IndexGetter {..} => self.visit_index_getter(node)?,
+            AstData::IndexSetter {..} => self.visit_index_setter(node)?,
 
             AstData::Function {..} => {
                 let prev = self.push_scope_type(ScopeType::Function);
@@ -1442,8 +1444,16 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
         let AstData::IndexGetter { expression, index } = &node.data else { unreachable!() };
 
         let expression = self.visit(expression)?;
+        let expr_type = self.find_type_of(&expression)?;
         let index = self.visit(index)?;
         let index_type = self.find_type_of(&index)?;
+
+        if discriminant(&expr_type) != discriminant(&SpruceType::List(Box::new(SpruceType::Any))) {
+            self.error_no_exit(format!(
+                "Left-hand side of index must be a list, but received {}",
+                expr_type,
+            ), &node.token);
+        }
 
         if !index_type.is_same(&SpruceType::Int) {
             self.error_no_exit(format!(
@@ -1456,7 +1466,25 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
     }
 
     fn visit_index_setter(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
-        todo!()
+        let AstData::IndexSetter { expression, rhs } = &node.data else { unreachable!() };
+
+        let expression = self.visit(expression)?;
+        let expr_type = match self.find_type_of(&expression)? {
+            SpruceType::List(kind) => *kind.clone(),
+            n @ _ => n,
+        };
+        let rhs = self.visit(rhs)?;
+        let rhs_type = self.find_type_of(&rhs)?;
+
+        if !expr_type.is_same(&rhs_type) {
+            self.error_no_exit(format!(
+                "Index setter expected type {} but received {}",
+                expr_type,
+                rhs_type,
+            ), &node.token);
+        }
+        
+        Ok(DecoratedAst::new_index_setter(node.token.clone(), expression, rhs))
     }
 
     fn visit_property_getter(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {

@@ -288,6 +288,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
             DecoratedAstData::ExpressionStatement(_, _, _) => self.visit_expression_statement(node)?,
 
             DecoratedAstData::IndexGetter {..} => self.visit_index_getter(node)?,
+            DecoratedAstData::IndexSetter {..} => self.visit_index_setter(node)?,
 
             DecoratedAstData::Lazy(_) => self.visit_lazy(node)?,
             DecoratedAstData::Defer(_, _) => self.visit_defer(node)?,
@@ -635,7 +636,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
     }
 
     fn visit_struct_def(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
-        let DecoratedAstData::StructDefinition { is_ref, items, .. } = &node.data else { unreachable!() };
+        let DecoratedAstData::StructDefinition { kind, is_ref, items } = &node.data else { unreachable!() };
 
         self.output_code.push_str(&format!(
             "{}public {} {} {{\n",
@@ -663,6 +664,42 @@ impl Visitor<DecoratedAst, ()> for Compiler {
                 }
             }
         }
+
+        let SpruceType::Struct { fields, .. } = kind else { unreachable!() };
+        self.output_code.push_str(&format!("{}public override string ToString(){{\n", self.tab_string()));
+        self.indent();
+
+        if let Some(fields) = fields {
+            self.output_code.push_str(&format!(
+                "{}return $\"{} {{{{ ",
+                self.tab_string(),
+                node.token.span.slice_source(),
+            ));
+
+            for (idx, (field_name, _)) in fields.iter().enumerate() {
+                self.output_code.push_str(&format!(
+                    "{{{}}}",
+                    field_name.slice_source(),
+                ));
+
+                if idx < fields.len() - 1 {
+                    self.output_code.push_str(", ");
+                }
+            }
+
+            self.output_code.push_str(" }}\"");
+        } else {
+            self.output_code.push_str(&format!(
+                "{}return $\"{} {{}}\"",
+                self.tab_string(),
+                node.token.span.slice_source(),
+            ));
+        }
+
+        self.output_code.push_str(";\n");
+
+        self.dedent();
+        self.output_code.push_str(&format!("{}}}\n", self.tab_string()));
 
         self.dedent();
 
@@ -774,7 +811,13 @@ impl Visitor<DecoratedAst, ()> for Compiler {
     }
 
     fn visit_index_setter(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
-        todo!()
+        let DecoratedAstData::IndexSetter { expression, rhs } = &node.data else { unreachable!() };
+
+        self.visit(expression)?;
+        self.output_code.push_str(" = ");
+        self.visit(rhs)?;
+
+        Ok(())
     }
 
     fn visit_property_getter(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
