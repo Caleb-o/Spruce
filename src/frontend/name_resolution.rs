@@ -708,10 +708,6 @@ impl Visitor<Ast, ()> for NameResolver {
         Ok(())
     }
 
-    fn visit_trailing_if_statement(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
-        todo!()
-    }
-
     fn visit_index_getter(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
         todo!()
     }

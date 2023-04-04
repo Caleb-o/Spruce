@@ -1358,10 +1358,6 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
         Ok(DecoratedAst::new_do_while_statement(node.token.clone(), body, condition))
     }
 
-    fn visit_trailing_if_statement(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
-        todo!()
-    }
-
     fn visit_index_getter(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
         todo!()
     }
@@ -1474,6 +1470,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
                     }
                 }
                 DecoratedAstData::Return(kind, _) => kind.clone(),
+                DecoratedAstData::Body(kind, _) => kind.clone(),
                 _ => SpruceType::None,
             },
             None => SpruceType::None,

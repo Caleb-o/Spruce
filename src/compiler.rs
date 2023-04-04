@@ -674,7 +674,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
                 self.tab_string(),
             ));
             self.visit(condition)?;
-            self.output_code.push_str(")\n");
+            self.output_code.push_str(&format!(")\n{}", self.tab_string()));
             self.visit(true_body)?;
 
             if let Some(false_body) = false_body {
@@ -684,6 +684,8 @@ impl Visitor<DecoratedAst, ()> for Compiler {
                     self.tab_string(),
                 ));
                 self.visit(false_body)?;
+            } else {
+                self.output_code.push('\n');
             }
         }
 
@@ -728,10 +730,6 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         self.visit(condition)?;
         self.output_code.push_str(");\n");
         Ok(())
-    }
-
-    fn visit_trailing_if_statement(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
-        todo!()
     }
 
     fn visit_index_getter(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
@@ -794,6 +792,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         ));
 
         if let Some(expr) = expr {
+            self.output_code.push(' ');
             self.visit(expr)?;
         }
 
@@ -802,7 +801,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_body(&mut self, node: &Box<DecoratedAst>, new_scope: bool) -> Result<(), SpruceErr> {
+    fn visit_body(&mut self, node: &Box<DecoratedAst>, _new_scope: bool) -> Result<(), SpruceErr> {
         let DecoratedAstData::Body(_, statements) = &node.data else { unreachable!() };
         self.output_code.push_str("{\n");
 

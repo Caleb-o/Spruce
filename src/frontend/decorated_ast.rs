@@ -49,7 +49,6 @@ pub enum DecoratedAstData {
     IfStatement { is_expression: bool, condition: Box<DecoratedAst>, kind: SpruceType, true_body: Box<DecoratedAst>, false_body: Option<Box<DecoratedAst>> },
     ForStatement { variable: Option<Box<DecoratedAst>>, condition: Box<DecoratedAst>, increment: Option<Box<DecoratedAst>>, body: Box<DecoratedAst> },
     DoWhileStatement { body: Box<DecoratedAst>, condition: Box<DecoratedAst> },
-    TrailingIfStatement { statement: Box<DecoratedAst>, condition: Box<DecoratedAst> },
 
     IndexGetter { expression: Box<DecoratedAst>, index: Box<DecoratedAst> },
     IndexSetter { expression: Box<DecoratedAst>, rhs: Box<DecoratedAst> },
@@ -307,20 +306,6 @@ impl DecoratedAst {
         Box::new(Self {
             token,
             data: DecoratedAstData::DoWhileStatement { body, condition },
-        })
-    }
-
-    pub fn new_trailing_if(
-        token: Token,
-        statement: Box<DecoratedAst>,
-        condition: Box<DecoratedAst>,
-    ) -> Box<Self> {
-        Box::new(Self {
-            token,
-            data: DecoratedAstData::TrailingIfStatement { 
-                statement,
-                condition
-            }
         })
     }
 

@@ -567,7 +567,6 @@ impl Parser {
             _ => {
                 let node = self.expression()?;
                 let is_stmt = match node.data {
-                    AstData::Body(_) => true,
                     _ if self.current.kind == TokenKind::SemiColon => {
                         self.consume_here();
                         true
@@ -581,20 +580,25 @@ impl Parser {
         // Trailing if statement
         match node.data {
             // Disallow after certain types of statement
-            AstData::Comment |
-            AstData::SwitchStatement {..} | AstData::Function {..} | AstData::IfStatement {..} => {}
+            AstData::Comment | AstData::IfStatement {..} |
+            AstData::SwitchStatement {..} | AstData::Function {..} => {}
             _ => {
                 if self.current.kind == TokenKind::If {
                     let token = self.current.clone();
                     self.consume_here();
-                    node = Ast::new_trailing_if(token, node, self.expression()?);
+                    node = Ast::new_if_statement(
+                        token.clone(), false, self.expression()?,
+                        Ast::new_body(token, vec![node]), None,
+                    );
+
+                    self.consume(TokenKind::SemiColon, "Expect ';' after trailing if statement")?;
                 }
             }
         }
 
         match node.data {
             AstData::Comment | AstData::SwitchStatement {..} | AstData::Function {..} |
-            AstData::IfStatement {..} | AstData::ForStatement {..} | AstData::Body(_) => {}
+            AstData::IfStatement {..} | AstData::ForStatement {..} => {}
             _ => self.consume(TokenKind::SemiColon, "Expect ';' after statement")?,
         }
         

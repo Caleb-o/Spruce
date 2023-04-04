@@ -35,7 +35,6 @@ pub trait Visitor<T, U> {
     fn visit_if_statement(&mut self, node: &Box<T>) -> Result<U, SpruceErr>;
     fn visit_for_statement(&mut self, node: &Box<T>) -> Result<U, SpruceErr>;
     fn visit_do_while_statement(&mut self, node: &Box<T>) -> Result<U, SpruceErr>;
-    fn visit_trailing_if_statement(&mut self, node: &Box<T>) -> Result<U, SpruceErr>;
     
     fn visit_index_getter(&mut self, node: &Box<T>) -> Result<U, SpruceErr>;
     fn visit_index_setter(&mut self, node: &Box<T>) -> Result<U, SpruceErr>;
