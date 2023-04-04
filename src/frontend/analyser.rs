@@ -327,6 +327,7 @@ impl Analyser {
                     func.function.to_type()
                 }
             },
+            DecoratedAstData::IndexGetter { expression, ..} => self.find_type_of(expression)?,
             DecoratedAstData::Ternary { kind, ..} => kind.clone(),
             DecoratedAstData::IfStatement { kind, ..} => kind.clone(),
             DecoratedAstData::ForStatement {..} => SpruceType::None,
@@ -341,7 +342,7 @@ impl Analyser {
             _ => return Err(SpruceErr::new(format!(
                     "Cannot find type of '{}' - {:#?}",
                     node.token.span.slice_source(),
-                    node.data,
+                    node,
                 ),
                 SpruceErrData::Analyser { file_path: (*self.source.file_path).clone() }
             ))
@@ -436,6 +437,8 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
 
             AstData::TypeDefinition { inner } => self.visit(inner)?,
             AstData::StructDefinition {..} => self.visit_struct_def(node)?,
+
+            AstData::IndexGetter {..} => self.visit_index_getter(node)?,
 
             AstData::Function {..} => {
                 let prev = self.push_scope_type(ScopeType::Function);
@@ -859,7 +862,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
 
         let function_type = if *anonymous {
             FunctionType::Anonymous  
-        } else if self.table.get_depth() > 0 {
+        } else if self.table.get_depth() > 0 && self.scope_type != ScopeType::Method {
             FunctionType::Inner
         } else {
             FunctionType::Standard
@@ -1359,7 +1362,20 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
     }
 
     fn visit_index_getter(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
-        todo!()
+        let AstData::IndexGetter { expression, index } = &node.data else { unreachable!() };
+
+        let expression = self.visit(expression)?;
+        let index = self.visit(index)?;
+        let index_type = self.find_type_of(&index)?;
+
+        if !index_type.is_same(&SpruceType::Int) {
+            self.error_no_exit(format!(
+                "Must index items with an integer, but received {}",
+                index_type,
+            ), &node.token);
+        }
+
+        Ok(DecoratedAst::new_index_getter(node.token.clone(), expression, index))
     }
 
     fn visit_index_setter(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {

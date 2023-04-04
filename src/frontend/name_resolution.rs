@@ -331,6 +331,8 @@ impl Visitor<Ast, ()> for NameResolver {
             AstData::TypeDefinition { inner } => self.visit(inner)?,
             AstData::StructDefinition {..} => self.visit_struct_def(node)?,
 
+            AstData::IndexGetter {..} => self.visit_index_getter(node)?,
+
             AstData::Defer {..} => self.visit_defer(node)?,
             AstData::Lazy {..} => self.visit_lazy(node)?,
             AstData::Return {..} => self.visit_return_statement(node)?,
@@ -709,7 +711,12 @@ impl Visitor<Ast, ()> for NameResolver {
     }
 
     fn visit_index_getter(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
-        todo!()
+        let AstData::IndexGetter { expression, index } = &node.data else { unreachable!() };
+
+        self.visit(expression)?;
+        self.visit(index)?;
+
+        Ok(())
     }
 
     fn visit_index_setter(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {

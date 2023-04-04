@@ -285,6 +285,8 @@ impl Visitor<DecoratedAst, ()> for Compiler {
             DecoratedAstData::Parameter(_) => self.visit_parameter(node)?,
             DecoratedAstData::ExpressionStatement(_, _, _) => self.visit_expression_statement(node)?,
 
+            DecoratedAstData::IndexGetter {..} => self.visit_index_getter(node)?,
+
             DecoratedAstData::Lazy(_) => self.visit_lazy(node)?,
             DecoratedAstData::Defer(_, _) => self.visit_defer(node)?,
             DecoratedAstData::Return(_, _) => self.visit_return_statement(node)?,
@@ -379,9 +381,9 @@ impl Visitor<DecoratedAst, ()> for Compiler {
     }
 
     fn visit_list_literal(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
-        let DecoratedAstData::ListLiteral(_, values) = &node.data else { unreachable!() };
+        let DecoratedAstData::ListLiteral(kind, values) = &node.data else { unreachable!() };
 
-        self.output_code.push_str("new(){ ");
+        self.output_code.push_str(&format!("new {}(){{ ", Compiler::as_cs_type(kind)));
 
         for (idx, arg) in values.iter().enumerate() {
             self.visit(arg)?;
@@ -608,7 +610,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         let DecoratedAstData::StructDefinition { is_ref, items, .. } = &node.data else { unreachable!() };
 
         self.output_code.push_str(&format!(
-            "{}{} {} {{\n",
+            "{}public {} {} {{\n",
             self.tab_string(),
             if *is_ref { "sealed class" } else { "struct" },
             node.token.span.slice_source(),
@@ -619,7 +621,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         if let Some(items) = items {
             for item in items {
                 if let DecoratedAstData::Parameter(_) = &item.data {
-                    self.output_code.push_str(&self.tab_string());
+                    self.output_code.push_str(&format!("{}public ", self.tab_string()));
                     self.visit(item)?;
                     self.output_code.push_str(";\n");
                 } else {
@@ -733,7 +735,14 @@ impl Visitor<DecoratedAst, ()> for Compiler {
     }
 
     fn visit_index_getter(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
-        todo!()
+        let DecoratedAstData::IndexGetter { expression, index } = &node.data else { unreachable!() };
+
+        self.visit(expression)?;
+        self.output_code.push('[');
+        self.visit(index)?;
+        self.output_code.push(']');
+
+        Ok(())
     }
 
     fn visit_index_setter(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
