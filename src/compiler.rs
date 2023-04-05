@@ -156,6 +156,7 @@ impl Compiler {
 
     fn get_type_from_ast(&self, node: &Box<DecoratedAst>) -> Result<String, SpruceErr> {
         let kind = Compiler::as_cs_type(match &node.data {
+            DecoratedAstData::Identifier(kind) => kind,
             DecoratedAstData::BinaryOp { kind, .. } => kind,
             DecoratedAstData::UnaryOp { kind, .. } => kind,
             DecoratedAstData::LogicalOp { kind, .. } => kind,
@@ -196,8 +197,13 @@ impl Compiler {
 
     #[inline]
     fn wrap_in_lambda_call(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
-        self.wrap_in_lambda(node)?;
-        self.output_code.push_str("()");
+        match &node.data {
+            DecoratedAstData::Body(_, _) => {
+                self.wrap_in_lambda(node)?;
+                self.output_code.push_str("()");
+            }
+            _ => self.visit(node)?,
+        }
         Ok(())
     }
 
