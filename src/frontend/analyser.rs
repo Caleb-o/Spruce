@@ -1202,6 +1202,12 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
 
         let expr_kind = self.find_type_of(&expression)?;
 
+        if expr_kind.is_same(&SpruceType::None) {
+            self.error_no_exit(
+                "Cannot declare a variable, which is of type none".into()
+            , &node.token);
+        }
+
         let kind = match kind {
             Some(kind) => {
                 let kind = self.get_type_from_ast(kind)?;
