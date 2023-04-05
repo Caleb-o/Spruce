@@ -90,7 +90,7 @@ impl Analyser {
                         let item = self.visit(field)?;
                         let kind = Box::new(self.find_type_of(&item)?);
 
-                        out_fields.push((item.token.span, kind));
+                        out_fields.push((item.token.clone(), kind));
                     }
 
                     Some(out_fields)
@@ -277,7 +277,7 @@ impl Analyser {
         if let SpruceType::Struct { fields, .. } = signature {
             if let Some(fields) = fields {
                 for (field, kind) in fields {
-                    if field.slice_source() == field_name.slice_source() {
+                    if field.span.slice_source() == field_name.slice_source() {
                         return Some(kind.clone());
                     }
                 }
@@ -1415,7 +1415,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
                         }
 
                         let kind = self.get_type_from_ast(type_name)?;
-                        field_types.push((item.token.span.clone(), Box::new(kind.clone())));
+                        field_types.push((item.token.clone(), Box::new(kind.clone())));
 
                         self.register_local(&item.token, true, kind.clone());
 

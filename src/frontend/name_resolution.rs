@@ -1,4 +1,4 @@
-use std::{rc::Rc, collections::{HashSet, HashMap}};
+use std::{rc::Rc, collections::HashSet};
 
 use crate::{source::Source, RunArgs, error::{SpruceErr, SpruceErrData}, nativefns, visitor::Visitor};
 
@@ -326,7 +326,6 @@ impl NameResolver {
 
                 self.get_type_from_ast(&return_type)?;
             }
-            _ => unimplemented!("Type from AST"),
         })
     }
 }
@@ -709,7 +708,7 @@ impl Visitor<Ast, ()> for NameResolver {
 
     fn visit_struct_def(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
         let AstData::StructDefinition { is_ref, items } = &node.data else { unreachable!() };
-
+        
         self.push_scope();
 
         let signature = StructSignature {

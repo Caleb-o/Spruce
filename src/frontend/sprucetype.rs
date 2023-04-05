@@ -1,6 +1,6 @@
 use std::{mem::discriminant, fmt::Display};
 
-use super::token::Span;
+use super::token::{Span, Token};
 
 #[derive(Debug, Clone)]
 pub enum SpruceType {
@@ -25,7 +25,7 @@ pub enum SpruceType {
     Struct {
         is_ref: bool,
         identifier: Option<String>,
-        fields: Option<Vec<(Span, Box<SpruceType>)>>,
+        fields: Option<Vec<(Token, Box<SpruceType>)>>,
         methods: Option<Vec<Box<SpruceType>>>,
     },
 }
