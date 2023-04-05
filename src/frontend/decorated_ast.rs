@@ -12,7 +12,7 @@ pub struct DecoratedAst {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FunctionType {
-    Standard, Anonymous, Inner,
+    Standard, Anonymous, Inner, Method,
 }
 
 #[derive(Debug, Clone)]
@@ -22,7 +22,7 @@ pub enum DecoratedAstData {
     SymbolLiteral(u32), // Symbol Index
     StructLiteral(SpruceType, Vec<(Span, Option<Box<DecoratedAst>>)>),
     TupleLiteral(SpruceType, Vec<Box<DecoratedAst>>),
-    ListLiteral(SpruceType, Vec<Box<DecoratedAst>>),
+    ArrayLiteral(SpruceType, Vec<Box<DecoratedAst>>),
     ExpressionStatement(SpruceType, bool, Box<DecoratedAst>),
 
     Comment,
@@ -128,10 +128,10 @@ impl DecoratedAst {
         })
     }
 
-    pub fn new_list_literal(token: Token, values: Vec<Box<DecoratedAst>>, kind: SpruceType) -> Box<Self> {
+    pub fn new_array_literal(token: Token, values: Vec<Box<DecoratedAst>>, kind: SpruceType) -> Box<Self> {
         Box::new(Self {
             token,
-            data: DecoratedAstData::ListLiteral(kind, values),
+            data: DecoratedAstData::ArrayLiteral(kind, values),
         })
     }
 

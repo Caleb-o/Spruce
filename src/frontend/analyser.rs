@@ -2,7 +2,7 @@ use std::{rc::Rc, mem::discriminant, collections::HashSet};
 
 use crate::{source::Source, RunArgs, error::{SpruceErr, SpruceErrData}, nativefns::{self, ParamKind}, object::Object, visitor::Visitor};
 
-use super::{token::{Token, Span, TokenKind}, functiondata::{Function, FunctionMeta}, symbols::Symbols, environment::{ConstantValue}, ast::{Ast, AstData, TypeKind}, decorated_ast::{DecoratedAst, DecoratedAstData, FunctionType}, sprucetype::SpruceType, name_resolution::{ResolutionTable, FunctionSignatureKind}, symtable::SymTable};
+use super::{token::{Token, Span, TokenKind}, functiondata::{Function, FunctionMeta}, symbols::Symbols, environment::{ConstantValue}, ast::{Ast, AstData, TypeKind}, decorated_ast::{DecoratedAst, DecoratedAstData, FunctionType}, sprucetype::SpruceType, name_resolution::{ResolutionTable, FunctionSignatureKind, StructSignature, FunctionSignature}, symtable::SymTable};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ScopeType {
@@ -15,7 +15,7 @@ pub struct Analyser {
     args: RunArgs,
     constants: Vec<ConstantValue>,
     functable: Vec<FunctionMeta>, // Type resolved table
-    struct_table: Vec<(Span, SpruceType)>,
+    struct_table: Vec<SpruceType>,
     table: SymTable,
     res_table: Box<ResolutionTable>,
     defer_count: u32,
@@ -43,6 +43,7 @@ impl Analyser {
     pub fn run(&mut self, program: &Box<Ast>) -> Result<(Box<DecoratedAst>, Symbols), SpruceErr> {
         nativefns::register_native_functions(self);
 
+        self.register_all_types()?;
         self.register_all_functions()?;
         
         let program = self.visit(program)?;
@@ -76,9 +77,75 @@ impl Analyser {
         self.add_function(identifier.to_string(), function);
     }
 
+    fn register_all_types(&mut self) -> Result<(), SpruceErr> {
+        let signatures = self.res_table.struct_types.clone();
+        
+        for struct_ in signatures.into_iter() {
+            let StructSignature { identifier, is_ref, fields, functions } = &struct_;
+            
+            let fields = match fields {
+                Some(fields) => {
+                    let mut out_fields = Vec::new();
+                    for field in fields {
+                        let item = self.visit(field)?;
+                        let kind = Box::new(self.find_type_of(&item)?);
+
+                        out_fields.push((item.token.span, kind));
+                    }
+
+                    Some(out_fields)
+                },
+                None => None,
+            };
+
+            let methods = match functions {
+                Some(methods) => {
+                    let mut out_methods = Vec::new();
+                    for method in methods {
+                        let FunctionSignature { identifier, kind } = method;
+                        let FunctionSignatureKind::User { parameters, return_id } = kind else { unreachable!() };
+
+                        out_methods.push(Box::new(SpruceType::Function {
+                            is_native: false,
+                            identifier: identifier.clone(),
+                            parameters: match parameters {
+                                Some(parameters) => {
+                                    let mut param_kinds = Vec::new();
+
+                                    for param in parameters {
+                                        param_kinds.push(Box::new(self.get_type_from_ast(param)?));
+                                    }
+
+                                    Some(param_kinds)
+                                },
+                                None => None
+                            },
+                            return_type: Box::new(match return_id {
+                                Some(ret) => self.get_type_from_ast(ret)?,
+                                None => SpruceType::None,
+                            }),
+                        }));
+                    }
+
+                    Some(out_methods)
+                },
+                None => None,
+            };
+            
+            self.struct_table.push(SpruceType::Struct {
+                is_ref: *is_ref,
+                identifier: Some(identifier.clone()),
+                fields,
+                methods,
+            });
+        }
+
+        Ok(())
+    }
+
     fn register_all_functions(&mut self) -> Result<(), SpruceErr> {
         let signatures = self.res_table.signatures.clone();
-
+        
         for func in signatures.into_iter() {
             if let FunctionSignatureKind::User { parameters, return_id } = &func.kind {
 
@@ -97,6 +164,7 @@ impl Analyser {
                 };
 
                 self.add_function(func.identifier.clone(), Function::User {
+                    identifier: func.identifier.clone(),
                     param_types,
                     return_type,
                     empty: false,
@@ -190,8 +258,9 @@ impl Analyser {
     }
 
     fn find_struct_str(&self, id: &str) -> Option<&SpruceType> {
-        for (identifier, kind) in &self.struct_table {
-            if identifier.slice_source() == id {
+        for kind in &self.struct_table {
+            let SpruceType::Struct { identifier, ..} = kind else { unreachable!() };
+            if identifier.is_some() && identifier.as_ref().unwrap().as_str() == id {
                 return Some(kind);
             }
         }
@@ -205,11 +274,27 @@ impl Analyser {
     }
 
     fn find_struct_field(&self, signature: &SpruceType, field_name: &Span) -> Option<Box<SpruceType>> {
-        let SpruceType::Struct { fields, ..} = signature else { unreachable!() };
-        if let Some(fields) = fields {
-            for (field, kind) in fields {
-                if field.slice_source() == field_name.slice_source() {
-                    return Some(kind.clone());
+        if let SpruceType::Struct { fields, .. } = signature {
+            if let Some(fields) = fields {
+                for (field, kind) in fields {
+                    if field.slice_source() == field_name.slice_source() {
+                        return Some(kind.clone());
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    fn find_struct_method(&self, signature: &SpruceType, method_name: &Span) -> Option<Box<SpruceType>> {
+        if let SpruceType::Struct { methods, .. } = signature {
+            if let Some(methods) = methods {
+                for method in methods {
+                    let SpruceType::Function { identifier, .. } = &**method else { unreachable!() };
+                    if identifier.as_str() == method_name.slice_source() {
+                        return Some(method.clone());
+                    }
                 }
             }
         }
@@ -244,15 +329,17 @@ impl Analyser {
     {
         self.register_local(&identifier, false, SpruceType::Function {
             is_native: false,
+            identifier: identifier.span.slice_source().to_string(),
             parameters: parameters.clone(),
             return_type: return_type.clone(),
         });
         
-        self.add_function(identifier.span.slice_source().to_string(), Function::User {
-            param_types: parameters.and_then(|p| Some(p.iter().map(|k| *k.clone()).collect())),
-            return_type: *return_type,
-            empty: false
-        });
+        // self.add_function(identifier.span.slice_source().to_string(), Function::User {
+        //     identifier: identifier.span.slice_source().to_string(),
+        //     param_types: parameters.and_then(|p| Some(p.iter().map(|k| *k.clone()).collect())),
+        //     return_type: *return_type,
+        //     empty: false
+        // });
 
         Ok(())
     }
@@ -300,11 +387,11 @@ impl Analyser {
         }
     }
 
-    fn find_type_of(&self, node: &Box<DecoratedAst>) -> Result<SpruceType, SpruceErr> {
+    fn find_type_of(&mut self, node: &Box<DecoratedAst>) -> Result<SpruceType, SpruceErr> {
         Ok(match &node.data {
             DecoratedAstData::Literal(kind, _) => kind.clone(),
             DecoratedAstData::TupleLiteral(kind, _) => kind.clone(),
-            DecoratedAstData::ListLiteral(kind, _) => kind.clone(),
+            DecoratedAstData::ArrayLiteral(kind, _) => kind.clone(),
             DecoratedAstData::SymbolLiteral(_) => SpruceType::Symbol,
             DecoratedAstData::StructLiteral(kind, _) => kind.clone(),
 
@@ -332,37 +419,57 @@ impl Analyser {
 
             DecoratedAstData::Parameter(kind) => kind.clone(),
             DecoratedAstData::Function { function_type, parameters, kind, .. } => {
-                if *function_type == FunctionType::Anonymous {
-                    SpruceType::Function {
-                        is_native: false,
-                        parameters: match &parameters.data {
-                            DecoratedAstData::ParameterList(parameters) => {
-                                if let Some(parameters) = parameters {
-                                    let mut kinds = Vec::new();
-
-                                    for item in parameters {
-                                        let DecoratedAstData::Parameter(kind) = &item.data else { unreachable!() };
-                                        kinds.push(Box::new(kind.clone()));
+                match function_type {
+                    FunctionType::Anonymous | FunctionType::Method => {
+                        SpruceType::Function {
+                            is_native: false,
+                            identifier: node.token.span.slice_source().to_string(),
+                            parameters: match &parameters.data {
+                                DecoratedAstData::ParameterList(parameters) => {
+                                    if let Some(parameters) = parameters {
+                                        let mut kinds = Vec::new();
+    
+                                        for item in parameters {
+                                            let DecoratedAstData::Parameter(kind) = &item.data else { unreachable!() };
+                                            kinds.push(Box::new(kind.clone()));
+                                        }
+    
+                                        Some(kinds)
+                                    } else {
+                                        None
                                     }
-
-                                    Some(kinds)
-                                } else {
-                                    None
                                 }
-                            }
-                            _ => unreachable!(),
-                        },
-                        return_type: Box::new(kind.clone()),
+                                _ => unreachable!(),
+                            },
+                            return_type: Box::new(kind.clone()),
+                        }
                     }
-                } else {
-                    let func = self.find_function(&node.token.span).unwrap();
+                    _ => {
+                        let func = self.find_function(&node.token.span).unwrap();
                     func.function.to_type()
+                    }
                 }
             },
             DecoratedAstData::IndexGetter { expression, ..} => self.find_type_of(expression)?,
             DecoratedAstData::IndexSetter { expression, ..} => self.find_type_of(expression)?,
             DecoratedAstData::GetProperty { lhs, property } => {
-                *self.find_struct_field(&self.find_type_of(lhs)?, &property.token.span).unwrap()
+                let signature = match self.find_type_of(lhs)? {
+                    SpruceType::Array(kind) => *kind.clone(),
+                    n @ _ => n.clone(),
+                };
+
+                if let Some(property) = self.find_struct_field(&signature, &property.token.span) {
+                    *property
+                } else {
+                    if let Some(method) = self.find_struct_method(&signature, &property.token.span) {
+                         *method
+                    } else {
+                        return Err(self.error(format!(
+                            "Cannot find type of property/method '{}'",
+                            property.token.span.slice_source(),
+                        )));
+                    }
+                }
             }
             DecoratedAstData::SetProperty { lhs, .. } => {
                 self.find_type_of(lhs)?
@@ -425,11 +532,12 @@ impl Analyser {
 
                 SpruceType::Tuple(types)
             },
-            TypeKind::List(ref inner) => SpruceType::List(Box::new(self.get_type_from_ast(inner)?)),
+            TypeKind::Array(ref inner) => SpruceType::Array(Box::new(self.get_type_from_ast(inner)?)),
             TypeKind::Lazy(inner) => SpruceType::Lazy(Box::new(self.get_type_from_ast(inner)?)),
             TypeKind::Function { parameters, return_type } => {
                 SpruceType::Function {
                     is_native: false,
+                    identifier: node.token.span.slice_source().to_string(),
                     parameters: match parameters {
                         Some(ref parameters) => {
                             let mut types = Vec::new();
@@ -445,7 +553,6 @@ impl Analyser {
                     return_type: Box::new(self.get_type_from_ast(&return_type)?),
                 }
             }
-            _ => unimplemented!("Type from AST"),
         })
     }
 }
@@ -455,7 +562,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
         Ok(match &node.data {
             AstData::Literal => self.visit_literal(node)?,
             AstData::TupleLiteral(_) => self.visit_tuple_literal(node)?,
-            AstData::ListLiteral(_) => self.visit_list_literal(node)?,
+            AstData::ArrayLiteral(_) => self.visit_array_literal(node)?,
             AstData::SymbolLiteral => self.visit_symbol_literal(node)?,
             AstData::StructLiteral(_, _) => self.visit_struct_literal(node)?,
 
@@ -487,6 +594,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
             AstData::PropertyGetter {..} => self.visit_property_getter(node)?,
             AstData::PropertySetter {..} => self.visit_property_setter(node)?,
 
+            AstData::Parameter {..} => self.visit_parameter(node)?,
             AstData::Function {..} => {
                 let prev = self.push_scope_type(ScopeType::Function);
                 let func = self.visit_function(node)?;
@@ -639,8 +747,8 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
         Ok(DecoratedAst::new_tuple_literal(node.token.clone(), values, SpruceType::Tuple(types)))
     }
 
-    fn visit_list_literal(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
-        let AstData::ListLiteral(inner) = &node.data else { unreachable!() };
+    fn visit_array_literal(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+        let AstData::ArrayLiteral(inner) = &node.data else { unreachable!() };
         let mut values = Vec::new();
         let mut list_type = SpruceType::None;
 
@@ -657,7 +765,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
             
             if !list_type.is_same(type_of) {
                 self.error_no_exit(format!(
-                        "Item at index {idx} in list, has type {} but expects {}",
+                        "Item at index {idx} in array, has type {} but expects {}",
                         type_of,
                         list_type,
                     ),
@@ -668,7 +776,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
             values.push(item);
         }
 
-        Ok(DecoratedAst::new_list_literal(node.token.clone(), values, SpruceType::List(Box::new(list_type))))
+        Ok(DecoratedAst::new_array_literal(node.token.clone(), values, SpruceType::Array(Box::new(list_type))))
     }
 
     fn visit_expression_statement(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
@@ -725,9 +833,9 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
                     , &node.token
                 );
             }
-            SpruceType::List(_) => {
+            SpruceType::Array(_) => {
                 self.error_no_exit(
-                        "Cannot use binary operators on two lists".into()
+                        "Cannot use binary operators on two arrays".into()
                     , &node.token
                 );
             }
@@ -793,10 +901,10 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
                     , &node.token
                 );
             }
-            SpruceType::List(_) => {
+            SpruceType::Array(_) => {
                 self.error_no_exit(
                     format!(
-                        "Cannot use unary operator '{}' on a list",
+                        "Cannot use unary operator '{}' on an array",
                         node.token.span.slice_source(),
                     )
                     , &node.token
@@ -881,7 +989,11 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
     }
 
     fn visit_parameter(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
-        unreachable!()
+        let AstData::Parameter { type_name } = &node.data else { unreachable!() };
+
+        let type_name = self.visit_type(type_name)?;
+        let kind = self.find_type_of(&type_name)?;
+        Ok(DecoratedAst::new_parameter(node.token.clone(), kind))
     }
 
     fn visit_parameter_list(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
@@ -908,12 +1020,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
         } else {
             let (parameters, types) = self.evaluate_params(identifier.clone(), parameters)?;
             self.register_function(identifier, types, Box::new(return_type.clone()))?;
-            
             self.push_scope();
-            if !self.table.is_global() {
-                self.table.mark_depth_limit();
-            }
-
             parameters
         };
         
@@ -949,6 +1056,8 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
             FunctionType::Anonymous  
         } else if self.table.get_depth() > 0 && self.scope_type != ScopeType::Method {
             FunctionType::Inner
+        } else if self.scope_type == ScopeType::Method {
+            FunctionType::Method
         } else {
             FunctionType::Standard
         };
@@ -1296,7 +1405,9 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
 
                         let kind = self.get_type_from_ast(type_name)?;
                         field_types.push((item.token.span.clone(), Box::new(kind.clone())));
-                        
+
+                        self.register_local(&item.token, true, kind.clone());
+
                         inner.push(DecoratedAst::new_parameter(item.token.clone(), kind));
                     }
                     AstData::Function {..} => {
@@ -1324,7 +1435,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
 
             kind = SpruceType::Struct {
                 is_ref: *is_ref,
-                identifier: Some(node.token.span.clone()),
+                identifier: Some(node.token.span.slice_source().to_string()),
                 fields: Some(field_types),
                 methods: Some(func_types),
             };
@@ -1333,9 +1444,6 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
         } else { None };
 
         self.pop_scope();
-
-        // FIXME: Might need to use an Rc for kinds, so we can make a simple clone of the pointer
-        self.struct_table.push((node.token.span.clone(), kind.clone()));
 
         Ok(DecoratedAst::new_struct_definition(node.token.clone(), kind, *is_ref, items))
     }
@@ -1457,16 +1565,16 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
         let index = self.visit(index)?;
         let index_type = self.find_type_of(&index)?;
 
-        if discriminant(&expr_type) != discriminant(&SpruceType::List(Box::new(SpruceType::Any))) {
+        if discriminant(&expr_type) != discriminant(&SpruceType::Array(Box::new(SpruceType::Any))) {
             self.error_no_exit(format!(
-                "Left-hand side of index must be a list, but received {}",
+                "Left-hand side of index must be an array, but received {}",
                 expr_type,
             ), &node.token);
         }
 
         if !index_type.is_same(&SpruceType::Int) {
             self.error_no_exit(format!(
-                "Must index items with an integer, but received {}",
+                "Must index arrays with an integer, but received {}",
                 index_type,
             ), &node.token);
         }
@@ -1479,7 +1587,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
 
         let expression = self.visit(expression)?;
         let expr_type = match self.find_type_of(&expression)? {
-            SpruceType::List(kind) => *kind.clone(),
+            SpruceType::Array(kind) => *kind,
             n @ _ => n,
         };
         let rhs = self.visit(rhs)?;
@@ -1500,7 +1608,10 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
         let AstData::PropertyGetter { lhs, property } = &node.data else { unreachable!() };
 
         let lhs = self.visit(lhs)?;
-        let lhs_type = self.find_type_of(&lhs)?;
+        let lhs_type = match self.find_type_of(&lhs)? {
+            SpruceType::Array(kind) => *kind,
+            n @ _ => n,
+        };
 
         if discriminant(&lhs_type) != discriminant(&SpruceType::Struct {is_ref: false, identifier: None, fields: None, methods: None }) {
             self.error_no_exit(format!(
@@ -1513,12 +1624,17 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
             if let Some(field) = self.find_struct_field(&lhs_type, &property.token.span) {
                 *field
             } else {
-                self.error_no_exit(format!(
-                    "Struct '{}' does not contain any fields to get",
-                    identifier.as_ref().unwrap().slice_source(),
-                ), &node.token);
-
-                SpruceType::Error
+                if let Some(method) = self.find_struct_method(&lhs_type, &property.token.span) {
+                    *method
+                } else {
+                    self.error_no_exit(format!(
+                        "Struct '{}' does not contain any fields or methods to get, with identifier '{}'",
+                        identifier.as_ref().unwrap(),
+                        property.token.span.slice_source(),
+                    ), &node.token);
+    
+                    SpruceType::Error
+                }
             }
         } else {
             self.error_no_exit(format!(

@@ -13,17 +13,18 @@ pub enum SpruceType {
     Bool,
     String,
     Tuple(Vec<Box<SpruceType>>),
-    List(Box<SpruceType>),
+    Array(Box<SpruceType>),
     Symbol,
     Lazy(Box<SpruceType>),
     Function {
         is_native: bool,
+        identifier: String,
         parameters: Option<Vec<Box<SpruceType>>>,
         return_type: Box<SpruceType>,
     },
     Struct {
         is_ref: bool,
-        identifier: Option<Span>,
+        identifier: Option<String>,
         fields: Option<Vec<(Span, Box<SpruceType>)>>,
         methods: Option<Vec<Box<SpruceType>>>,
     },
@@ -33,12 +34,12 @@ impl SpruceType {
     pub fn is_same(&self, other: &SpruceType) -> bool {
         match self {
             Self::Any => true,
-            Self::List(k) => {
+            Self::Array(k) => {
                 if discriminant(self) != discriminant(other) {
                     return false;
                 }
 
-                let Self::List(j) = other else { unreachable!() };
+                let Self::Array(j) = other else { unreachable!() };
                 k.is_same(j)
             }
             Self::Tuple(k) => {
@@ -68,7 +69,7 @@ impl SpruceType {
                 let Self::Lazy(other_inner) = other else { unreachable!() };
                 inner.is_same(other_inner)
             }
-            Self::Function { is_native: _, parameters, return_type } => {
+            Self::Function { parameters, return_type, .. } => {
                 if discriminant(self) != discriminant(other) {
                     return false;
                 }
@@ -76,7 +77,7 @@ impl SpruceType {
                 let s_parameters = parameters;
                 let s_return_type = return_type;
 
-                let Self::Function { is_native: _, parameters, return_type } = other else { unreachable!() };
+                let Self::Function { parameters, return_type, .. } = other else { unreachable!() };
 
                 if (s_parameters.is_some() && parameters.is_none()) ||
                     (s_parameters.is_none() && parameters.is_some()) {
@@ -114,7 +115,7 @@ impl SpruceType {
                 let s_identifier = identifier;
                 let Self::Struct { identifier, .. } = other else { unreachable!() };
                 
-                s_identifier.as_ref().unwrap().slice_source() == identifier.as_ref().unwrap().slice_source()
+                s_identifier.as_ref().unwrap() == identifier.as_ref().unwrap()
             },
             _ => discriminant(self) == discriminant(other),
         }
@@ -131,7 +132,7 @@ impl Display for SpruceType {
             Self::Bool => "bool".into(),
             Self::String => "string".into(),
             Self::Symbol => "symbol".into(),
-            Self::List(inner) => format!("[{}]", inner),
+            Self::Array(inner) => format!("[{}]", inner),
             Self::Tuple(inner) => {
                 let mut tuplestr = String::from("(");
 
@@ -147,7 +148,7 @@ impl Display for SpruceType {
                 tuplestr
             },
             Self::Lazy(inner) => format!("lazy {inner}"),
-            Self::Function { is_native: _, parameters, return_type } => {
+            Self::Function { parameters, return_type, .. } => {
                 let mut fnstr = String::from("fn(");
 
                 if let Some(parameters) = parameters {
@@ -163,7 +164,7 @@ impl Display for SpruceType {
                 fnstr.push_str(&format!("): {}", return_type));
                 fnstr
             },
-            Self::Struct { identifier, .. } => identifier.as_ref().unwrap().slice_source().into(),
+            Self::Struct { identifier, .. } => identifier.as_ref().unwrap().clone(),
             n @ _ => unimplemented!("{n:?}"),
         })
     }

@@ -1,5 +1,6 @@
 using System;
 using System.Text;
+using System.Collections;
 using System.Collections.Generic;
 
 namespace Application {
@@ -11,6 +12,39 @@ public static class SprucePrelude {
         public void Dispose() => _action.Invoke();
     }
 
+    public sealed class Array<T> : IEnumerable<T> {
+        List<T> storage = new();
+        
+        public T this[int index]
+        {
+            // The embedded array will throw out of range exceptions as appropriate.
+            get => storage[index];
+            set => storage[index] = value;
+        }
+
+        public IEnumerator<T> GetEnumerator() => (IEnumerator<T>)storage.GetEnumerator();
+        IEnumerator IEnumerable.GetEnumerator() => storage.GetEnumerator();
+
+        public void Add(T item) {
+            storage.Add(item);
+        }
+
+        public override string ToString() {
+            StringBuilder sb = new("[ ");
+
+            for (int i = 0; i < storage.Count; ++i) {
+                sb.Append(storage[i]);
+
+                if (i < storage.Count - 1) {
+                    sb.Append(", ");
+                }
+            }
+
+            sb.Append(" ]");
+            return sb.ToString();
+        }
+    }
+
     public sealed class Lazy<T> {
         Func<T> _func;
         bool calculated;
@@ -20,6 +54,8 @@ public static class SprucePrelude {
             _func = func;
             calculated = false;
             _result = default(T);
+
+            new Array<int>() { 1, 2, 3 };
         }
 
         public T Get() {

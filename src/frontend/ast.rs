@@ -14,7 +14,7 @@ pub struct Ast {
 pub enum TypeKind {
     Standard,
     Tuple(Vec<Box<Ast>>),
-    List(Box<Ast>),
+    Array(Box<Ast>),
     Lazy(Box<Ast>),
     Function {
         parameters: Option<Vec<Box<Ast>>>,
@@ -29,7 +29,7 @@ pub enum AstData {
     SymbolLiteral,
     StructLiteral(Token, Vec<(Token, Option<Box<Ast>>)>),
     TupleLiteral(Vec<Box<Ast>>),
-    ListLiteral(Vec<Box<Ast>>),
+    ArrayLiteral(Vec<Box<Ast>>),
     ExpressionStatement(bool, Box<Ast>),
 
     Comment,
@@ -134,10 +134,10 @@ impl Ast {
         })
     }
 
-    pub fn new_list_literal(token: Token, values: Vec<Box<Ast>>) -> Box<Self> {
+    pub fn new_array_literal(token: Token, values: Vec<Box<Ast>>) -> Box<Self> {
         Box::new(Self {
             token,
-            data: AstData::ListLiteral(values),
+            data: AstData::ArrayLiteral(values),
         })
     }
 

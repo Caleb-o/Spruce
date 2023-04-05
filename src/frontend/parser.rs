@@ -109,8 +109,8 @@ impl Parser {
                 Ok(Ast::new_lazy(token, self.body()?))
             }
 
-            TokenKind::LSquare => self.list_literal(),
-            TokenKind::At => self.struct_literal(),
+            TokenKind::LSquare => self.array_literal(),
+            TokenKind::At => self.struct_literal(None),
             TokenKind::Pipe => self.anon_function(),
             TokenKind::Backtick => self.symbol(),
             TokenKind::LCurly => self.body(),
@@ -120,7 +120,15 @@ impl Parser {
             TokenKind::Identifier => {
                 let token = self.current.clone();
                 self.consume_here();
-                Ok(Ast::new_identifier(token))
+                let identifier = Ast::new_identifier(token);
+
+                // FIXME: Allow struct literals without colliding with blocks
+                // Ok(if self.current.kind == TokenKind::LCurly {
+                //     self.struct_literal(Some(identifier))?
+                // } else {
+                //     identifier
+                // })
+                Ok(identifier)
             },
 
             _ => Err(self.error(format!(
@@ -328,7 +336,7 @@ impl Parser {
         Ok(node)
     }
 
-    fn list_literal(&mut self) -> Result<Box<Ast>, SpruceErr> {
+    fn array_literal(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let token = self.current.clone();
         self.consume_here();
 
@@ -343,17 +351,25 @@ impl Parser {
             }
         }
 
-        self.consume(TokenKind::RSquare, "Expect ']' after list literal arguments")?;
+        self.consume(TokenKind::RSquare, "Expect ']' after array literal arguments")?;
 
-        Ok(Ast::new_list_literal(token, values))
+        Ok(Ast::new_array_literal(token, values))
     }
 
-    fn struct_literal(&mut self) -> Result<Box<Ast>, SpruceErr> {
-        let token = self.current.clone();
-        self.consume_here();
+    fn struct_literal(&mut self, identifier: Option<Box<Ast>>) -> Result<Box<Ast>, SpruceErr> {
+        let (token, identifier) = match identifier {
+            Some(identifier) => {
+                (identifier.token.clone(), identifier.token)
+            },
+            _ => {
+                let token = self.current.clone();
+                self.consume_here();
 
-        let identifier = self.current.clone();
-        self.consume(TokenKind::Identifier, "Expect identifier after '@' in struct literal")?;
+                let identifier = self.current.clone();
+                self.consume(TokenKind::Identifier, "Expect identifier after '@' in struct literal")?;
+                (token, identifier)
+            }
+        }; 
         
         self.consume(TokenKind::LCurly, "Expect '{' after '@' to start map literal")?;
 
@@ -808,7 +824,7 @@ impl Parser {
                 self.consume_here();
                 let inner = self.collect_type()?;
                 self.consume(TokenKind::RSquare, "Expect closing ']' after type")?;
-                Ast::new_type(inner.token.clone(), TypeKind::List(inner))
+                Ast::new_type(inner.token.clone(), TypeKind::Array(inner))
             }
             TokenKind::LParen => {
                 self.consume_here();

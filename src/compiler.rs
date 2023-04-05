@@ -161,7 +161,7 @@ impl Compiler {
             DecoratedAstData::LogicalOp { kind, .. } => kind,
             DecoratedAstData::Body(kind, _) => kind,
             DecoratedAstData::Literal(kind, _) => kind,
-            DecoratedAstData::ListLiteral(kind, _) => kind,
+            DecoratedAstData::ArrayLiteral(kind, _) => kind,
             DecoratedAstData::IfStatement { kind, .. } => kind,
             DecoratedAstData::Ternary { kind, .. } => kind,
             DecoratedAstData::FunctionCall { kind, .. } => kind,
@@ -222,8 +222,8 @@ impl Compiler {
                 string.push(')');
                 string
             }
-            SpruceType::List(inner) => {
-                format!("List<{}>", Compiler::as_cs_type(inner))
+            SpruceType::Array(inner) => {
+                format!("{}.Array<{}>", SPRUCE_PRE, Compiler::as_cs_type(inner))
             }
             SpruceType::Lazy(inner) => {
                 format!(
@@ -232,7 +232,7 @@ impl Compiler {
                     Compiler::as_cs_type(inner)
                 )
             }
-            SpruceType::Function { is_native: _, parameters, return_type } => {
+            SpruceType::Function { parameters, return_type, .. } => {
                 let mut string = String::from("Func<");
 
                 if let Some(parameters) = parameters {
@@ -251,7 +251,7 @@ impl Compiler {
 
                 string
             }
-            SpruceType::Struct { identifier, ..} => identifier.as_ref().unwrap().slice_source().into(),
+            SpruceType::Struct { identifier, ..} => identifier.as_ref().unwrap().clone(),
             _ => unimplemented!(),
         }
     }
@@ -262,7 +262,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         match node.data {
             DecoratedAstData::Literal(_, _) => self.visit_literal(node)?,
             DecoratedAstData::TupleLiteral(_, _) => self.visit_tuple_literal(node)?,
-            DecoratedAstData::ListLiteral(_, _) => self.visit_list_literal(node)?,
+            DecoratedAstData::ArrayLiteral(_, _) => self.visit_array_literal(node)?,
             DecoratedAstData::SymbolLiteral(_) => self.visit_symbol_literal(node)?,
             DecoratedAstData::StructLiteral(_, _) => self.visit_struct_literal(node)?,
             DecoratedAstData::BinaryOp {..} => self.visit_binary_op(node)?,
@@ -412,8 +412,8 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_list_literal(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
-        let DecoratedAstData::ListLiteral(kind, values) = &node.data else { unreachable!() };
+    fn visit_array_literal(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+        let DecoratedAstData::ArrayLiteral(kind, values) = &node.data else { unreachable!() };
 
         self.output_code.push_str(&format!("new {}(){{ ", Compiler::as_cs_type(kind)));
 
@@ -531,7 +531,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         let DecoratedAstData::Function { function_type, parameters, kind, body } = &node.data else { unreachable!() };
 
         match function_type {
-            FunctionType::Standard => {
+            FunctionType::Standard | FunctionType::Method => {
                 self.output_code.push_str(&format!("{}public ", self.tab_string()));
             }
             FunctionType::Inner => {

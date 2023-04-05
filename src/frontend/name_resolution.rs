@@ -24,7 +24,7 @@ pub struct StructSignature {
     pub identifier: String,
     pub is_ref: bool,
     pub fields: Option<Vec<Box<Ast>>>,
-    pub functions: Option<Vec<FunctionSignatureKind>>,
+    pub functions: Option<Vec<FunctionSignature>>,
 }
 
 #[derive(Debug, Clone)]
@@ -293,8 +293,11 @@ impl NameResolver {
             TypeKind::Standard => {
                 match node.token.span.slice_source() {
                     "any" | "int" | "float" | "bool" | "string" | "symbol" => {},
-                    // TODO: Check for custom type before error
                     _ => {
+                        if let Some(_) = self.find_struct(&node.token.span) {
+                            return Ok(());
+                        }
+
                         self.error_no_exit(format!(
                                 "Unknown type identifier '{}'",
                                 node.token.span.slice_source(),
@@ -309,7 +312,7 @@ impl NameResolver {
                     self.get_type_from_ast(item)?;
                 }
             },
-            TypeKind::List(inner) => self.get_type_from_ast(inner)?,
+            TypeKind::Array(inner) => self.get_type_from_ast(inner)?,
             TypeKind::Lazy(inner) => self.get_type_from_ast(inner)?,
             TypeKind::Function { parameters, return_type } => {
                 match parameters {
@@ -332,7 +335,7 @@ impl Visitor<Ast, ()> for NameResolver {
     fn visit(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
         Ok(match &node.data {
             AstData::TupleLiteral(_) => self.visit_tuple_literal(node)?,
-            AstData::ListLiteral(_) => self.visit_list_literal(node)?,
+            AstData::ArrayLiteral(_) => self.visit_array_literal(node)?,
             AstData::SymbolLiteral => self.visit_symbol_literal(node)?,
             AstData::StructLiteral(_, _) => self.visit_struct_literal(node)?,
 
@@ -487,8 +490,8 @@ impl Visitor<Ast, ()> for NameResolver {
         Ok(())
     }
 
-    fn visit_list_literal(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
-        let AstData::ListLiteral(inner) = &node.data else { unreachable!() };
+    fn visit_array_literal(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+        let AstData::ArrayLiteral(inner) = &node.data else { unreachable!() };
 
         for item in inner {
             self.visit(&item)?;
@@ -726,6 +729,8 @@ impl Visitor<Ast, ()> for NameResolver {
                             ), &item.token);
                         } else {
                             fields.push(Box::new(*item.clone()));
+
+                            self.register_local(&item.token, true);
                         }
                     }
                 }
@@ -745,12 +750,15 @@ impl Visitor<Ast, ()> for NameResolver {
 
                         self.visit(body)?;
 
-                        functions.push(FunctionSignatureKind::User {
-                            parameters,
-                            return_id: match return_type {
-                                Some(ret) => Some(ret.clone()),
-                                None => None,
-                            }
+                        functions.push(FunctionSignature {
+                            identifier: item.token.span.slice_source().to_string(),
+                            kind: FunctionSignatureKind::User {
+                                parameters,
+                                return_id: match return_type {
+                                    Some(ret) => Some(ret.clone()),
+                                    None => None,
+                                }
+                            },
                         });
                     }
                 }

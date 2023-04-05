@@ -1,6 +1,8 @@
+use std::process::id;
+
 use crate::nativefns::ParamKind;
 
-use super::sprucetype::SpruceType;
+use super::{sprucetype::SpruceType, token::Span};
 
 pub type ParamTypes = Option<Vec<SpruceType>>;
 
@@ -21,6 +23,7 @@ impl FunctionMeta {
 #[repr(u8)]
 pub enum Function {
     User {
+        identifier: String,
         param_types: ParamTypes,
         return_type: SpruceType,
         empty: bool,
@@ -35,9 +38,10 @@ pub enum Function {
 impl Function {
     pub fn to_type(&self) -> SpruceType {
         match self {
-            Self::User { param_types, return_type, empty: _ } => {
+            Self::User { identifier, param_types, return_type, empty: _ } => {
                 SpruceType::Function {
                     is_native: false,
+                    identifier: identifier.clone(),
                     parameters: param_types.as_ref()
                         .map_or_else(|| None,
                             |p| Some(
@@ -48,9 +52,10 @@ impl Function {
                     return_type: Box::new(return_type.clone())
                 }
             }
-            Self::Native { identifier: _, param_types, return_type } => {
+            Self::Native { identifier, param_types, return_type } => {
                 SpruceType::Function { 
                     is_native: true,
+                    identifier: identifier.to_string(),
                     parameters: match param_types {
                         ParamKind::Any => Some(vec![Box::new(SpruceType::Any)]),
                         ParamKind::None => None,
