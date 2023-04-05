@@ -450,7 +450,12 @@ impl Analyser {
                     }
                 }
             },
-            DecoratedAstData::IndexGetter { expression, ..} => self.find_type_of(expression)?,
+            DecoratedAstData::IndexGetter { expression, ..} => {
+                match self.find_type_of(expression)? {
+                    SpruceType::Array(inner) => *inner,
+                    n @ _ => n,
+                }
+            },
             DecoratedAstData::IndexSetter { expression, ..} => self.find_type_of(expression)?,
             DecoratedAstData::GetProperty { lhs, property } => {
                 let signature = match self.find_type_of(lhs)? {

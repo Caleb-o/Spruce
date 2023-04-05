@@ -96,7 +96,7 @@ impl Compiler {
         self.visit(&root)?;
         
         self.output_code.push_str(&format!(
-            "{}public static void Main() {{ new Program().main(); }}\n",
+            "{}public static void Main() {{ try {{ new Program().main(); }} catch (Exception ex) {{ Console.WriteLine($\"Error Occured: {{ex.Message}}\"); }} }}\n",
             self.tab_string(),
         ));
         self.dedent();
