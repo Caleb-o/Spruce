@@ -3,7 +3,7 @@ using System.Text;
 using System.Collections;
 using System.Collections.Generic;
 
-namespace Application {
+namespace Application;
 
 public static class SprucePrelude {
     public sealed class Defer : IDisposable {
@@ -84,5 +84,4 @@ public static class SprucePrelude {
 
         Console.WriteLine(sb.ToString());
     }
-}
 }

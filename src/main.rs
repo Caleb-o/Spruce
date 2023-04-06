@@ -54,7 +54,7 @@ fn main() {
                         } else {
                             if args.compile {
                                 print!("Compiling output source...");
-                                if let Err(_) = Command::new("csc").args(["out.cs", "-langversion:9.0", "-o", "-nullable:enable"]).output() {
+                                if let Err(_) = Command::new("csc").args(["out.cs", "-langversion:10.0", "-o", "-nullable:enable"]).output() {
                                     eprintln!("Could not compile script with csc");
                                 } else {
                                     println!("Done!");

@@ -88,11 +88,9 @@ impl Compiler {
         self.output_code.push_str(&fs::read_to_string("prelude/prelude.cs").unwrap());
         self.output_code.push_str("\n\n");
         self.generate_symbol_enum();
-        self.output_code.push_str("namespace Application\n{\n");
         self.output_code.push_str("sealed class Program\n{\n");
-        
-        self.indent();
-        
+
+        self.indent();        
         self.visit(&root)?;
         
         self.output_code.push_str(&format!(
@@ -100,8 +98,8 @@ impl Compiler {
             self.tab_string(),
         ));
         self.dedent();
+        self.output_code.push_str("}\n");
 
-        self.output_code.push_str("}\n}");
         Ok(())
     }
 
@@ -195,7 +193,6 @@ impl Compiler {
         Ok(())
     }
 
-    #[inline]
     fn wrap_in_lambda_call(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         match &node.data {
             DecoratedAstData::Body(_, _) => {
@@ -204,6 +201,17 @@ impl Compiler {
             }
             _ => self.visit(node)?,
         }
+        Ok(())
+    }
+
+    fn wrap_in_body(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
+        self.output_code.push_str("{\n");
+        self.indent();
+
+        self.visit(node)?;
+        
+        self.dedent();
+        self.output_code.push_str(&format!("{}}}", self.tab_string()));
         Ok(())
     }
 
@@ -558,7 +566,10 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         self.visit(parameters)?;
 
         self.output_code.push_str(&format!(")\n{}", self.tab_string()));
-        self.visit(body)?;
+        match &body.data {
+            DecoratedAstData::Body(_, _) => self.visit_body(body, true)?,
+            _ => self.wrap_in_body(body)?,
+        }
         self.output_code.push_str("\n\n");
 
         Ok(())
