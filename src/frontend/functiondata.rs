@@ -1,7 +1,9 @@
+use std::rc::Rc;
+
 use crate::nativefns::ParamKind;
 use super::sprucetype::SpruceType;
 
-pub type ParamTypes = Option<Vec<SpruceType>>;
+pub type ParamTypes = Option<Vec<Rc<SpruceType>>>;
 
 #[derive(Debug, Clone)]
 pub struct FunctionMeta {
@@ -22,13 +24,13 @@ pub enum Function {
     User {
         identifier: String,
         param_types: ParamTypes,
-        return_type: SpruceType,
+        return_type: Rc<SpruceType>,
         empty: bool,
     },
     Native {
         identifier: &'static str,
         param_types: ParamKind,
-        return_type: SpruceType,
+        return_type: Rc<SpruceType>,
     },
 }
 
@@ -43,10 +45,10 @@ impl Function {
                         .map_or_else(|| None,
                             |p| Some(
                             p.iter()
-                            .map(|s| Box::new(s.clone()))
+                            .map(|s| Rc::clone(s))
                             .collect()
                         )),
-                    return_type: Box::new(return_type.clone())
+                    return_type: Rc::clone(return_type),
                 }
             }
             Self::Native { identifier, param_types, return_type } => {
@@ -54,41 +56,15 @@ impl Function {
                     is_native: true,
                     identifier: identifier.to_string(),
                     parameters: match param_types {
-                        ParamKind::Any => Some(vec![Box::new(SpruceType::Any)]),
+                        ParamKind::Any => Some(vec![Rc::new(SpruceType::Any)]),
                         ParamKind::None => None,
                         ParamKind::With(params) => {
-                            Some(params.iter().map(|t| Box::new(t.clone())).collect())
+                            Some(params.iter().map(|t| Rc::new(t.clone())).collect())
                         }
                     },
-                    return_type: Box::new(return_type.clone())
+                    return_type: Rc::clone(return_type),
                 }
             }
-        }
-    }
-
-    pub fn param_count(&self) -> i16 {
-        match self {
-            Function::User { param_types, .. } => {
-                match param_types {
-                    Some(p) => p.len() as i16,
-                    None => 0,
-                }
-            }
-            Function::Native { param_types, .. } => {
-                match param_types {
-                    ParamKind::Any => -1,
-                    ParamKind::None => 0,
-                    ParamKind::With(params) => params.len() as i16,
-                }
-            }
-        }
-    }
-
-    pub fn is_empty(&self) -> bool {
-        if let Function::User { empty, .. } = *self {
-            empty
-        } else {
-            false
         }
     }
 

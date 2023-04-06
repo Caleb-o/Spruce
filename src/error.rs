@@ -13,7 +13,6 @@ pub enum SpruceErrData {
     Compiler {
         file_path: String,
     },
-    Runtime,
 }
 
 pub struct SpruceErr {

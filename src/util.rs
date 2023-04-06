@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use crate::{source::Source, error::SpruceErr, RunArgs, frontend::{parser::Parser, analyser::Analyser, decorated_ast::DecoratedAst, ast::Ast, symbols::Symbols, name_resolution::NameResolver}};
 
-pub fn check_code(file_path: String, source: String, args: RunArgs) -> Result<(Rc<Source>, (Box<DecoratedAst>, Symbols)), SpruceErr> {
+pub fn check_code(file_path: String, source: String, args: RunArgs) -> Result<(Rc<Source>, (Rc<DecoratedAst>, Symbols)), SpruceErr> {
     let source = Rc::new(Source::new(file_path, source));
 
     let mut parser = match Parser::new(&source, args.clone()) {
@@ -24,7 +24,7 @@ pub fn check_code(file_path: String, source: String, args: RunArgs) -> Result<(R
     Ok((source, root))
 }
 
-pub fn compile_source(file_path: String, source: String, args: RunArgs) -> Result<(Rc<Source>, Box<Ast>), SpruceErr> {
+pub fn compile_source(file_path: String, source: String, args: RunArgs) -> Result<(Rc<Source>, Rc<Ast>), SpruceErr> {
     let source = Rc::new(Source::new(file_path, source));
 
     let mut parser = match Parser::new(&source, args.clone()) {

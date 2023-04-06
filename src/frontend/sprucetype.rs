@@ -1,4 +1,4 @@
-use std::{mem::discriminant, fmt::Display};
+use std::{mem::discriminant, fmt::Display, rc::Rc};
 
 use super::token::Token;
 
@@ -12,21 +12,21 @@ pub enum SpruceType {
     Float,
     Bool,
     String,
-    Tuple(Vec<Box<SpruceType>>),
-    Array(Box<SpruceType>),
+    Tuple(Vec<Rc<SpruceType>>),
+    Array(Rc<SpruceType>),
     Symbol,
-    Lazy(Box<SpruceType>),
+    Lazy(Rc<SpruceType>),
     Function {
         is_native: bool,
         identifier: String,
-        parameters: Option<Vec<Box<SpruceType>>>,
-        return_type: Box<SpruceType>,
+        parameters: Option<Vec<Rc<SpruceType>>>,
+        return_type: Rc<SpruceType>,
     },
     Struct {
         is_ref: bool,
         identifier: Option<String>,
-        fields: Option<Vec<(Token, Box<SpruceType>)>>,
-        methods: Option<Vec<Box<SpruceType>>>,
+        fields: Option<Vec<(Token, Rc<SpruceType>)>>,
+        methods: Option<Vec<Rc<SpruceType>>>,
     },
 }
 

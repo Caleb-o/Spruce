@@ -7,8 +7,8 @@ use super::{token::{Span, Token}, symtable::SymTable, symbols::Symbols, ast::{As
 #[derive(Debug, Clone)]
 pub enum FunctionSignatureKind {
     User {
-        parameters: Option<Vec<Box<Ast>>>,
-        return_id: Option<Box<Ast>>,
+        parameters: Option<Vec<Rc<Ast>>>,
+        return_id: Option<Rc<Ast>>,
     },
     Native,
 }
@@ -23,7 +23,7 @@ pub struct FunctionSignature {
 pub struct StructSignature {
     pub identifier: String,
     pub is_ref: bool,
-    pub fields: Option<Vec<Box<Ast>>>,
+    pub fields: Option<Vec<Rc<Ast>>>,
     pub functions: Option<Vec<FunctionSignature>>,
 }
 
@@ -71,7 +71,7 @@ impl NameResolver {
         }
     }
 
-    pub fn run(&mut self, program: &Box<Ast>) -> Result<Box<ResolutionTable>, SpruceErr> {
+    pub fn run(&mut self, program: &Rc<Ast>) -> Result<Box<ResolutionTable>, SpruceErr> {
         nativefns::register_native_functions_ids(self);
 
         self.visit_program(program)?;
@@ -182,7 +182,7 @@ impl NameResolver {
                 );
             }
 
-            None => self.table.new_local(token.clone().span, mutable, SpruceType::Any),
+            None => self.table.new_local(token.clone().span, mutable, Rc::new(SpruceType::Any)),
         }
     }
 
@@ -211,8 +211,8 @@ impl NameResolver {
     fn evaluate_params(
         &mut self,
         function_name: &Token,
-        parameters: &Option<Vec<Box<Ast>>>,
-    ) -> Result<Option<Vec<Box<Ast>>>, SpruceErr> {
+        parameters: &Option<Vec<Rc<Ast>>>,
+    ) -> Result<Option<Vec<Rc<Ast>>>, SpruceErr> {
         // Register locals from parameters
         if let Some(parameters) = parameters {
             let mut out = Vec::new();
@@ -246,8 +246,8 @@ impl NameResolver {
     fn register_function(
         &mut self,
         identifier: &Token,
-        parameters: Option<Vec<Box<Ast>>>,
-        return_id: Option<Box<Ast>>,
+        parameters: Option<Vec<Rc<Ast>>>,
+        return_id: Option<Rc<Ast>>,
     ) -> Result<(), SpruceErr>
     {
         // Function already exists
@@ -286,7 +286,7 @@ impl NameResolver {
         self.res_table.struct_types.push(signature);
     }
 
-    fn get_type_from_ast(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn get_type_from_ast(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {
         let AstData::Type { kind } = &node.data else { unreachable!() };
 
         Ok(match &*kind {
@@ -331,7 +331,7 @@ impl NameResolver {
 }
 
 impl Visitor<Ast, ()> for NameResolver {
-    fn visit(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {
         Ok(match &node.data {
             AstData::TupleLiteral(_) => self.visit_tuple_literal(node)?,
             AstData::ArrayLiteral(_) => self.visit_array_literal(node)?,
@@ -376,7 +376,7 @@ impl Visitor<Ast, ()> for NameResolver {
         })
     }
 
-    fn visit_identifier(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_identifier(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {
         let identifier = &node.token;
 
         match self.table.find_local(&identifier.span, true) {
@@ -397,18 +397,18 @@ impl Visitor<Ast, ()> for NameResolver {
         Ok(())
     }
 
-    fn visit_literal(&mut self, _node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_literal(&mut self, _node: &Rc<Ast>) -> Result<(), SpruceErr> {
         unreachable!()
     }
 
     #[inline]
-    fn visit_symbol_literal(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_symbol_literal(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {
         let AstData::SymbolLiteral = &node.data else { unreachable!() };
         _= self.res_table.symbol_values.find_or_add(&node.token.span);
         Ok(())
     }
 
-    fn visit_struct_literal(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_struct_literal(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {
         let AstData::StructLiteral(identifier, arguments) = &node.data else { unreachable!() };
         let mut fields = HashSet::new();
 
@@ -478,7 +478,7 @@ impl Visitor<Ast, ()> for NameResolver {
         Ok(())
     }
 
-    fn visit_tuple_literal(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_tuple_literal(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {
         let AstData::TupleLiteral(inner) = &node.data else { unreachable!() };
 
         for item in inner {
@@ -488,7 +488,7 @@ impl Visitor<Ast, ()> for NameResolver {
         Ok(())
     }
 
-    fn visit_array_literal(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_array_literal(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {
         let AstData::ArrayLiteral(inner) = &node.data else { unreachable!() };
 
         for item in inner {
@@ -498,45 +498,45 @@ impl Visitor<Ast, ()> for NameResolver {
         Ok(())
     }
 
-    fn visit_expression_statement(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_expression_statement(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {
         let AstData::ExpressionStatement(_, inner) = &node.data else { unreachable!() };
         self.visit(inner)?;
         Ok(())
     }
 
-    fn visit_comment(&mut self, _node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_comment(&mut self, _node: &Rc<Ast>) -> Result<(), SpruceErr> {
         unreachable!()
     }
 
-    fn visit_binary_op(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_binary_op(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {
         let AstData::BinaryOp { lhs, rhs } = &node.data  else { unreachable!() };
         self.visit(&lhs)?;
         self.visit(&rhs)?;
         Ok(())
     }
 
-    fn visit_unary_op(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_unary_op(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {
         let AstData::UnaryOp { rhs } = &node.data  else { unreachable!() };
         self.visit(&rhs)?;
         Ok(())
     }
 
-    fn visit_logical_op(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_logical_op(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {
         let AstData::LogicalOp { lhs, rhs } = &node.data else { unreachable!() };
         self.visit(&lhs)?;
         self.visit(&rhs)?;
         Ok(())
     }
 
-    fn visit_parameter(&mut self, _node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_parameter(&mut self, _node: &Rc<Ast>) -> Result<(), SpruceErr> {
         unreachable!()
     }
 
-    fn visit_parameter_list(&mut self, _node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_parameter_list(&mut self, _node: &Rc<Ast>) -> Result<(), SpruceErr> {
         unreachable!()
     }
 
-    fn visit_function(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_function(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {
         let AstData::Function { anonymous, parameters, return_type, body } = &node.data else { unreachable!() };
         let identifier = &node.token;
         
@@ -578,7 +578,7 @@ impl Visitor<Ast, ()> for NameResolver {
         Ok(())
     }
 
-    fn visit_function_call(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_function_call(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {
         let AstData::FunctionCall { lhs, arguments } = &node.data else { unreachable!() };
 
         match lhs.data {
@@ -603,7 +603,7 @@ impl Visitor<Ast, ()> for NameResolver {
         Ok(())
     }
 
-    fn visit_var_declaration(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_var_declaration(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {
         let AstData::VarDeclaration { is_mutable, kind: _, expression } = &node.data else { unreachable!() };
         let identifier = &node.token;
         
@@ -649,7 +649,7 @@ impl Visitor<Ast, ()> for NameResolver {
         Ok(())
     }
 
-    fn visit_var_declarations(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_var_declarations(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {
         let AstData::VarDeclarations(decls) = &node.data else { unreachable!() };
         for decl in decls {
             self.visit_var_declaration(&decl)?;
@@ -657,7 +657,7 @@ impl Visitor<Ast, ()> for NameResolver {
         Ok(())
     }
 
-    fn visit_var_assign(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_var_assign(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {
         let AstData::VarAssign { lhs, expression } = &node.data else { unreachable!() };
         let identifier = &node.token;
 
@@ -677,7 +677,7 @@ impl Visitor<Ast, ()> for NameResolver {
         Ok(())
     }
 
-    fn visit_var_assign_equal(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_var_assign_equal(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {
         let AstData::VarAssignEqual { operator: _, lhs, expression } = &node.data else { unreachable!() };
 
         self.visit(&lhs)?;
@@ -697,11 +697,11 @@ impl Visitor<Ast, ()> for NameResolver {
     }
 
     #[inline]
-    fn visit_type(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_type(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {
         self.get_type_from_ast(&node)
     }
 
-    fn visit_struct_def(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_struct_def(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {
         let AstData::StructDefinition { is_ref, items } = &node.data else { unreachable!() };
         
         self.push_scope();
@@ -722,7 +722,7 @@ impl Visitor<Ast, ()> for NameResolver {
                                 item.token.span.slice_source(),
                             ), &item.token);
                         } else {
-                            fields.push(Box::new(*item.clone()));
+                            fields.push(Rc::clone(item));
 
                             self.register_local(&item.token, true);
                         }
@@ -767,7 +767,7 @@ impl Visitor<Ast, ()> for NameResolver {
         Ok(())
     }
 
-    fn visit_ternary(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_ternary(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {
         let AstData::Ternary { condition, true_body, false_body } = &node.data else { unreachable!() };
 
         self.visit(condition)?;
@@ -777,7 +777,7 @@ impl Visitor<Ast, ()> for NameResolver {
         Ok(())
     }
 
-    fn visit_if_statement(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_if_statement(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {
         let AstData::IfStatement { condition, true_body, false_body, .. } = &node.data else { unreachable!() };
 
         self.visit(condition)?;
@@ -789,7 +789,7 @@ impl Visitor<Ast, ()> for NameResolver {
         Ok(())
     }
 
-    fn visit_for_statement(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_for_statement(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {
         let AstData::ForStatement { variable, condition, increment, body } = &node.data else { unreachable!() };
 
         self.push_scope();
@@ -810,7 +810,7 @@ impl Visitor<Ast, ()> for NameResolver {
         Ok(())
     }
 
-    fn visit_do_while_statement(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_do_while_statement(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {
         let AstData::DoWhileStatement { body, condition } = &node.data else { unreachable!() };
 
         self.visit(body)?;
@@ -819,7 +819,7 @@ impl Visitor<Ast, ()> for NameResolver {
         Ok(())
     }
 
-    fn visit_index_getter(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_index_getter(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {
         let AstData::IndexGetter { expression, index } = &node.data else { unreachable!() };
 
         self.visit(expression)?;
@@ -828,7 +828,7 @@ impl Visitor<Ast, ()> for NameResolver {
         Ok(())
     }
 
-    fn visit_index_setter(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_index_setter(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {
         let AstData::IndexSetter { expression, rhs } = &node.data else { unreachable!() };
 
         self.visit(expression)?;
@@ -837,38 +837,38 @@ impl Visitor<Ast, ()> for NameResolver {
         Ok(())
     }
 
-    fn visit_property_getter(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_property_getter(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {
         let AstData::PropertyGetter { lhs, .. } = &node.data else { unreachable!() };
         self.visit(lhs)
     }
 
-    fn visit_property_setter(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_property_setter(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {
         let AstData::PropertySetter { lhs, expression } = &node.data else { unreachable!() };
         self.visit(lhs)?;
         self.visit(expression)?;
         Ok(())
     }
 
-    fn visit_switch_statement(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_switch_statement(&mut self, _node: &Rc<Ast>) -> Result<(), SpruceErr> {
         todo!()
     }
 
-    fn visit_switch_case(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_switch_case(&mut self, _node: &Rc<Ast>) -> Result<(), SpruceErr> {
         todo!()
     }
 
-    fn visit_lazy(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_lazy(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {
         let AstData::Lazy(inner) = &node.data else { unreachable!() };
         self.visit(inner)
     }
 
-    fn visit_defer(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_defer(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {
         let AstData::Defer(expression) = &node.data else { unreachable!() };
         self.visit(expression)?;
         Ok(())
     }
 
-    fn visit_return_statement(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_return_statement(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {
         let AstData::Return(expression) = &node.data else { unreachable!() };
 
         if let Some(expression) = expression {
@@ -878,7 +878,7 @@ impl Visitor<Ast, ()> for NameResolver {
         Ok(())
     }
 
-    fn visit_body(&mut self, node: &Box<Ast>, new_scope: bool) -> Result<(), SpruceErr> {
+    fn visit_body(&mut self, node: &Rc<Ast>, new_scope: bool) -> Result<(), SpruceErr> {
         let AstData::Body(inner) = &node.data else { unreachable!() };
 
         if new_scope {
@@ -896,11 +896,11 @@ impl Visitor<Ast, ()> for NameResolver {
         Ok(())
     }
 
-    fn visit_include(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_include(&mut self, _node: &Rc<Ast>) -> Result<(), SpruceErr> {
         todo!()
     }
 
-    fn visit_program(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_program(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {
         let AstData::Program { source: _, body } = &node.data else { unreachable!() };
         let mut statements = Vec::new();
 
@@ -911,7 +911,7 @@ impl Visitor<Ast, ()> for NameResolver {
         Ok(())
     }
 
-    fn visit_empty(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
+    fn visit_empty(&mut self, _node: &Rc<Ast>) -> Result<(), SpruceErr> {
         todo!()
     }
 }

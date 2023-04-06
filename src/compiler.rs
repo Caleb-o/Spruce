@@ -28,7 +28,7 @@ impl Compiler {
         }
     }
 
-    pub fn run(&mut self, root: Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    pub fn run(&mut self, root: Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         self.boiler_plate(root)?;
 
         match fs::write("out.cs", &self.output_code) {
@@ -84,7 +84,7 @@ impl Compiler {
         self.output_code.push_str("}\n\n");
     }
 
-    fn boiler_plate(&mut self, root: Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn boiler_plate(&mut self, root: Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         self.output_code.push_str(&fs::read_to_string("prelude/prelude.cs").unwrap());
         self.output_code.push_str("\n\n");
         self.generate_symbol_enum();
@@ -105,7 +105,7 @@ impl Compiler {
         Ok(())
     }
 
-    fn anonymous_function(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn anonymous_function(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::Function { parameters, kind, body, .. } = &node.data else { unreachable!() };
         let DecoratedAstData::ParameterList(params) = &parameters.data else { unreachable!() };
 
@@ -147,14 +147,14 @@ impl Compiler {
         Ok(())
     }
 
-    fn get_inner_lazy(&self, kind: &Box<SpruceType>) -> u32 {
+    fn get_inner_lazy(&self, kind: &Rc<SpruceType>) -> u32 {
         match &**kind {
             SpruceType::Lazy(inner) => 1 + self.get_inner_lazy(inner),
             _ => 0,
         }
     }
 
-    fn get_type_from_ast(&self, node: &Box<DecoratedAst>) -> Result<String, SpruceErr> {
+    fn get_type_from_ast(&self, node: &Rc<DecoratedAst>) -> Result<String, SpruceErr> {
         let kind = Compiler::as_cs_type(match &node.data {
             DecoratedAstData::Identifier(kind) => kind,
             DecoratedAstData::BinaryOp { kind, .. } => kind,
@@ -186,7 +186,7 @@ impl Compiler {
         }
     }
 
-    fn wrap_in_lambda(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn wrap_in_lambda(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let kind = self.get_type_from_ast(node)?;
         self.output_code.push_str(&Compiler::lambda_prefix(&kind));
 
@@ -196,7 +196,7 @@ impl Compiler {
     }
 
     #[inline]
-    fn wrap_in_lambda_call(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn wrap_in_lambda_call(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         match &node.data {
             DecoratedAstData::Body(_, _) => {
                 self.wrap_in_lambda(node)?;
@@ -264,7 +264,7 @@ impl Compiler {
 }
 
 impl Visitor<DecoratedAst, ()> for Compiler {
-    fn visit(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         match node.data {
             DecoratedAstData::Literal(_) => self.visit_literal(node)?,
             DecoratedAstData::TupleLiteral(_, _) => self.visit_tuple_literal(node)?,
@@ -320,10 +320,10 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_identifier(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit_identifier(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::Identifier(kind) = &node.data else { unreachable!() };
 
-        match kind {
+        match &**kind {
             SpruceType::Function { is_native, .. } => {
                 if *is_native {
                     let identifier = node.token.span.slice_source();
@@ -352,7 +352,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_literal(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit_literal(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         if node.token.kind == TokenKind::String {
             self.output_code.push_str(&format!("\"{}\"", node.token.span.slice_source()));
             return Ok(());
@@ -362,7 +362,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_symbol_literal(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit_symbol_literal(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::SymbolLiteral(value) = &node.data else { unreachable!() };
         self.output_code.push_str(&format!(
             "Symbol.{}",
@@ -371,7 +371,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_struct_literal(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit_struct_literal(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::StructLiteral(_, items) = &node.data else { unreachable!() };
 
         self.output_code.push_str(&format!(
@@ -401,7 +401,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_tuple_literal(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit_tuple_literal(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::TupleLiteral(_, expressions) = &node.data else { unreachable!() };
         
         self.output_code.push('(');
@@ -418,7 +418,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_array_literal(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit_array_literal(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::ArrayLiteral(kind, values) = &node.data else { unreachable!() };
 
         self.output_code.push_str(&format!("new {}(){{ ", Compiler::as_cs_type(kind)));
@@ -436,7 +436,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_expression_statement(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit_expression_statement(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::ExpressionStatement(_, is_statement, expr) = &node.data else { unreachable!() };
 
         if *is_statement {
@@ -465,7 +465,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_comment(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit_comment(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::Comment = &node.data else { unreachable!() };
 
         self.output_code.push_str(&format!(
@@ -477,7 +477,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_binary_op(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit_binary_op(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::BinaryOp { kind: _, lhs, rhs } = &node.data else { unreachable!() };
         
         self.visit(lhs)?;
@@ -489,11 +489,11 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_unary_op(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit_unary_op(&mut self, _node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         todo!()
     }
 
-    fn visit_logical_op(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit_logical_op(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::LogicalOp { kind: _, lhs, rhs } = &node.data else { unreachable!() };
         
         self.visit(lhs)?;
@@ -505,7 +505,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_parameter(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit_parameter(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::Parameter(kind) = &node.data else { unreachable!() };
 
         self.output_code.push_str(&format!(
@@ -517,7 +517,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_parameter_list(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit_parameter_list(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::ParameterList(parameters) = &node.data else { unreachable!() };
 
         if let Some(parameters) = parameters {
@@ -533,7 +533,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_function(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit_function(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::Function { function_type, parameters, kind, body } = &node.data else { unreachable!() };
 
         match function_type {
@@ -564,7 +564,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_function_call(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit_function_call(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::FunctionCall { kind: _, lhs, arguments } = &node.data else { unreachable!() };
 
         self.visit(lhs)?;
@@ -582,7 +582,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_var_declaration(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit_var_declaration(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::VarDeclaration { is_mutable: _, kind, expression } = &node.data else { unreachable!() };
         
         self.output_code.push_str(&format!(
@@ -603,7 +603,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_var_declarations(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit_var_declarations(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::VarDeclarations(decls) = &node.data else { unreachable!() };
         
         for decl in decls {
@@ -613,7 +613,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_var_assign(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit_var_assign(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::VarAssign { lhs, expression } = &node.data else { unreachable!() };
         
         self.visit(lhs)?;
@@ -623,7 +623,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_var_assign_equal(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit_var_assign_equal(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::VarAssignEqual { operator, lhs, expression } = &node.data else { unreachable!() };
         
         self.visit(lhs)?;
@@ -636,11 +636,11 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_type(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit_type(&mut self, _node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         todo!()
     }
 
-    fn visit_struct_def(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit_struct_def(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::StructDefinition { kind, is_ref, items } = &node.data else { unreachable!() };
 
         self.output_code.push_str(&format!(
@@ -670,7 +670,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
             }
         }
 
-        let SpruceType::Struct { fields, .. } = kind else { unreachable!() };
+        let SpruceType::Struct { fields, .. } = &**kind else { unreachable!() };
         self.output_code.push_str(&format!("\n{}public override string ToString(){{\n", self.tab_string()));
         self.indent();
 
@@ -716,7 +716,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_ternary(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit_ternary(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::Ternary { condition, kind: _, true_body, false_body } = &node.data else { unreachable!() };
 
         self.output_code.push('(');
@@ -729,7 +729,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_if_statement(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit_if_statement(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::IfStatement { is_expression, condition, kind: _, true_body, false_body } = &node.data else { unreachable!() };
 
         if *is_expression {
@@ -764,7 +764,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_for_statement(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit_for_statement(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::ForStatement { variable, condition, increment, body } = &node.data else { unreachable!() };
 
         self.output_code.push_str(&format!(
@@ -793,7 +793,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_do_while_statement(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit_do_while_statement(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::DoWhileStatement { body, condition } = &node.data else { unreachable!() };
 
         self.output_code.push_str(&format!("{}do ", self.tab_string()));
@@ -805,7 +805,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_index_getter(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit_index_getter(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::IndexGetter { expression, index } = &node.data else { unreachable!() };
 
         self.visit(expression)?;
@@ -816,7 +816,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_index_setter(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit_index_setter(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::IndexSetter { expression, rhs } = &node.data else { unreachable!() };
 
         self.visit(expression)?;
@@ -826,7 +826,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_property_getter(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit_property_getter(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::GetProperty { lhs, property } = &node.data else { unreachable!() };
 
         self.visit(lhs)?;
@@ -836,7 +836,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_property_setter(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit_property_setter(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::SetProperty { lhs, expression } = &node.data else { unreachable!() };
 
         self.visit(lhs)?;
@@ -846,15 +846,15 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_switch_statement(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit_switch_statement(&mut self, _node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         todo!()
     }
 
-    fn visit_switch_case(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit_switch_case(&mut self, _node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         todo!()
     }
 
-    fn visit_lazy(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit_lazy(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::Lazy(expression) = &node.data else { unreachable!() };
 
         self.output_code.push_str("new(");
@@ -864,7 +864,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_defer(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit_defer(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::Defer(count, expression) = &node.data else { unreachable!() };
 
         self.output_code.push_str(&format!(
@@ -881,7 +881,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_return_statement(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit_return_statement(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::Return(_, expr) = &node.data else { unreachable!() };
 
         self.output_code.push_str(&format!(
@@ -899,7 +899,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_body(&mut self, node: &Box<DecoratedAst>, _new_scope: bool) -> Result<(), SpruceErr> {
+    fn visit_body(&mut self, node: &Rc<DecoratedAst>, _new_scope: bool) -> Result<(), SpruceErr> {
         let DecoratedAstData::Body(_, statements) = &node.data else { unreachable!() };
         self.output_code.push_str("{\n");
 
@@ -915,11 +915,11 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_include(&mut self, _node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit_include(&mut self, _node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         todo!()
     }
 
-    fn visit_program(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit_program(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::Program { source: _, body } = &node.data else { unreachable!() };
         
         for item in body {
@@ -929,7 +929,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_empty(&mut self, _node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
+    fn visit_empty(&mut self, _node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         unreachable!()
     }
 }

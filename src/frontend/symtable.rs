@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use super::{token::Span, sprucetype::SpruceType};
 
 #[derive(Debug, Clone)]
@@ -6,7 +8,7 @@ pub struct Local {
     pub depth: u16,
     pub position: u16,
     pub mutable: bool,
-    pub kind: SpruceType,
+    pub kind: Rc<SpruceType>,
 }
 
 const GLOBAL_DEPTH: u16 = 0;
@@ -65,7 +67,7 @@ impl SymTable {
         &mut self,
         identifier: Span,
         mutable: bool,
-        kind: SpruceType,
+        kind: Rc<SpruceType>,
     ) {
         let position = self.find_count();
         self.locals.push(Local { 
@@ -73,7 +75,7 @@ impl SymTable {
             depth: self.depth,
             position,
             mutable,
-            kind
+            kind,
         });
     }
 

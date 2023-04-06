@@ -14,7 +14,7 @@ pub struct Analyser {
     source: Rc<Source>,
     args: RunArgs,
     functable: Vec<FunctionMeta>, // Type resolved table
-    struct_table: Vec<SpruceType>,
+    struct_table: Vec<Rc<SpruceType>>,
     table: SymTable,
     res_table: Box<ResolutionTable>,
     defer_count: u32,
@@ -38,7 +38,7 @@ impl Analyser {
         }
     }
 
-    pub fn run(&mut self, program: &Box<Ast>) -> Result<(Box<DecoratedAst>, Symbols), SpruceErr> {
+    pub fn run(&mut self, program: &Rc<Ast>) -> Result<(Rc<DecoratedAst>, Symbols), SpruceErr> {
         nativefns::register_native_functions(self);
 
         self.register_all_types()?;
@@ -68,7 +68,7 @@ impl Analyser {
         let function = Function::Native { 
             identifier,
             param_types,
-            return_type,
+            return_type: Rc::new(return_type),
         };
 
         // Add to function table
@@ -86,7 +86,7 @@ impl Analyser {
                     let mut out_fields = Vec::new();
                     for field in fields {
                         let item = self.visit(field)?;
-                        let kind = Box::new(self.find_type_of(&item)?);
+                        let kind = self.find_type_of(&item)?;
 
                         out_fields.push((item.token.clone(), kind));
                     }
@@ -103,7 +103,7 @@ impl Analyser {
                         let FunctionSignature { identifier, kind } = method;
                         let FunctionSignatureKind::User { parameters, return_id } = kind else { unreachable!() };
 
-                        out_methods.push(Box::new(SpruceType::Function {
+                        out_methods.push(Rc::new(SpruceType::Function {
                             is_native: false,
                             identifier: identifier.clone(),
                             parameters: match parameters {
@@ -111,17 +111,17 @@ impl Analyser {
                                     let mut param_kinds = Vec::new();
 
                                     for param in parameters {
-                                        param_kinds.push(Box::new(self.get_type_from_ast(param)?));
+                                        param_kinds.push(self.get_type_from_ast(param)?);
                                     }
 
                                     Some(param_kinds)
                                 },
                                 None => None
                             },
-                            return_type: Box::new(match return_id {
+                            return_type: match return_id {
                                 Some(ret) => self.get_type_from_ast(ret)?,
-                                None => SpruceType::None,
-                            }),
+                                None => Rc::new(SpruceType::None),
+                            },
                         }));
                     }
 
@@ -130,12 +130,12 @@ impl Analyser {
                 None => None,
             };
             
-            self.struct_table.push(SpruceType::Struct {
+            self.struct_table.push(Rc::new(SpruceType::Struct {
                 is_ref: *is_ref,
                 identifier: Some(identifier.clone()),
                 fields,
                 methods,
-            });
+            }));
         }
 
         Ok(())
@@ -158,7 +158,7 @@ impl Analyser {
 
                 let return_type = match return_id {
                     Some(return_id) => self.get_type_from_ast(return_id)?,
-                    None => SpruceType::None,
+                    None => Rc::new(SpruceType::None),
                 };
 
                 self.add_function(func.identifier.clone(), Function::User {
@@ -232,11 +232,11 @@ impl Analyser {
         self.find_function_str(span.slice_source())
     }
 
-    fn find_struct_str(&self, id: &str) -> Option<&SpruceType> {
+    fn find_struct_str(&self, id: &str) -> Option<Rc<SpruceType>> {
         for kind in &self.struct_table {
-            let SpruceType::Struct { identifier, ..} = kind else { unreachable!() };
+            let SpruceType::Struct { identifier, ..} = &**kind else { unreachable!() };
             if identifier.is_some() && identifier.as_ref().unwrap().as_str() == id {
-                return Some(kind);
+                return Some(Rc::clone(kind));
             }
         }
 
@@ -244,16 +244,16 @@ impl Analyser {
     }
 
     #[inline]
-    fn find_struct(&self, span: &Span) -> Option<&SpruceType> {
+    fn find_struct(&self, span: &Span) -> Option<Rc<SpruceType>> {
         self.find_struct_str(span.slice_source())
     }
 
-    fn find_struct_field(&self, signature: &SpruceType, field_name: &Span) -> Option<Box<SpruceType>> {
+    fn find_struct_field(&self, signature: &SpruceType, field_name: &Span) -> Option<Rc<SpruceType>> {
         if let SpruceType::Struct { fields, .. } = signature {
             if let Some(fields) = fields {
                 for (field, kind) in fields {
                     if field.span.slice_source() == field_name.slice_source() {
-                        return Some(kind.clone());
+                        return Some(Rc::clone(kind));
                     }
                 }
             }
@@ -262,13 +262,13 @@ impl Analyser {
         None
     }
 
-    fn find_struct_method(&self, signature: &SpruceType, method_name: &Span) -> Option<Box<SpruceType>> {
+    fn find_struct_method(&self, signature: &SpruceType, method_name: &Span) -> Option<Rc<SpruceType>> {
         if let SpruceType::Struct { methods, .. } = signature {
             if let Some(methods) = methods {
                 for method in methods {
                     let SpruceType::Function { identifier, .. } = &**method else { unreachable!() };
                     if identifier.as_str() == method_name.slice_source() {
-                        return Some(method.clone());
+                        return Some(Rc::clone(method));
                     }
                 }
             }
@@ -277,7 +277,7 @@ impl Analyser {
         None
     }
 
-    fn register_local(&mut self, token: &Token, mutable: bool, kind: SpruceType) {
+    fn register_local(&mut self, token: &Token, mutable: bool, kind: Rc<SpruceType>) {
         let local = self.table.find_local(&token.span, false);
 
         match local {
@@ -298,23 +298,16 @@ impl Analyser {
     fn register_function(
         &mut self,
         identifier: &Token,
-        parameters: Option<Vec<Box<SpruceType>>>,
-        return_type: Box<SpruceType>,
+        parameters: Option<Vec<Rc<SpruceType>>>,
+        return_type: Rc<SpruceType>,
     ) -> Result<(), SpruceErr>
     {
-        self.register_local(&identifier, false, SpruceType::Function {
+        self.register_local(&identifier, false, Rc::new(SpruceType::Function {
             is_native: false,
             identifier: identifier.span.slice_source().to_string(),
             parameters: parameters.clone(),
-            return_type: return_type.clone(),
-        });
-        
-        // self.add_function(identifier.span.slice_source().to_string(), Function::User {
-        //     identifier: identifier.span.slice_source().to_string(),
-        //     param_types: parameters.and_then(|p| Some(p.iter().map(|k| *k.clone()).collect())),
-        //     return_type: *return_type,
-        //     empty: false
-        // });
+            return_type,
+        }));
 
         Ok(())
     }
@@ -332,8 +325,8 @@ impl Analyser {
     fn evaluate_params(
         &mut self,
         token: Token,
-        parameters: &Option<Vec<Box<Ast>>>,
-    ) -> Result<(Box<DecoratedAst>, Option<Vec<Box<SpruceType>>>), SpruceErr> {
+        parameters: &Option<Vec<Rc<Ast>>>,
+    ) -> Result<(Rc<DecoratedAst>, Option<Vec<Rc<SpruceType>>>), SpruceErr> {
         // Register locals from parameters
         if let Some(ref parameters) = parameters {
             let mut params = Vec::new();
@@ -342,9 +335,9 @@ impl Analyser {
             for param in parameters {
                 let AstData::Parameter { type_name } = &param.data else { unreachable!("{:#?}", param.data) };
                 let kind = self.get_type_from_ast(type_name)?;
-                self.register_local(&param.token, false, kind.clone());
+                self.register_local(&param.token, false, Rc::clone(&kind));
                 
-                types.push(Box::new(kind.clone()));
+                types.push(Rc::clone(&kind));
                 params.push(DecoratedAst::new_parameter(param.token.clone(), kind));
             }
 
@@ -362,20 +355,20 @@ impl Analyser {
         }
     }
 
-    fn find_type_of(&mut self, node: &Box<DecoratedAst>) -> Result<SpruceType, SpruceErr> {
+    fn find_type_of(&mut self, node: &Rc<DecoratedAst>) -> Result<Rc<SpruceType>, SpruceErr> {
         Ok(match &node.data {
-            DecoratedAstData::Literal(kind) => kind.clone(),
-            DecoratedAstData::TupleLiteral(kind, _) => kind.clone(),
-            DecoratedAstData::ArrayLiteral(kind, _) => kind.clone(),
-            DecoratedAstData::SymbolLiteral(_) => SpruceType::Symbol,
-            DecoratedAstData::StructLiteral(kind, _) => kind.clone(),
+            DecoratedAstData::Literal(kind) => Rc::clone(kind),
+            DecoratedAstData::TupleLiteral(kind, _) => Rc::clone(kind),
+            DecoratedAstData::ArrayLiteral(kind, _) => Rc::clone(kind),
+            DecoratedAstData::SymbolLiteral(_) => Rc::new(SpruceType::Symbol),
+            DecoratedAstData::StructLiteral(kind, _) => Rc::clone(kind),
 
-            DecoratedAstData::BinaryOp { kind, .. } => kind.clone(),
-            DecoratedAstData::UnaryOp { kind, .. } => kind.clone(),
-            DecoratedAstData::LogicalOp {..} => SpruceType::Bool,
+            DecoratedAstData::BinaryOp { kind, .. } => Rc::clone(kind),
+            DecoratedAstData::UnaryOp { kind, .. } => Rc::clone(kind),
+            DecoratedAstData::LogicalOp {..} => Rc::new(SpruceType::Bool),
             
-            DecoratedAstData::FunctionCall { kind, .. } => kind.clone(),
-            DecoratedAstData::Identifier(kind) => match kind {
+            DecoratedAstData::FunctionCall { kind, .. } => Rc::clone(kind),
+            DecoratedAstData::Identifier(kind) => match &**kind {
                 SpruceType::Lazy(inner) => {
                     let mut inner = inner;
 
@@ -383,20 +376,20 @@ impl Analyser {
                         inner = i;
                     }
 
-                    *inner.clone()
+                    Rc::clone(inner)
                 },
-                _ => kind.clone(),
+                _ => Rc::clone(kind),
             },
             DecoratedAstData::VarAssign { lhs, .. } => self.find_type_of(lhs)?,
             DecoratedAstData::VarAssignEqual { lhs, .. } => self.find_type_of(lhs)?,
-            DecoratedAstData::Type(kind) => kind.clone(),
-            DecoratedAstData::StructDefinition { kind, .. } => kind.clone(),
+            DecoratedAstData::Type(kind) => Rc::clone(kind),
+            DecoratedAstData::StructDefinition { kind, .. } => Rc::clone(kind),
 
-            DecoratedAstData::Parameter(kind) => kind.clone(),
+            DecoratedAstData::Parameter(kind) => Rc::clone(kind),
             DecoratedAstData::Function { function_type, parameters, kind, .. } => {
                 match function_type {
                     FunctionType::Anonymous | FunctionType::Method => {
-                        SpruceType::Function {
+                        Rc::new(SpruceType::Function {
                             is_native: false,
                             identifier: node.token.span.slice_source().to_string(),
                             parameters: match &parameters.data {
@@ -406,7 +399,7 @@ impl Analyser {
     
                                         for item in parameters {
                                             let DecoratedAstData::Parameter(kind) = &item.data else { unreachable!() };
-                                            kinds.push(Box::new(kind.clone()));
+                                            kinds.push(Rc::clone(kind));
                                         }
     
                                         Some(kinds)
@@ -416,33 +409,33 @@ impl Analyser {
                                 }
                                 _ => unreachable!(),
                             },
-                            return_type: Box::new(kind.clone()),
-                        }
+                            return_type: Rc::clone(kind),
+                        })
                     }
                     _ => {
                         let func = self.find_function(&node.token.span).unwrap();
-                    func.function.to_type()
+                        Rc::new(func.function.to_type())
                     }
                 }
             },
             DecoratedAstData::IndexGetter { expression, ..} => {
-                match self.find_type_of(expression)? {
-                    SpruceType::Array(inner) => *inner,
-                    n @ _ => n,
+                match &*self.find_type_of(expression)? {
+                    SpruceType::Array(inner) => Rc::clone(&inner),
+                    n @ _ => Rc::new(n.clone()),
                 }
             },
             DecoratedAstData::IndexSetter { expression, ..} => self.find_type_of(expression)?,
             DecoratedAstData::GetProperty { lhs, property } => {
-                let signature = match self.find_type_of(lhs)? {
-                    SpruceType::Array(kind) => *kind.clone(),
-                    n @ _ => n.clone(),
+                let signature = match &*self.find_type_of(lhs)? {
+                    SpruceType::Array(inner) => Rc::clone(&inner),
+                    n @ _ => Rc::new(n.clone()),
                 };
 
                 if let Some(property) = self.find_struct_field(&signature, &property.token.span) {
-                    *property
+                    property
                 } else {
                     if let Some(method) = self.find_struct_method(&signature, &property.token.span) {
-                         *method
+                         method
                     } else {
                         return Err(self.error(format!(
                             "Cannot find type of property/method '{}'",
@@ -454,16 +447,16 @@ impl Analyser {
             DecoratedAstData::SetProperty { lhs, .. } => {
                 self.find_type_of(lhs)?
             }
-            DecoratedAstData::Ternary { kind, ..} => kind.clone(),
-            DecoratedAstData::IfStatement { kind, ..} => kind.clone(),
-            DecoratedAstData::ForStatement {..} => SpruceType::None,
-            DecoratedAstData::DoWhileStatement {..} => SpruceType::None,
-            DecoratedAstData::Body(kind, _) => kind.clone(),
-            DecoratedAstData::ExpressionStatement(kind, _, _) => kind.clone(),
-            DecoratedAstData::Lazy(inner) => SpruceType::Lazy(Box::new(self.find_type_of(inner)?)),
-            DecoratedAstData::Defer(_, _) => SpruceType::None,
-            DecoratedAstData::Return(kind, _) => kind.clone(),
-            DecoratedAstData::Empty => SpruceType::Any,
+            DecoratedAstData::Ternary { kind, ..} => Rc::clone(kind),
+            DecoratedAstData::IfStatement { kind, ..} => Rc::clone(kind),
+            DecoratedAstData::ForStatement {..} => Rc::new(SpruceType::None),
+            DecoratedAstData::DoWhileStatement {..} => Rc::new(SpruceType::None),
+            DecoratedAstData::Body(kind, _) => Rc::clone(kind),
+            DecoratedAstData::ExpressionStatement(kind, _, _) => Rc::clone(kind),
+            DecoratedAstData::Lazy(inner) => Rc::new(SpruceType::Lazy(self.find_type_of(inner)?)),
+            DecoratedAstData::Defer(_, _) => Rc::new(SpruceType::None),
+            DecoratedAstData::Return(kind, _) => Rc::clone(kind),
+            DecoratedAstData::Empty => Rc::new(SpruceType::Any),
 
             _ => return Err(SpruceErr::new(format!(
                     "Cannot find type of '{}' - {:#?}",
@@ -475,22 +468,22 @@ impl Analyser {
         })
     }
 
-    fn get_type_from_ast(&mut self, node: &Box<Ast>) -> Result<SpruceType, SpruceErr> {
+    fn get_type_from_ast(&mut self, node: &Rc<Ast>) -> Result<Rc<SpruceType>, SpruceErr> {
         let AstData::Type { kind } = &node.data else { unreachable!() };
 
         Ok(match &*kind {
             TypeKind::Standard => {
                 match node.token.span.slice_source() {
-                    "any" => SpruceType::Any,
-                    "int" => SpruceType::Int,
-                    "float" => SpruceType::Float,
-                    "bool" => SpruceType::Bool,
-                    "string" => SpruceType::String,
-                    "symbol" => SpruceType::Symbol,
+                    "any" =>    Rc::new(SpruceType::Any),
+                    "int" =>    Rc::new(SpruceType::Int),
+                    "float" =>  Rc::new(SpruceType::Float),
+                    "bool" =>   Rc::new(SpruceType::Bool),
+                    "string" => Rc::new(SpruceType::String),
+                    "symbol" => Rc::new(SpruceType::Symbol),
                     // TODO: Check for custom type before error - struct
                     _ => {
                         if let Some(struct_) = self.find_struct(&node.token.span) {
-                            return Ok(struct_.clone());
+                            return Ok(Rc::clone(&struct_));
                         }
 
                         self.error_no_exit(format!(
@@ -499,7 +492,7 @@ impl Analyser {
                             ),
                             &node.token
                         );
-                        SpruceType::Error
+                        Rc::new(SpruceType::Error)
                     },
                 }
             }
@@ -507,15 +500,15 @@ impl Analyser {
                 let mut types = Vec::new();
 
                 for item in inner {
-                    types.push(Box::new(self.get_type_from_ast(item)?))
+                    types.push(self.get_type_from_ast(item)?);
                 }
 
-                SpruceType::Tuple(types)
+                Rc::new(SpruceType::Tuple(types))
             },
-            TypeKind::Array(ref inner) => SpruceType::Array(Box::new(self.get_type_from_ast(inner)?)),
-            TypeKind::Lazy(inner) => SpruceType::Lazy(Box::new(self.get_type_from_ast(inner)?)),
+            TypeKind::Array(ref inner) => Rc::new(SpruceType::Array(self.get_type_from_ast(inner)?)),
+            TypeKind::Lazy(inner) => Rc::new(SpruceType::Lazy(self.get_type_from_ast(inner)?)),
             TypeKind::Function { parameters, return_type } => {
-                SpruceType::Function {
+                Rc::new(SpruceType::Function {
                     is_native: false,
                     identifier: node.token.span.slice_source().to_string(),
                     parameters: match parameters {
@@ -523,22 +516,22 @@ impl Analyser {
                             let mut types = Vec::new();
 
                             for kind in parameters {
-                                types.push(Box::new(self.get_type_from_ast(kind)?));
+                                types.push(self.get_type_from_ast(kind)?);
                             }
 
                             Some(types)
                         }
                         None => None,
                     },
-                    return_type: Box::new(self.get_type_from_ast(&return_type)?),
-                }
+                    return_type: self.get_type_from_ast(&return_type)?,
+                })
             }
         })
     }
 }
 
-impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
-    fn visit(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+impl Visitor<Ast, Rc<DecoratedAst>> for Analyser {
+    fn visit(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         Ok(match &node.data {
             AstData::Literal => self.visit_literal(node)?,
             AstData::TupleLiteral(_) => self.visit_tuple_literal(node)?,
@@ -592,56 +585,51 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
         })
     }
 
-    fn visit_identifier(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn visit_identifier(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         let identifier = &node.token;
-        let mut kind = SpruceType::None;
 
-        match self.table.find_local(&identifier.span, true) {
+       let kind = match self.table.find_local(&identifier.span, true) {
             Some(local) => {
-                kind = local.kind.clone();
+                Rc::clone(&local.kind)
             },
             None => {
                 match self.find_function(&identifier.span) {
-                    Some(f) => kind = f.function.to_type(),
-                    None => self.error_no_exit(format!(
-                            "Identifier '{}' does not exist in the current context",
-                            identifier.span.slice_source(),
-                        ),
-                        &identifier.clone()
-                    )
+                    Some(f) => Rc::new(f.function.to_type()),
+                    None => {
+                        self.error_no_exit(format!(
+                                "Identifier '{}' does not exist in the current context",
+                                identifier.span.slice_source(),
+                            ),
+                            &identifier.clone()
+                        );
+                        Rc::new(SpruceType::None)
+                    }
                 }
             }
-        }
+        };
 
         Ok(DecoratedAst::new_identifier(identifier.clone(), kind))
     }
 
-    fn visit_literal(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
-        let index = match node.token.kind {
-            TokenKind::Int | TokenKind::Float | TokenKind::String
-            | TokenKind::None | TokenKind::True | TokenKind::False
-                => Ast::new_literal(node.token.clone()),
-            _ => unreachable!(),
-        };
-
-        Ok(DecoratedAst::new_literal(node.token.clone(), match node.token.kind {
+    fn visit_literal(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
+        Ok(DecoratedAst::new_literal(node.token.clone(), Rc::new(match node.token.kind {
             TokenKind::None => SpruceType::None,
             TokenKind::String => SpruceType::String,
             TokenKind::True | TokenKind::False => SpruceType::Bool,
             TokenKind::Int => SpruceType::Int,
             TokenKind::Float => SpruceType::Float,
             _ => unreachable!(),
-        }))
+        })))
     }
 
-    fn visit_symbol_literal(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn visit_symbol_literal(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         let AstData::SymbolLiteral = &node.data else { unreachable!() };
         let index = self.res_table.symbol_values.find_or_add(&node.token.span);
 
         Ok(DecoratedAst::new_symbol(node.token.clone(), index))
     }
 
-    fn visit_struct_literal(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn visit_struct_literal(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         let AstData::StructLiteral(identifier, arguments) = &node.data else { unreachable!() };
 
         let signature = self.find_struct(&identifier.span).unwrap().clone();
@@ -683,7 +671,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
         Ok(DecoratedAst::new_struct_literal(identifier.clone(), signature, items))
     }
 
-    fn visit_tuple_literal(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn visit_tuple_literal(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         let AstData::TupleLiteral(inner) = &node.data else { unreachable!() };
         let mut types = Vec::new();
         let mut values = Vec::new();
@@ -692,24 +680,25 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
             let item = self.visit(&item)?;
             let type_of = self.find_type_of(&item)?;
             
-            types.push(Box::new(type_of));
+            types.push(type_of);
             values.push(item);
         }
 
-        Ok(DecoratedAst::new_tuple_literal(node.token.clone(), values, SpruceType::Tuple(types)))
+        Ok(DecoratedAst::new_tuple_literal(node.token.clone(), values, Rc::new(SpruceType::Tuple(types))))
     }
 
-    fn visit_array_literal(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn visit_array_literal(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         let AstData::ArrayLiteral(inner) = &node.data else { unreachable!() };
         let mut values = Vec::new();
-        let mut list_type = SpruceType::None;
 
         // Check type of first item, then compare to rest
-        if inner.len() > 0 {
+        let list_type = if inner.len() > 0 {
             let first = self.visit(&inner[0])?;
-            list_type = self.find_type_of(&first)?;
+            let list_type = self.find_type_of(&first)?;
             values.push(first);
-        }
+
+            list_type
+        } else { Rc::new(SpruceType::None) };
 
         for (idx, item) in inner.iter().skip(1).enumerate() {
             let item = self.visit(&item)?;
@@ -728,21 +717,21 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
             values.push(item);
         }
 
-        Ok(DecoratedAst::new_array_literal(node.token.clone(), values, SpruceType::Array(Box::new(list_type))))
+        Ok(DecoratedAst::new_array_literal(node.token.clone(), values, Rc::new(SpruceType::Array(list_type))))
     }
 
-    fn visit_expression_statement(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn visit_expression_statement(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         let AstData::ExpressionStatement(is_statement, inner) = &node.data else { unreachable!() };
         let inner = self.visit(inner)?;
         let kind = self.find_type_of(&inner)?;
         Ok(DecoratedAst::new_expr_statement(*is_statement, inner, kind))
     }
 
-    fn visit_comment(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn visit_comment(&mut self, _node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         todo!()
     }
 
-    fn visit_binary_op(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn visit_binary_op(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         let AstData::BinaryOp { lhs, rhs } = &node.data  else { unreachable!() };
 
         match (&lhs.data, &rhs.data) {
@@ -772,7 +761,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
         }
 
         // Check operation on type
-        match &lhs_type {
+        match *lhs_type {
             SpruceType::Bool => {
                 self.error_no_exit(
                         "Cannot use binary operators on two bools".into()
@@ -820,7 +809,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
         Ok(DecoratedAst::new_binary_op(node.token.clone(), lhs_type, lhs, rhs))
     }
 
-    fn visit_unary_op(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn visit_unary_op(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         let AstData::UnaryOp { rhs } = &node.data  else { unreachable!() };
         
         if let AstData::Lazy(_) = &rhs.data {
@@ -834,7 +823,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
         let kind = self.find_type_of(&rhs)?;
 
         // Check operation on type
-        match &kind {
+        match *kind {
             SpruceType::String => {
                 self.error_no_exit(
                         format!(
@@ -896,7 +885,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
         Ok(DecoratedAst::new_unary_op(node.token.clone(), kind, rhs))
     }
 
-    fn visit_logical_op(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn visit_logical_op(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         let AstData::LogicalOp { lhs, rhs } = &node.data else { unreachable!() };
 
         match (&lhs.data, &rhs.data) {
@@ -940,7 +929,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
         Ok(DecoratedAst::new_logical_op(node.token.clone(), lhs, rhs))
     }
 
-    fn visit_parameter(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn visit_parameter(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         let AstData::Parameter { type_name } = &node.data else { unreachable!() };
 
         let type_name = self.visit_type(type_name)?;
@@ -948,11 +937,11 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
         Ok(DecoratedAst::new_parameter(node.token.clone(), kind))
     }
 
-    fn visit_parameter_list(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn visit_parameter_list(&mut self, _node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         unreachable!()
     }
 
-    fn visit_function(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn visit_function(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         let AstData::Function { anonymous, parameters, return_type, body } = &node.data else { unreachable!() };
         let identifier = &node.token;
 
@@ -961,7 +950,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
                 let expr = self.visit(return_)?;
                 self.find_type_of(&expr)?
             },
-            None => SpruceType::None,
+            None => Rc::new(SpruceType::None),
         };
         
         let parameters = if *anonymous {
@@ -971,7 +960,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
             parameters
         } else {
             let (parameters, types) = self.evaluate_params(identifier.clone(), parameters)?;
-            self.register_function(identifier, types, Box::new(return_type.clone()))?;
+            self.register_function(identifier, types, Rc::clone(&return_type))?;
             self.push_scope();
             parameters
         };
@@ -1017,16 +1006,16 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
         Ok(DecoratedAst::new_function(node.token.clone(), function_type, parameters, body_type, body_ast))
     }
 
-    fn visit_function_call(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn visit_function_call(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         let AstData::FunctionCall { lhs, arguments } = &node.data else { unreachable!() };
 
         let (lhs, function) = match lhs.data {
             AstData::Identifier => {
                 let kind = match self.table.find_local(&lhs.token.span, true) {
-                    Some(local) => local.kind.clone(),
+                    Some(local) => Rc::clone(&local.kind),
                     None => {
                         match self.find_function(&lhs.token.span) {
-                            Some(f) => f.function.to_type(),
+                            Some(f) => Rc::new(f.function.to_type()),
                             None => return Err(self.error(format!(
                                 "Cannot call non-function '{}'",
                                 lhs.token.span.slice_source(),
@@ -1035,7 +1024,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
                     }
                 };
 
-                let id = DecoratedAst::new_identifier(lhs.token.clone(), kind.clone());
+                let id = DecoratedAst::new_identifier(lhs.token.clone(), Rc::clone(&kind));
                 (id, kind)
             }
 
@@ -1049,15 +1038,15 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
         let mut is_any = function.is_same(&SpruceType::Unresolved);
 
         if !is_any {
-            let function = match function {
-                SpruceType::Function {..} => &function,
+            match &*function {
+                SpruceType::Function {..} => {},
                 _ => return Err(self.error(format!(
                     "Cannot call non-function '{}'",
                     lhs.token.span.slice_source(),
                 )))
             };
 
-            let SpruceType::Function { parameters, .. } = &function else { unreachable!() };
+            let SpruceType::Function { parameters, .. } = &*function else { unreachable!() };
     
             match &parameters {
                 Some(parameters) => {
@@ -1101,7 +1090,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
             args_kind.push(self.find_type_of(&args.last().unwrap())?);
 
             if !is_any {
-                let SpruceType::Function { parameters, .. } = &function else { unreachable!() };
+                let SpruceType::Function { parameters, .. } = &*function else { unreachable!() };
 
                 if let Some(parameters) = &parameters {
                     if idx < parameters.len() {
@@ -1122,14 +1111,14 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
             }
         }
 
-        Ok(DecoratedAst::new_function_call(lhs.token.clone(), match function {
-            SpruceType::Function { return_type, ..} => *return_type.clone(),
-            _ => SpruceType::Unresolved,
+        Ok(DecoratedAst::new_function_call(lhs.token.clone(), match &*function {
+            SpruceType::Function { return_type, ..} => Rc::clone(return_type),
+            _ => Rc::new(SpruceType::Unresolved),
             }, 
         lhs, args))
     }
 
-    fn visit_var_declaration(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn visit_var_declaration(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         let AstData::VarDeclaration { is_mutable, kind, expression } = &node.data else { unreachable!() };
         let identifier = &node.token;
         
@@ -1171,7 +1160,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
                 }
                 kind
             },
-            None => expr_kind.clone(),
+            None => Rc::clone(&expr_kind),
         };
 
         if let DecoratedAstData::Empty = &expression.data {
@@ -1185,7 +1174,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
             }
         }
 
-        self.register_local(identifier, *is_mutable, kind.clone());
+        self.register_local(identifier, *is_mutable, Rc::clone(&kind));
 
         if self.table.is_global() {
             // Check mutable
@@ -1214,7 +1203,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
         Ok(DecoratedAst::new_var_decl(node.token.clone(), *is_mutable, expr_kind, expression))
     }
 
-    fn visit_var_declarations(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn visit_var_declarations(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         let AstData::VarDeclarations(decls) = &node.data else { unreachable!() };
         let mut declarations = Vec::new();
         for decl in decls {
@@ -1223,7 +1212,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
         Ok(DecoratedAst::new_var_decls(declarations))
     }
 
-    fn visit_var_assign(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn visit_var_assign(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         let AstData::VarAssign { lhs, expression } = &node.data else { unreachable!() };
         let identifier = &node.token;
 
@@ -1233,7 +1222,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
         match self.table.find_local(&identifier.span, true) {
             Some(local) => {
                 let is_mutable = local.mutable;
-                let kind = local.kind.clone();
+                let kind = Rc::clone(&local.kind);
                 let expr_type = self.find_type_of(&expr)?;
 
                 if !is_mutable {
@@ -1245,7 +1234,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
                     );
                 }
                 
-                if discriminant(&kind) == discriminant(&SpruceType::Any) {
+                if discriminant(&*kind) == discriminant(&SpruceType::Any) {
                     self.error_no_exit(format!(
                         "Currently cannot assign value to un-initialised variable '{}'",
                         identifier.span.slice_source(),
@@ -1274,7 +1263,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
         Ok(DecoratedAst::new_var_assign(node.token.clone(), setter, expr))
     }
 
-    fn visit_var_assign_equal(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn visit_var_assign_equal(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         let AstData::VarAssignEqual { operator, lhs, expression } = &node.data else { unreachable!() };
         let identifier = &node.token;
 
@@ -1284,7 +1273,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
         match self.table.find_local(&identifier.span, true) {
             Some(local) => {
                 let is_mutable = local.mutable;
-                let kind = local.kind.clone();
+                let kind = Rc::clone(&local.kind);
                 let expr_type = self.find_type_of(&expression)?;
 
                 if !is_mutable {
@@ -1296,7 +1285,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
                     );
                 }
                 
-                if discriminant(&kind) == discriminant(&SpruceType::Any) {
+                if discriminant(&*kind) == discriminant(&SpruceType::Any) {
                     self.error_no_exit(format!(
                         "Currently cannot assign value to un-initialised variable '{}'",
                         identifier.span.slice_source(),
@@ -1326,11 +1315,11 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
     }
 
     #[inline]
-    fn visit_type(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn visit_type(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         Ok(DecoratedAst::new_type(node.token.clone(), self.get_type_from_ast(&node)?))
     }
 
-    fn visit_struct_def(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn visit_struct_def(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         let AstData::StructDefinition { is_ref, items } = &node.data else { unreachable!() };
 
         self.push_scope();
@@ -1358,9 +1347,9 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
                         }
 
                         let kind = self.get_type_from_ast(type_name)?;
-                        field_types.push((item.token.clone(), Box::new(kind.clone())));
+                        field_types.push((item.token.clone(), Rc::clone(&kind)));
 
-                        self.register_local(&item.token, true, kind.clone());
+                        self.register_local(&item.token, true, Rc::clone(&kind));
 
                         inner.push(DecoratedAst::new_parameter(item.token.clone(), kind));
                     }
@@ -1377,7 +1366,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
                         let func = self.visit_function(item)?;
                         self.pop_scope_type(prev);
 
-                        func_types.push(Box::new(self.find_type_of(&func)?));
+                        func_types.push(self.find_type_of(&func)?);
                         inner.push(func);
                     }
                     _ => return Err(self.error(format!(
@@ -1399,10 +1388,10 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
 
         self.pop_scope();
 
-        Ok(DecoratedAst::new_struct_definition(node.token.clone(), kind, *is_ref, items))
+        Ok(DecoratedAst::new_struct_definition(node.token.clone(), Rc::new(kind), *is_ref, items))
     }
 
-    fn visit_ternary(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn visit_ternary(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         let AstData::Ternary { condition, true_body, false_body } = &node.data else { unreachable!() };
 
         let condition = self.visit(condition)?;
@@ -1436,7 +1425,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
         Ok(DecoratedAst::new_ternary(node.token.clone(), condition, true_type, true_body, false_body))
     }
 
-    fn visit_if_statement(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn visit_if_statement(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         let AstData::IfStatement { is_expression, condition, true_body, false_body } = &node.data else { unreachable!() };
 
         let condition = self.visit(condition)?;
@@ -1478,7 +1467,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
         Ok(DecoratedAst::new_if_statement(node.token.clone(), *is_expression, condition, true_type, true_body, false_body))
     }
 
-    fn visit_for_statement(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn visit_for_statement(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         let AstData::ForStatement { variable, condition, increment, body } = &node.data else { unreachable!() };
 
         self.push_scope();
@@ -1502,7 +1491,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
         Ok(DecoratedAst::new_for_statement(node.token.clone(), variable, condition, increment, body))
     }
 
-    fn visit_do_while_statement(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn visit_do_while_statement(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         let AstData::DoWhileStatement { body, condition } = &node.data else { unreachable!() };
 
         let condition = self.visit(condition)?;
@@ -1511,7 +1500,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
         Ok(DecoratedAst::new_do_while_statement(node.token.clone(), body, condition))
     }
 
-    fn visit_index_getter(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn visit_index_getter(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         let AstData::IndexGetter { expression, index } = &node.data else { unreachable!() };
 
         let expression = self.visit(expression)?;
@@ -1519,7 +1508,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
         let index = self.visit(index)?;
         let index_type = self.find_type_of(&index)?;
 
-        if discriminant(&expr_type) != discriminant(&SpruceType::Array(Box::new(SpruceType::Any))) {
+        if discriminant(&*expr_type) != discriminant(&SpruceType::Array(Rc::new(SpruceType::Any))) {
             self.error_no_exit(format!(
                 "Left-hand side of index must be an array, but received {}",
                 expr_type,
@@ -1536,13 +1525,13 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
         Ok(DecoratedAst::new_index_getter(node.token.clone(), expression, index))
     }
 
-    fn visit_index_setter(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn visit_index_setter(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         let AstData::IndexSetter { expression, rhs } = &node.data else { unreachable!() };
 
         let expression = self.visit(expression)?;
-        let expr_type = match self.find_type_of(&expression)? {
-            SpruceType::Array(kind) => *kind,
-            n @ _ => n,
+        let expr_type = match &*self.find_type_of(&expression)? {
+            SpruceType::Array(kind) => Rc::clone(kind),
+            n @ _ => Rc::new(n.clone()),
         };
         let rhs = self.visit(rhs)?;
         let rhs_type = self.find_type_of(&rhs)?;
@@ -1558,28 +1547,28 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
         Ok(DecoratedAst::new_index_setter(node.token.clone(), expression, rhs))
     }
 
-    fn visit_property_getter(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn visit_property_getter(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         let AstData::PropertyGetter { lhs, property } = &node.data else { unreachable!() };
 
         let lhs = self.visit(lhs)?;
-        let lhs_type = match self.find_type_of(&lhs)? {
-            SpruceType::Array(kind) => *kind,
-            n @ _ => n,
+        let lhs_type = match &*self.find_type_of(&lhs)? {
+            SpruceType::Array(kind) => Rc::clone(kind),
+            n @ _ => Rc::new(n.clone()),
         };
 
-        if discriminant(&lhs_type) != discriminant(&SpruceType::Struct {is_ref: false, identifier: None, fields: None, methods: None }) {
+        if discriminant(&*lhs_type) != discriminant(&SpruceType::Struct {is_ref: false, identifier: None, fields: None, methods: None }) {
             self.error_no_exit(format!(
                 "Left-hand side of index must be a struct, but received {}",
                 lhs_type,
             ), &node.token);
         }
 
-        let kind = if let SpruceType::Struct { identifier, .. } = &lhs_type {
+        let kind = if let SpruceType::Struct { identifier, .. } = &*lhs_type {
             if let Some(field) = self.find_struct_field(&lhs_type, &property.token.span) {
-                *field
+                field
             } else {
                 if let Some(method) = self.find_struct_method(&lhs_type, &property.token.span) {
-                    *method
+                    method
                 } else {
                     self.error_no_exit(format!(
                         "Struct '{}' does not contain any fields or methods to get, with identifier '{}'",
@@ -1587,7 +1576,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
                         property.token.span.slice_source(),
                     ), &node.token);
     
-                    SpruceType::Error
+                    Rc::new(SpruceType::Error)
                 }
             }
         } else {
@@ -1596,7 +1585,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
                 lhs_type,
             ), &node.token);
 
-            SpruceType::Error
+            Rc::new(SpruceType::Error)
         };
 
         Ok(DecoratedAst::new_property_getter(
@@ -1606,7 +1595,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
         ))
     }
 
-    fn visit_property_setter(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn visit_property_setter(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         let AstData::PropertySetter { lhs, expression } = &node.data else { unreachable!() };
 
         let lhs = self.visit(lhs)?;
@@ -1626,21 +1615,21 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
         Ok(DecoratedAst::new_property_setter(node.token.clone(), lhs, rhs))
     }
 
-    fn visit_switch_statement(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn visit_switch_statement(&mut self, _node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         todo!()
     }
 
-    fn visit_switch_case(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn visit_switch_case(&mut self, _node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         todo!()
     }
 
-    fn visit_lazy(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn visit_lazy(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         let AstData::Lazy(expression) = &node.data else { unreachable!() };
         let body = self.visit(expression)?;
         Ok(DecoratedAst::new_lazy(node.token.clone(), body))
     }
 
-    fn visit_defer(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn visit_defer(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         let AstData::Defer(expression) = &node.data else { unreachable!() };
         
         let prev = self.push_scope_type(ScopeType::Defer);
@@ -1666,7 +1655,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
         Ok(DecoratedAst::new_defer(node.token.clone(), self.defer_count - 1, body))
     }
 
-    fn visit_return_statement(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn visit_return_statement(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         let AstData::Return(expression) = &node.data else { unreachable!() };
 
         if self.scope_type == ScopeType::Defer {
@@ -1681,13 +1670,13 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
                 let expr = self.visit(expr)?;
                 (self.find_type_of(&expr)?, Some(expr))
             }
-            None => (SpruceType::None, None),
+            None => (Rc::new(SpruceType::None), None),
         };
 
         Ok(DecoratedAst::new_return(node.token.clone(), kind, expression))
     }
 
-    fn visit_body(&mut self, node: &Box<Ast>, new_scope: bool) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn visit_body(&mut self, node: &Rc<Ast>, new_scope: bool) -> Result<Rc<DecoratedAst>, SpruceErr> {
         let AstData::Body(inner) = &node.data else { unreachable!() };
         let mut statements = Vec::new();
 
@@ -1716,26 +1705,26 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
             Some(n) => match &n.data {
                 DecoratedAstData::ExpressionStatement(kind, is_statement, _) => {
                     if *is_statement {
-                        SpruceType::None
+                        Rc::new(SpruceType::None)
                     } else {
-                        kind.clone()
+                        Rc::clone(kind)
                     }
                 }
-                DecoratedAstData::Return(kind, _) => kind.clone(),
-                DecoratedAstData::Body(kind, _) => kind.clone(),
-                _ => SpruceType::None,
+                DecoratedAstData::Return(kind, _) => Rc::clone(kind),
+                DecoratedAstData::Body(kind, _) => Rc::clone(kind),
+                _ => Rc::new(SpruceType::None),
             },
-            None => SpruceType::None,
+            None => Rc::new(SpruceType::None),
         };
 
         Ok(DecoratedAst::new_body(node.token.clone(), statements, kind))
     }
 
-    fn visit_include(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn visit_include(&mut self, _node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         todo!()
     }
 
-    fn visit_program(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn visit_program(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         let AstData::Program { source, body } = &node.data else { unreachable!() };
         let mut statements = Vec::new();
 
@@ -1746,7 +1735,7 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
         Ok(DecoratedAst::new_program(node.token.clone(), Rc::clone(source), statements))
     }
 
-    fn visit_empty(&mut self, _node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
+    fn visit_empty(&mut self, _node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         unreachable!()
     }
 }
