@@ -59,6 +59,7 @@ pub enum DecoratedAstData {
     SwitchStatement { condition: Rc<DecoratedAst>, cases: Vec<Rc<DecoratedAst>> },
     SwitchCase { case: Option<Rc<DecoratedAst>>, body: Rc<DecoratedAst> },
 
+    Raw { kind: Rc<SpruceType>, code: Vec<Rc<DecoratedAst>> },
     Lazy(Rc<DecoratedAst>),
     Defer(u32, Rc<DecoratedAst>),
     Return(Rc<SpruceType>, Option<Rc<DecoratedAst>>),
@@ -208,6 +209,13 @@ impl DecoratedAst {
         Rc::new(Self {
             token,
             data: DecoratedAstData::ParameterList(parameters),
+        })
+    }
+
+    pub fn new_raw(token: Token, kind: Rc<SpruceType>, code: Vec<Rc<DecoratedAst>>) -> Rc<Self> {
+        Rc::new(Self {
+            token,
+            data: DecoratedAstData::Raw { kind, code },
         })
     }
 

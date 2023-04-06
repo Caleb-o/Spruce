@@ -178,6 +178,7 @@ impl Lexer {
             'r' => self.check_if_matches(start, len, &[
                 ("eturn", TokenKind::Return),
                 ("ef", TokenKind::Ref),
+                ("aw", TokenKind::Raw),
             ]),
             's' => self.check_if_matches(start, len, &[
                     ("truct", TokenKind::Struct),

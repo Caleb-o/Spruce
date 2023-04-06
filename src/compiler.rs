@@ -307,6 +307,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
             DecoratedAstData::GetProperty {..} => self.visit_property_getter(node)?,
             DecoratedAstData::SetProperty {..} => self.visit_property_setter(node)?,
 
+            DecoratedAstData::Raw {..} => self.visit_raw(node)?,
             DecoratedAstData::Lazy(_) => self.visit_lazy(node)?,
             DecoratedAstData::Defer(_, _) => self.visit_defer(node)?,
             DecoratedAstData::Return(_, _) => self.visit_return_statement(node)?,
@@ -863,6 +864,20 @@ impl Visitor<DecoratedAst, ()> for Compiler {
 
     fn visit_switch_case(&mut self, _node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         todo!()
+    }
+
+    fn visit_raw(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
+        let DecoratedAstData::Raw { code, .. } = &node.data else { unreachable!() };
+
+        for item in code {
+            self.output_code.push_str(&format!(
+                "{}{}\n",
+                self.tab_string(),
+                item.token.span.slice_source(),
+            ));
+        }
+
+        Ok(())
     }
 
     fn visit_lazy(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {

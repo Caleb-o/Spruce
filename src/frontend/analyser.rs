@@ -205,6 +205,16 @@ impl Analyser {
         SpruceErr::new(message, SpruceErrData::Analyser { file_path: (*self.source.file_path).clone() })
     }
 
+    fn warning(&mut self, msg: String, token: &Token) {
+        println!("{}", format!(
+            "[\x1b[33mWarning\x1b[0m] {} - '{}' [{}:{}]",
+            msg,
+            token.span.source.file_path,
+            token.line,
+            token.column,
+        ));
+    }
+
     fn error_no_exit(&mut self, msg: String, token: &Token) {
         self.had_error = true;
 
@@ -574,6 +584,7 @@ impl Visitor<Ast, Rc<DecoratedAst>> for Analyser {
                 
                 func
             },
+            AstData::Raw {..} => self.visit_raw(node)?,
             AstData::Lazy(_) => self.visit_lazy(node)?,
             AstData::Defer(_) => self.visit_defer(node)?,
             AstData::Return(_) => self.visit_return_statement(node)?,
@@ -1623,6 +1634,27 @@ impl Visitor<Ast, Rc<DecoratedAst>> for Analyser {
         todo!()
     }
 
+    fn visit_raw(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
+        let AstData::Raw { returns, code } = &node.data else { unreachable!() };
+
+        self.warning(
+            "Use of raw block! Make sure that it handles data correctly and returns if specified".into(),
+            &node.token
+        );
+
+        let returns = if let Some(returns) = returns {
+            self.get_type_from_ast(returns)?
+        } else { Rc::new(SpruceType::None) };
+
+        let mut inner = Vec::new();
+
+        for c in code {
+            inner.push(self.visit(c)?);
+        }
+
+        Ok(DecoratedAst::new_raw(node.token.clone(), returns, inner))
+    }
+
     fn visit_lazy(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         let AstData::Lazy(expression) = &node.data else { unreachable!() };
         let body = self.visit(expression)?;
@@ -1712,6 +1744,7 @@ impl Visitor<Ast, Rc<DecoratedAst>> for Analyser {
                 }
                 DecoratedAstData::Return(kind, _) => Rc::clone(kind),
                 DecoratedAstData::Body(kind, _) => Rc::clone(kind),
+                DecoratedAstData::Raw { kind, .. } => Rc::clone(kind),
                 _ => Rc::new(SpruceType::None),
             },
             None => Rc::new(SpruceType::None),

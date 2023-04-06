@@ -369,7 +369,7 @@ impl Parser {
                 self.consume(TokenKind::Identifier, "Expect identifier after '@' in struct literal")?;
                 (token, identifier)
             }
-        }; 
+        };
         
         self.consume(TokenKind::LCurly, "Expect '{' after '@' to start map literal")?;
 
@@ -587,6 +587,7 @@ impl Parser {
                 self.consume_here();
                 Ast::new_comment(current)
             }
+            TokenKind::Raw => self.raw_code()?,
             TokenKind::Defer => self.defer()?,
             _ => {
                 let node = self.expression()?;
@@ -604,7 +605,7 @@ impl Parser {
         // Trailing if statement
         match node.data {
             // Disallow after certain types of statement
-            AstData::Comment | AstData::IfStatement {..} |
+            AstData::Comment | AstData::IfStatement {..} | AstData::Raw {..} |
             AstData::SwitchStatement {..} | AstData::Function {..} => {}
             _ => {
                 if self.current.kind == TokenKind::If {
@@ -616,13 +617,14 @@ impl Parser {
                     );
 
                     self.consume(TokenKind::SemiColon, "Expect ';' after trailing if statement")?;
+                    return Ok(node);
                 }
             }
         }
 
         match node.data {
             AstData::Comment | AstData::SwitchStatement {..} | AstData::Function {..} |
-            AstData::IfStatement {..} | AstData::ForStatement {..} => {}
+            AstData::IfStatement {..} | AstData::ForStatement {..} | AstData::Raw {..} => {}
             _ => self.consume(TokenKind::SemiColon, "Expect ';' after statement")?,
         }
         
@@ -953,6 +955,27 @@ impl Parser {
         })
     }
 
+    fn raw_code(&mut self) -> Result<Rc<Ast>, SpruceErr> {
+        let token = self.current.clone();
+        self.consume_here();
+        
+        let returns = if self.current.kind == TokenKind::Return {
+            self.consume_here();
+            Some(self.collect_type()?)
+        } else { None };
+
+        self.consume(TokenKind::LCurly, "Expect '{' after raw")?;
+
+        let mut code = Vec::new();
+        while self.current.kind == TokenKind::String {
+            code.push(self.primary()?);
+        }
+
+        self.consume(TokenKind::RCurly, "Expect '}' after raw code")?;
+
+        Ok(Ast::new_raw(token, returns, code))
+    }
+
     fn outer_statements(&mut self) -> Result<Rc<Ast>, SpruceErr> {
         let token = self.current.clone();
         let mut statements = Vec::new();
@@ -982,6 +1005,7 @@ impl Parser {
                     self.consume_here();
                     statements.push(Ast::new_comment(current));
                 }
+                TokenKind::Raw => statements.push(self.raw_code()?),
                 _ => return Err(self.error(format!(
                     "Unknown item in outer scope {:?}",
                     self.current.kind

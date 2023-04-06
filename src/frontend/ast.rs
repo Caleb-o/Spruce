@@ -64,6 +64,7 @@ pub enum AstData {
     SwitchStatement { condition: Rc<Ast>, cases: Vec<Rc<Ast>> },
     SwitchCase { case: Option<Rc<Ast>>, body: Rc<Ast> },
 
+    Raw { returns: Option<Rc<Ast>>, code: Vec<Rc<Ast>> },
     Lazy(Rc<Ast>),
     Defer(Rc<Ast>),
     Return(Option<Rc<Ast>>),
@@ -223,6 +224,13 @@ impl Ast {
         })
     }
 
+    pub fn new_raw(token: Token, returns: Option<Rc<Ast>>, code: Vec<Rc<Ast>>) -> Rc<Self> {
+        Rc::new(Self {
+            token,
+            data: AstData::Raw { returns, code },
+        })
+    }
+    
     pub fn new_lazy(token: Token, expression: Rc<Ast>) -> Rc<Self> {
         Rc::new(Self {
             token,

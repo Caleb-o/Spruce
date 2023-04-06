@@ -366,6 +366,7 @@ impl Visitor<Ast, ()> for NameResolver {
             AstData::PropertyGetter {..} => self.visit_property_getter(node)?,
             AstData::PropertySetter {..} => self.visit_property_setter(node)?,
 
+            AstData::Raw {..} => self.visit_raw(node)?,
             AstData::Defer {..} => self.visit_defer(node)?,
             AstData::Lazy {..} => self.visit_lazy(node)?,
             AstData::Return {..} => self.visit_return_statement(node)?,
@@ -506,6 +507,16 @@ impl Visitor<Ast, ()> for NameResolver {
 
     fn visit_comment(&mut self, _node: &Rc<Ast>) -> Result<(), SpruceErr> {
         unreachable!()
+    }
+
+    fn visit_raw(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {
+        let AstData::Raw { returns, .. } = &node.data else { unreachable!() };
+
+        if let Some(returns) = returns {
+            self.visit_type(returns)?;
+        }
+
+        Ok(())
     }
 
     fn visit_binary_op(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {

@@ -14,6 +14,7 @@ pub trait Visitor<T, U> {
     fn visit_expression_statement(&mut self, node: &Rc<T>) -> Result<U, SpruceErr>;
     
     fn visit_comment(&mut self, node: &Rc<T>) -> Result<U, SpruceErr>;
+    fn visit_raw(&mut self, node: &Rc<T>) -> Result<U, SpruceErr>;
     
     fn visit_binary_op(&mut self, node: &Rc<T>) -> Result<U, SpruceErr>;
     fn visit_unary_op(&mut self, node: &Rc<T>) -> Result<U, SpruceErr>;
