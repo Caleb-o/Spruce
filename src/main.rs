@@ -54,10 +54,18 @@ fn main() {
                         } else {
                             if args.compile {
                                 print!("Compiling output source...");
-                                if let Err(_) = Command::new("csc").args(["out.cs", "-langversion:10.0", "-o", "-nullable:enable"]).output() {
-                                    eprintln!("Could not compile script with csc");
+                                let command = Command::new("csc")
+                                    .args(["out.cs", "-langversion:10.0", "-o", "-nullable:enable"])
+                                    .output();
+                                
+                                if let Ok(command) = command {
+                                    if command.status.success() {
+                                        println!("Done!");
+                                    } else {
+                                        println!("\n=== Error ===\n{}", String::from_utf8(command.stdout).unwrap());
+                                    }
                                 } else {
-                                    println!("Done!");
+                                    eprintln!("Could not compile script with csc");
                                 }
                             }
                         }
