@@ -6,6 +6,11 @@ using System.Collections.Generic;
 namespace Application;
 
 public static class SprucePrelude {
+    [Serializable]
+    public sealed class SpruceException : Exception {
+        public SpruceException(string message) : base(message) {}
+    }
+
     public sealed class Defer : IDisposable {
         readonly Action _action;
         public Defer(Action action) => _action = action;
@@ -83,5 +88,15 @@ public static class SprucePrelude {
         }
 
         Console.WriteLine(sb.ToString());
+    }
+
+    public static void Assert(bool condition, string message) {
+        if (!condition) {
+            throw new SpruceException(message);
+        }
+    }
+
+    public static void Assert_equal(bool condition, string message) {
+        Assert(!condition, message);
     }
 }
