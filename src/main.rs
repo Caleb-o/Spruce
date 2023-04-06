@@ -1,5 +1,4 @@
 mod frontend;
-mod object;
 mod nativefns;
 mod compiler;
 mod source;

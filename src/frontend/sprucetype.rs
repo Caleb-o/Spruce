@@ -1,6 +1,6 @@
 use std::{mem::discriminant, fmt::Display};
 
-use super::token::{Span, Token};
+use super::token::Token;
 
 #[derive(Debug, Clone)]
 pub enum SpruceType {

@@ -2,7 +2,6 @@ pub mod token;
 pub mod lexer;
 pub mod ast;
 pub mod parser;
-pub mod environment;
 pub mod symtable;
 pub mod analyser;
 pub mod symbols;

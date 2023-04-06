@@ -358,7 +358,6 @@ impl Visitor<Ast, ()> for NameResolver {
             AstData::ExpressionStatement(_, _) => self.visit_expression_statement(node)?,
 
             AstData::Function {..} => self.visit_function(node)?,
-            AstData::TypeDefinition { inner } => self.visit(inner)?,
             AstData::StructDefinition {..} => self.visit_struct_def(node)?,
 
             AstData::IndexGetter {..} => self.visit_index_getter(node)?,
@@ -700,10 +699,6 @@ impl Visitor<Ast, ()> for NameResolver {
     #[inline]
     fn visit_type(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
         self.get_type_from_ast(&node)
-    }
-
-    fn visit_type_def(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {
-        todo!()
     }
 
     fn visit_struct_def(&mut self, node: &Box<Ast>) -> Result<(), SpruceErr> {

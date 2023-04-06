@@ -161,7 +161,7 @@ impl Compiler {
             DecoratedAstData::UnaryOp { kind, .. } => kind,
             DecoratedAstData::LogicalOp { kind, .. } => kind,
             DecoratedAstData::Body(kind, _) => kind,
-            DecoratedAstData::Literal(kind, _) => kind,
+            DecoratedAstData::Literal(kind) => kind,
             DecoratedAstData::ArrayLiteral(kind, _) => kind,
             DecoratedAstData::IfStatement { kind, .. } => kind,
             DecoratedAstData::Ternary { kind, .. } => kind,
@@ -266,7 +266,7 @@ impl Compiler {
 impl Visitor<DecoratedAst, ()> for Compiler {
     fn visit(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
         match node.data {
-            DecoratedAstData::Literal(_, _) => self.visit_literal(node)?,
+            DecoratedAstData::Literal(_) => self.visit_literal(node)?,
             DecoratedAstData::TupleLiteral(_, _) => self.visit_tuple_literal(node)?,
             DecoratedAstData::ArrayLiteral(_, _) => self.visit_array_literal(node)?,
             DecoratedAstData::SymbolLiteral(_) => self.visit_symbol_literal(node)?,
@@ -637,10 +637,6 @@ impl Visitor<DecoratedAst, ()> for Compiler {
     }
 
     fn visit_type(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
-        todo!()
-    }
-
-    fn visit_type_def(&mut self, node: &Box<DecoratedAst>) -> Result<(), SpruceErr> {
         todo!()
     }
 

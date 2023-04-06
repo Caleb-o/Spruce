@@ -1,8 +1,5 @@
-use std::process::id;
-
 use crate::nativefns::ParamKind;
-
-use super::{sprucetype::SpruceType, token::Span};
+use super::sprucetype::SpruceType;
 
 pub type ParamTypes = Option<Vec<SpruceType>>;
 

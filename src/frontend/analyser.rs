@@ -1,8 +1,8 @@
 use std::{rc::Rc, mem::discriminant, collections::HashSet};
 
-use crate::{source::Source, RunArgs, error::{SpruceErr, SpruceErrData}, nativefns::{self, ParamKind}, object::Object, visitor::Visitor};
+use crate::{source::Source, RunArgs, error::{SpruceErr, SpruceErrData}, nativefns::{self, ParamKind}, visitor::Visitor};
 
-use super::{token::{Token, Span, TokenKind}, functiondata::{Function, FunctionMeta}, symbols::Symbols, environment::{ConstantValue}, ast::{Ast, AstData, TypeKind}, decorated_ast::{DecoratedAst, DecoratedAstData, FunctionType}, sprucetype::SpruceType, name_resolution::{ResolutionTable, FunctionSignatureKind, StructSignature, FunctionSignature}, symtable::SymTable};
+use super::{token::{Token, Span, TokenKind}, functiondata::{Function, FunctionMeta}, symbols::Symbols, ast::{Ast, AstData, TypeKind}, decorated_ast::{DecoratedAst, DecoratedAstData, FunctionType}, sprucetype::SpruceType, name_resolution::{ResolutionTable, FunctionSignatureKind, StructSignature, FunctionSignature}, symtable::SymTable};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ScopeType {
@@ -13,7 +13,6 @@ pub struct Analyser {
     had_error: bool,
     source: Rc<Source>,
     args: RunArgs,
-    constants: Vec<ConstantValue>,
     functable: Vec<FunctionMeta>, // Type resolved table
     struct_table: Vec<SpruceType>,
     table: SymTable,
@@ -29,7 +28,6 @@ impl Analyser {
             had_error: false,
             source,
             args,
-            constants: Vec::new(),
             functable: Vec::new(),
             struct_table: Vec::new(),
             table: SymTable::new(),
@@ -178,29 +176,6 @@ impl Analyser {
     #[inline]
     fn add_function(&mut self, identifier: String, func: Function) {
         self.functable.push(FunctionMeta::new(identifier, func));
-    }
-
-    fn find_constant(&self, obj: &Object) -> Option<usize> {
-        for (i, item) in self.constants.iter().enumerate() {
-            if let ConstantValue::Obj(ref o) = item {
-                if obj.is_exact(o) {
-                    return Some(i);
-                }
-            }
-        }
-
-        None
-    }
-    
-    #[inline]
-    fn add_constant(&mut self, constant: Object) -> u32 {
-        match self.find_constant(&constant) {
-            Some(idx) => idx as u32,
-            None => {
-                self.constants.push(ConstantValue::Obj(constant));
-                self.constants.len() as u32 - 1
-            }
-        }
     }
 
     #[inline]
@@ -389,7 +364,7 @@ impl Analyser {
 
     fn find_type_of(&mut self, node: &Box<DecoratedAst>) -> Result<SpruceType, SpruceErr> {
         Ok(match &node.data {
-            DecoratedAstData::Literal(kind, _) => kind.clone(),
+            DecoratedAstData::Literal(kind) => kind.clone(),
             DecoratedAstData::TupleLiteral(kind, _) => kind.clone(),
             DecoratedAstData::ArrayLiteral(kind, _) => kind.clone(),
             DecoratedAstData::SymbolLiteral(_) => SpruceType::Symbol,
@@ -590,7 +565,6 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
             AstData::Body(_) => self.visit_body(node, true)?,
             AstData::ExpressionStatement(_, _) => self.visit_expression_statement(node)?,
 
-            AstData::TypeDefinition { inner } => self.visit(inner)?,
             AstData::StructDefinition {..} => self.visit_struct_def(node)?,
 
             AstData::IndexGetter {..} => self.visit_index_getter(node)?,
@@ -644,40 +618,13 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
 
     fn visit_literal(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
         let index = match node.token.kind {
-            TokenKind::Int => {
-                let lexeme = &node.token.span;
-                self.add_constant(Object::Int(
-                    self.source.content[lexeme.start..lexeme.start + lexeme.len]
-                    .parse::<i32>()
-                    .unwrap()
-                ))
-            }
-
-            TokenKind::Float => {
-                let lexeme = &node.token.span;
-                self.add_constant(Object::Float(
-                    self.source.content[lexeme.start..lexeme.start + lexeme.len]
-                    .parse::<f32>()
-                    .unwrap()
-                ))
-            }
-            
-            TokenKind::String => {
-                let lexeme = &node.token.span;
-                self.add_constant(Object::String(
-                    String::from(
-                        &self.source.content[lexeme.start..lexeme.start + lexeme.len]
-                    )
-                ))
-            }
-
-            TokenKind::None =>  self.add_constant(Object::None),
-            TokenKind::True =>  self.add_constant(Object::Boolean(true)),
-            TokenKind::False => self.add_constant(Object::Boolean(false)),
+            TokenKind::Int | TokenKind::Float | TokenKind::String
+            | TokenKind::None | TokenKind::True | TokenKind::False
+                => Ast::new_literal(node.token.clone()),
             _ => unreachable!(),
         };
 
-        Ok(DecoratedAst::new_literal(node.token.clone(), index, match node.token.kind {
+        Ok(DecoratedAst::new_literal(node.token.clone(), match node.token.kind {
             TokenKind::None => SpruceType::None,
             TokenKind::String => SpruceType::String,
             TokenKind::True | TokenKind::False => SpruceType::Bool,
@@ -1381,10 +1328,6 @@ impl Visitor<Ast, Box<DecoratedAst>> for Analyser {
     #[inline]
     fn visit_type(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
         Ok(DecoratedAst::new_type(node.token.clone(), self.get_type_from_ast(&node)?))
-    }
-
-    fn visit_type_def(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {
-        unreachable!()
     }
 
     fn visit_struct_def(&mut self, node: &Box<Ast>) -> Result<Box<DecoratedAst>, SpruceErr> {

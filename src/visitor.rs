@@ -28,7 +28,6 @@ pub trait Visitor<T, U> {
     fn visit_var_assign_equal(&mut self, node: &Box<T>) -> Result<U, SpruceErr>;
     fn visit_type(&mut self, node: &Box<T>) -> Result<U, SpruceErr>;
     
-    fn visit_type_def(&mut self, node: &Box<T>) -> Result<U, SpruceErr>;
     fn visit_struct_def(&mut self, node: &Box<T>) -> Result<U, SpruceErr>;
     
     fn visit_ternary(&mut self, node: &Box<T>) -> Result<U, SpruceErr>;

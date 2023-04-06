@@ -18,7 +18,7 @@ pub enum FunctionType {
 #[derive(Debug, Clone)]
 pub enum DecoratedAstData {
     Identifier(SpruceType),
-    Literal(SpruceType, u32), // Constant index
+    Literal(SpruceType), // Constant index
     SymbolLiteral(u32), // Symbol Index
     StructLiteral(SpruceType, Vec<(Span, Option<Box<DecoratedAst>>)>),
     TupleLiteral(SpruceType, Vec<Box<DecoratedAst>>),
@@ -100,10 +100,10 @@ impl DecoratedAst {
         })
     }
 
-    pub fn new_literal(token: Token, index: u32, kind: SpruceType) -> Box<Self> {
+    pub fn new_literal(token: Token, kind: SpruceType) -> Box<Self> {
         Box::new(Self { 
             token,
-            data: DecoratedAstData::Literal(kind, index),
+            data: DecoratedAstData::Literal(kind),
         })
     }
 

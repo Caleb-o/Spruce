@@ -1,6 +1,7 @@
 use crate::frontend::{sprucetype::SpruceType, name_resolution::NameResolver, analyser::Analyser};
 
 #[derive(Debug, Clone)]
+#[allow(unused)]
 pub enum ParamKind {
     Any,
     None,
