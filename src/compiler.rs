@@ -1,4 +1,4 @@
-use std::{rc::Rc, fs::{self, File}, path::Path, io::Write};
+use std::{rc::Rc, fs::{self, File}, path::Path, io::Write, default};
 
 use crate::{source::Source, frontend::{decorated_ast::{DecoratedAst, DecoratedAstData, FunctionType}, sprucetype::SpruceType, token::TokenKind, symbols::Symbols}, error::{SpruceErr, SpruceErrData}, visitor::Visitor};
 
@@ -164,6 +164,7 @@ impl Compiler {
             DecoratedAstData::IfStatement { kind, .. } => kind,
             DecoratedAstData::Ternary { kind, .. } => kind,
             DecoratedAstData::FunctionCall { kind, .. } => kind,
+            DecoratedAstData::StructField { kind, .. } => kind,
             _ => return Err(SpruceErr::new(format!(
                     "Cannot cast node '{:#?}' to type",
                     node.data,
@@ -220,6 +221,7 @@ impl Compiler {
             SpruceType::None => "void".into(),
             SpruceType::Bool => "bool".into(),
             SpruceType::Int => "int".into(),
+            SpruceType::Float => "double".into(),
             SpruceType::String => "string".into(),
             SpruceType::Symbol => "Symbol".into(),
             SpruceType::Tuple(kinds) => {
@@ -290,6 +292,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
             DecoratedAstData::FunctionCall {..} => self.visit_function_call(node)?,
 
             DecoratedAstData::StructDefinition {..} => self.visit_struct_def(node)?,
+            DecoratedAstData::StructField {..} => self.visit_struct_field(node)?,
 
             DecoratedAstData::IfStatement {..} => self.visit_if_statement(node)?,
             DecoratedAstData::Ternary {..} => self.visit_ternary(node)?,
@@ -666,13 +669,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
 
         if let Some(items) = items {
             for item in items {
-                if let DecoratedAstData::Parameter(_) = &item.data {
-                    self.output_code.push_str(&format!("{}public ", self.tab_string()));
-                    self.visit(item)?;
-                    self.output_code.push_str(";\n");
-                } else {
-                    self.visit(item)?;
-                }
+                self.visit(item)?;
             }
 
             if items.len() > 0 {
@@ -724,6 +721,26 @@ impl Visitor<DecoratedAst, ()> for Compiler {
             "{}}}\n\n",
             self.tab_string(),
         ));
+
+        Ok(())
+    }
+
+    fn visit_struct_field(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
+        let DecoratedAstData::StructField { kind, default_value } = &node.data else { unreachable!() };
+
+        self.output_code.push_str(&format!(
+            "{}public {} {}",
+            self.tab_string(),
+            Compiler::as_cs_type(&*kind),
+            node.token.span.slice_source(),
+        ));
+
+        if let Some(default_value) = default_value {
+            self.output_code.push_str(" = ");
+            self.visit(default_value)?;
+        }
+
+        self.output_code.push_str(";\n");
 
         Ok(())
     }

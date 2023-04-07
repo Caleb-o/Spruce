@@ -42,8 +42,8 @@ pub enum DecoratedAstData {
     VarAssignEqual { operator: Token, lhs: Rc<DecoratedAst>, expression: Rc<DecoratedAst> },
     Type(Rc<SpruceType>),
 
-    TypeDefinition { inner: Rc<DecoratedAst> },
     StructDefinition { kind: Rc<SpruceType>, is_ref: bool, items: Option<Vec<Rc<DecoratedAst>>> },
+    StructField { kind: Rc<SpruceType>, default_value: Option<Rc<DecoratedAst>> },
 
     Ternary { condition: Rc<DecoratedAst>, kind: Rc<SpruceType>, true_body: Rc<DecoratedAst>, false_body: Rc<DecoratedAst> },
     IfStatement { is_expression: bool, condition: Rc<DecoratedAst>, kind: Rc<SpruceType>, true_body: Rc<DecoratedAst>, false_body: Option<Rc<DecoratedAst>> },
@@ -247,17 +247,17 @@ impl DecoratedAst {
         })
     }
 
-    pub fn new_type_definition(token: Token, inner: Rc<DecoratedAst>) -> Rc<Self> {
-        Rc::new(Self {
-            token,
-            data: DecoratedAstData::TypeDefinition { inner },
-        })
-    }
-
     pub fn new_struct_definition(token: Token, kind: Rc<SpruceType>, is_ref: bool, items: Option<Vec<Rc<DecoratedAst>>>) -> Rc<Self> {
         Rc::new(Self {
             token,
             data: DecoratedAstData::StructDefinition { kind, is_ref, items },
+        })
+    }
+
+    pub fn new_struct_field(token: Token, kind: Rc<SpruceType>, default_value: Option<Rc<DecoratedAst>>) -> Rc<Self> {
+        Rc::new(Self {
+            token,
+            data: DecoratedAstData::StructField { kind, default_value },
         })
     }
 

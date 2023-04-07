@@ -38,7 +38,7 @@ pub enum AstData {
     UnaryOp { rhs: Rc<Ast> },
     LogicalOp { lhs: Rc<Ast>, rhs: Rc<Ast> },
 
-    Parameter { type_name: Rc<Ast> },
+    Parameter { type_signature: Rc<Ast> },
     Function { anonymous: bool, parameters: Option<Vec<Rc<Ast>>>, return_type: Option<Rc<Ast>>, body: Rc<Ast> },
     FunctionCall { lhs: Rc<Ast>, arguments: Vec<Rc<Ast>> },
 
@@ -49,6 +49,7 @@ pub enum AstData {
     Type { kind: TypeKind },
 
     StructDefinition { is_ref: bool, items: Option<Vec<Rc<Ast>>> },
+    StructField { type_signature: Rc<Ast>, default_value: Option<Rc<Ast>> },
 
     Ternary { condition: Rc<Ast>, true_body: Rc<Ast>, false_body: Rc<Ast> },
     IfStatement { is_expression: bool, condition: Rc<Ast>, true_body: Rc<Ast>, false_body: Option<Rc<Ast>> },
@@ -197,6 +198,13 @@ impl Ast {
         })
     }
 
+    pub fn new_struct_field(token: Token, type_signature: Rc<Ast>, default_value: Option<Rc<Ast>>) -> Rc<Self> {
+        Rc::new(Self {
+            token,
+            data: AstData::StructField { type_signature, default_value },
+        })
+    }
+
     pub fn new_function(
         token: Token,
         anonymous: bool,
@@ -217,10 +225,10 @@ impl Ast {
         })
     }
 
-    pub fn new_parameter(token: Token, type_name: Rc<Ast>) -> Rc<Self> {
+    pub fn new_parameter(token: Token, type_signature: Rc<Ast>) -> Rc<Self> {
         Rc::new(Self {
             token,
-            data: AstData::Parameter { type_name },
+            data: AstData::Parameter { type_signature },
         })
     }
 

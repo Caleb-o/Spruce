@@ -219,8 +219,8 @@ impl NameResolver {
             let mut param_names = HashSet::new();
 
             for param in parameters {
-                let AstData::Parameter { type_name } = &param.data else { unreachable!("{:#?}", param.data) };
-                self.get_type_from_ast(type_name)?;
+                let AstData::Parameter { type_signature } = &param.data else { unreachable!("{:#?}", param.data) };
+                self.get_type_from_ast(type_signature)?;
                 
                 if !param_names.insert(param.token.span.slice_source()) {
                     self.error_no_exit(
@@ -235,7 +235,7 @@ impl NameResolver {
                 
                 self.register_local(&param.token, false);
                 // Kinda gross here, might need to use Rc instead of box
-                out.push(type_name.clone());
+                out.push(type_signature.clone());
             }
             return Ok(Some(out));
         }
@@ -423,26 +423,6 @@ impl Visitor<Ast, ()> for NameResolver {
             None
         };
 
-        if let Some(signature) = &signature {
-            if let Some(fields) = &signature.fields {
-                if fields.len() != arguments.len() {
-                    self.error_no_exit(format!(
-                        "Struct '{}' expected {} fields but received {}",
-                        signature.identifier,
-                        fields.len(),
-                        arguments.len(),
-                    ), &node.token);
-                }
-            } else {
-                if arguments.len() > 0 {
-                    self.error_no_exit(format!(
-                        "Struct '{}' expected 0 fields but received {}",
-                        signature.identifier,
-                        arguments.len(),
-                    ), &node.token);
-                }
-            }
-        }
         for (argument_identifier, arg) in arguments {
             if !fields.insert(argument_identifier.span.slice_source()) {
                 self.error_no_exit(format!(
@@ -725,7 +705,13 @@ impl Visitor<Ast, ()> for NameResolver {
                 let mut field_names = HashSet::new();
 
                 for item in items {
-                    if let AstData::Parameter {..} = &item.data {
+                    if let AstData::StructField { type_signature, default_value } = &item.data {
+                        self.visit_type(type_signature)?;
+
+                        if let Some(default_value) = default_value {
+                            self.visit(default_value)?;
+                        }
+
                         if !field_names.insert(item.token.span.slice_source()) {
                             self.error_no_exit(format!(
                                 "Struct definition of '{}' already contains the field '{}'",
@@ -734,7 +720,6 @@ impl Visitor<Ast, ()> for NameResolver {
                             ), &item.token);
                         } else {
                             fields.push(Rc::clone(item));
-
                             self.register_local(&item.token, true);
                         }
                     }
@@ -776,6 +761,10 @@ impl Visitor<Ast, ()> for NameResolver {
         self.add_struct_type(signature);
 
         Ok(())
+    }
+
+    fn visit_struct_field(&mut self, _node: &Rc<Ast>) -> Result<(), SpruceErr> {
+        unreachable!();
     }
 
     fn visit_ternary(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {

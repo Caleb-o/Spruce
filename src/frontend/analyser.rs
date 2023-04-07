@@ -343,8 +343,8 @@ impl Analyser {
             let mut types = Vec::new();
 
             for param in parameters {
-                let AstData::Parameter { type_name } = &param.data else { unreachable!("{:#?}", param.data) };
-                let kind = self.get_type_from_ast(type_name)?;
+                let AstData::Parameter { type_signature } = &param.data else { unreachable!("{:#?}", param.data) };
+                let kind = self.get_type_from_ast(type_signature)?;
                 self.register_local(&param.token, false, Rc::clone(&kind));
                 
                 types.push(Rc::clone(&kind));
@@ -394,6 +394,7 @@ impl Analyser {
             DecoratedAstData::VarAssignEqual { lhs, .. } => self.find_type_of(lhs)?,
             DecoratedAstData::Type(kind) => Rc::clone(kind),
             DecoratedAstData::StructDefinition { kind, .. } => Rc::clone(kind),
+            DecoratedAstData::StructField { kind, .. } => Rc::clone(kind),
 
             DecoratedAstData::Parameter(kind) => Rc::clone(kind),
             DecoratedAstData::Function { function_type, parameters, kind, .. } => {
@@ -569,6 +570,7 @@ impl Visitor<Ast, Rc<DecoratedAst>> for Analyser {
             AstData::ExpressionStatement(_, _) => self.visit_expression_statement(node)?,
 
             AstData::StructDefinition {..} => self.visit_struct_def(node)?,
+            AstData::StructField {..} => self.visit_struct_field(node)?,
 
             AstData::IndexGetter {..} => self.visit_index_getter(node)?,
             AstData::IndexSetter {..} => self.visit_index_setter(node)?,
@@ -645,6 +647,8 @@ impl Visitor<Ast, Rc<DecoratedAst>> for Analyser {
 
         let signature = self.find_struct(&identifier.span).unwrap().clone();
         let mut items = Vec::new();
+
+        // FIXME: Require initialisation of fields that don't contain a default value
 
         for (field_name, arg) in arguments {
             if let Some(kind) = self.find_struct_field(&signature, &field_name.span) {
@@ -941,10 +945,10 @@ impl Visitor<Ast, Rc<DecoratedAst>> for Analyser {
     }
 
     fn visit_parameter(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
-        let AstData::Parameter { type_name } = &node.data else { unreachable!() };
+        let AstData::Parameter { type_signature } = &node.data else { unreachable!() };
 
-        let type_name = self.visit_type(type_name)?;
-        let kind = self.find_type_of(&type_name)?;
+        let type_signature = self.visit_type(type_signature)?;
+        let kind = self.find_type_of(&type_signature)?;
         Ok(DecoratedAst::new_parameter(node.token.clone(), kind))
     }
 
@@ -1348,7 +1352,7 @@ impl Visitor<Ast, Rc<DecoratedAst>> for Analyser {
 
             for item in items.as_ref().unwrap() {
                 match &item.data {
-                    AstData::Parameter { type_name } => {
+                    AstData::StructField { type_signature, default_value } => {
                         if !field_names.insert(item.token.span.slice_source()) {
                             self.error_no_exit(format!(
                                 "Struct '{}' already contains field '{}'",
@@ -1357,12 +1361,28 @@ impl Visitor<Ast, Rc<DecoratedAst>> for Analyser {
                             ), &item.token);
                         }
 
-                        let kind = self.get_type_from_ast(type_name)?;
+                        let kind = self.get_type_from_ast(type_signature)?;
                         field_types.push((item.token.clone(), Rc::clone(&kind)));
 
                         self.register_local(&item.token, true, Rc::clone(&kind));
 
-                        inner.push(DecoratedAst::new_parameter(item.token.clone(), kind));
+                        let default_value = if let Some(default_value) = default_value {
+                            let default_value = self.visit(default_value)?;
+                            let default_type = self.find_type_of(&default_value)?;
+                            if !kind.is_same(&*default_type) {
+                                self.error_no_exit(format!(
+                                    "Struct field '{}' in struct '{}' expected type {} but received {} in default value",
+                                    item.token.span.slice_source(),
+                                    node.token.span.slice_source(),
+                                    kind,
+                                    default_type,
+                                ), &item.token);
+                            }
+
+                            Some(default_value)
+                        } else { None };
+
+                        inner.push(DecoratedAst::new_struct_field(item.token.clone(), kind, default_value));
                     }
                     AstData::Function {..} => {
                         if !func_names.insert(item.token.span.slice_source()) {
@@ -1400,6 +1420,21 @@ impl Visitor<Ast, Rc<DecoratedAst>> for Analyser {
         self.pop_scope();
 
         Ok(DecoratedAst::new_struct_definition(node.token.clone(), Rc::new(kind), *is_ref, items))
+    }
+
+    fn visit_struct_field(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
+        let AstData::StructField { type_signature, default_value } = &node.data else { unreachable!() };
+
+        let type_signature = self.visit_type(type_signature)?;
+        let default_value = if let Some(default_value) = default_value {
+            Some(self.visit(default_value)?)
+        } else { None };
+
+        Ok(DecoratedAst::new_struct_field(
+            node.token.clone(),
+            self.find_type_of(&type_signature)?,
+            default_value,
+        ))
     }
 
     fn visit_ternary(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
@@ -1637,10 +1672,12 @@ impl Visitor<Ast, Rc<DecoratedAst>> for Analyser {
     fn visit_raw(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         let AstData::Raw { returns, code } = &node.data else { unreachable!() };
 
-        self.warning(
-            "Use of raw block! Make sure that it handles data correctly and returns if specified".into(),
-            &node.token
-        );
+        if code.len() > 0 {
+            self.warning(
+                "Use of raw block! Make sure that it handles data correctly and returns if specified".into(),
+                &node.token
+            );
+        }
 
         let returns = if let Some(returns) = returns {
             self.get_type_from_ast(returns)?

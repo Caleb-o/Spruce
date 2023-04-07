@@ -655,6 +655,21 @@ impl Parser {
         Ok(Ast::new_parameter(param_name, type_name))
     }
 
+    #[inline]
+    fn consume_struct_field(&mut self) -> Result<Rc<Ast>, SpruceErr> {
+        let field_name = self.current.clone();
+        self.consume(TokenKind::Identifier, "Expected identifier in struct fields")?;
+        
+        let type_signature = self.collect_type()?;
+
+        let default_value = if self.current.kind == TokenKind::Equal {
+            self.consume_here();
+            Some(self.expression()?)
+        } else { None };
+
+        Ok(Ast::new_struct_field(field_name, type_signature, default_value))
+    }
+
     fn collect_params(
         &mut self,
         left: TokenKind,
@@ -916,7 +931,7 @@ impl Parser {
                         items.push(func);
                     }
                     TokenKind::Identifier => {
-                        items.push(self.consume_parameter()?);
+                        items.push(self.consume_struct_field()?);
                         self.consume(TokenKind::SemiColon, "Expect ';' after field statement")?;
                     }
                     TokenKind::Comment => {
