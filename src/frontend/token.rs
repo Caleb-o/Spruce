@@ -36,6 +36,12 @@ impl Span {
     }
 }
 
+impl PartialEq for Span {
+    fn eq(&self, other: &Self) -> bool {
+        self.slice_source() == other.slice_source()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(u8)]
 pub enum TokenKind {

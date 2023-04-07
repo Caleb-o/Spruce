@@ -690,10 +690,10 @@ impl Visitor<DecoratedAst, ()> for Compiler {
                 node.token.span.slice_source(),
             ));
 
-            for (idx, (field_name, _)) in fields.iter().enumerate() {
+            for (idx, field) in fields.iter().enumerate() {
                 self.output_code.push_str(&format!(
                     "{{{}}}",
-                    field_name.span.slice_source(),
+                    field.identifier.span.slice_source(),
                 ));
 
                 if idx < fields.len() - 1 {

@@ -2,7 +2,7 @@ use std::{rc::Rc, mem::discriminant, collections::HashSet};
 
 use crate::{source::Source, RunArgs, error::{SpruceErr, SpruceErrData}, nativefns::{self, ParamKind}, visitor::Visitor};
 
-use super::{token::{Token, Span, TokenKind}, functiondata::{Function, FunctionMeta}, symbols::Symbols, ast::{Ast, AstData, TypeKind}, decorated_ast::{DecoratedAst, DecoratedAstData, FunctionType}, sprucetype::SpruceType, name_resolution::{ResolutionTable, FunctionSignatureKind, StructSignature, FunctionSignature}, symtable::SymTable};
+use super::{token::{Token, Span, TokenKind}, functiondata::{Function, FunctionMeta}, symbols::Symbols, ast::{Ast, AstData, TypeKind}, decorated_ast::{DecoratedAst, DecoratedAstData, FunctionType}, sprucetype::{SpruceType, StructField}, name_resolution::{ResolutionTable, FunctionSignatureKind, StructSignature, FunctionSignature}, symtable::SymTable};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ScopeType {
@@ -88,7 +88,12 @@ impl Analyser {
                         let item = self.visit(field)?;
                         let kind = self.find_type_of(&item)?;
 
-                        out_fields.push((item.token.clone(), kind));
+                        let DecoratedAstData::StructField { default_value, .. } = &item.data else { unreachable!() };
+                        out_fields.push(StructField {
+                            identifier: item.token.clone(),
+                            kind,
+                            has_default: default_value.is_some(),
+                        });
                     }
 
                     Some(out_fields)
@@ -258,12 +263,12 @@ impl Analyser {
         self.find_struct_str(span.slice_source())
     }
 
-    fn find_struct_field(&self, signature: &SpruceType, field_name: &Span) -> Option<Rc<SpruceType>> {
+    fn find_struct_field(&self, signature: &SpruceType, field_name: &Span) -> Option<(bool, Rc<SpruceType>)> {
         if let SpruceType::Struct { fields, .. } = signature {
             if let Some(fields) = fields {
-                for (field, kind) in fields {
-                    if field.span.slice_source() == field_name.slice_source() {
-                        return Some(Rc::clone(kind));
+                for field in fields {
+                    if field.identifier.span.slice_source() == field_name.slice_source() {
+                        return Some((field.has_default, Rc::clone(&field.kind)));
                     }
                 }
             }
@@ -442,7 +447,7 @@ impl Analyser {
                     n @ _ => Rc::new(n.clone()),
                 };
 
-                if let Some(property) = self.find_struct_field(&signature, &property.token.span) {
+                if let Some((_, property)) = self.find_struct_field(&signature, &property.token.span) {
                     property
                 } else {
                     if let Some(method) = self.find_struct_method(&signature, &property.token.span) {
@@ -649,15 +654,14 @@ impl Visitor<Ast, Rc<DecoratedAst>> for Analyser {
         let mut items = Vec::new();
 
         // FIXME: Require initialisation of fields that don't contain a default value
+        let mut fields_specified = Vec::new();
 
         for (field_name, arg) in arguments {
-            if let Some(kind) = self.find_struct_field(&signature, &field_name.span) {
+            if let Some((_, kind)) = self.find_struct_field(&signature, &field_name.span) {
                 if let Some(arg) = arg {
                     let arg = self.visit(arg)?;
                     let arg_type = self.find_type_of(&arg)?;
-
-                    items.push((field_name.span.clone(), Some(arg)));
-
+                    
                     if !kind.is_same(&arg_type) {
                         self.error_no_exit(format!(
                             "Field '{}' in struct '{}' expected type {} but received {}",
@@ -666,10 +670,14 @@ impl Visitor<Ast, Rc<DecoratedAst>> for Analyser {
                             kind,
                             arg_type,
                         ), identifier);
+                    } else {
+                        items.push((field_name.span.clone(), Some(arg)));
                     }
                 } else {
                     items.push((field_name.span.clone(), None));
                 }
+
+                fields_specified.push(field_name.span.clone());
             } else {
                 if let Some(arg) = arg {
                     self.visit(arg)?;
@@ -681,6 +689,23 @@ impl Visitor<Ast, Rc<DecoratedAst>> for Analyser {
                     identifier.span.slice_source(),
                 ), identifier);
             }
+        }
+
+        // FIXME: This is all gross
+        let SpruceType::Struct { fields, .. } = &*signature else { unreachable!() };
+        let field_no_defaults = if let Some(fields) = fields {
+            fields.iter()
+                .filter(|field| !field.has_default && !fields_specified.contains(&field.identifier.span))
+                .map(|field| field)
+                .collect()
+        } else { vec![] };
+
+        for field_name in field_no_defaults.into_iter() {
+            self.error_no_exit(format!(
+                "Field '{}' in struct literal '{}' is required to be initialised, as it has no default value",
+                field_name.identifier.span.slice_source(),
+                identifier.span.slice_source(),
+            ), identifier);
         }
 
         Ok(DecoratedAst::new_struct_literal(identifier.clone(), signature, items))
@@ -1362,7 +1387,11 @@ impl Visitor<Ast, Rc<DecoratedAst>> for Analyser {
                         }
 
                         let kind = self.get_type_from_ast(type_signature)?;
-                        field_types.push((item.token.clone(), Rc::clone(&kind)));
+                        field_types.push(StructField { 
+                            identifier: item.token.clone(),
+                            kind: Rc::clone(&kind),
+                            has_default: default_value.is_some(),
+                        });
 
                         self.register_local(&item.token, true, Rc::clone(&kind));
 
@@ -1610,7 +1639,7 @@ impl Visitor<Ast, Rc<DecoratedAst>> for Analyser {
         }
 
         let kind = if let SpruceType::Struct { identifier, .. } = &*lhs_type {
-            if let Some(field) = self.find_struct_field(&lhs_type, &property.token.span) {
+            if let Some((_, field)) = self.find_struct_field(&lhs_type, &property.token.span) {
                 field
             } else {
                 if let Some(method) = self.find_struct_method(&lhs_type, &property.token.span) {

@@ -3,6 +3,14 @@ use std::{mem::discriminant, fmt::Display, rc::Rc};
 use super::token::Token;
 
 #[derive(Debug, Clone)]
+pub struct StructField {
+    pub identifier: Token,
+    pub kind: Rc<SpruceType>,
+    pub has_default: bool,
+}
+
+// FIXME: Remove clone
+#[derive(Debug, Clone)]
 pub enum SpruceType {
     Error,
     Unresolved,
@@ -25,7 +33,7 @@ pub enum SpruceType {
     Struct {
         is_ref: bool,
         identifier: Option<String>,
-        fields: Option<Vec<(Token, Rc<SpruceType>)>>,
+        fields: Option<Vec<StructField>>,
         methods: Option<Vec<Rc<SpruceType>>>,
     },
 }
