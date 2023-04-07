@@ -467,7 +467,12 @@ impl Analyser {
             DecoratedAstData::SetProperty { lhs, .. } => {
                 self.find_type_of(lhs)?
             }
-            DecoratedAstData::Ternary { kind, ..} => Rc::clone(kind),
+            DecoratedAstData::Payload(kind, _) => {
+                match &**kind {
+                    SpruceType::ErrorOrValue(_, value) => Rc::clone(value),
+                    _ => Rc::clone(kind),
+                }
+            }
             DecoratedAstData::IfStatement { kind, ..} => Rc::clone(kind),
             DecoratedAstData::ForStatement {..} => Rc::new(SpruceType::None),
             DecoratedAstData::DoWhileStatement {..} => Rc::new(SpruceType::None),
@@ -578,7 +583,7 @@ impl Visitor<Ast, Rc<DecoratedAst>> for Analyser {
             AstData::VarAssignEqual {..} => self.visit_var_assign_equal(node)?,
             AstData::FunctionCall {..} => self.visit_function_call(node)?,
 
-            AstData::Ternary {..} => self.visit_ternary(node)?,
+            AstData::Payload(_) => self.visit_payload(node)?,
             AstData::IfStatement {..} => self.visit_if_statement(node)?,
             AstData::ForStatement {..} => self.visit_for_statement(node)?,
             AstData::DoWhileStatement {..} => self.visit_do_while_statement(node)?,
@@ -1229,8 +1234,7 @@ impl Visitor<Ast, Rc<DecoratedAst>> for Analyser {
         };
 
         let expr_kind = self.find_type_of(&expression)?;
-
-        if expr_kind.is_same(&SpruceType::None) {
+        if SpruceType::None.is_same(&expr_kind) {
             self.error_no_exit(
                 "Cannot declare a variable, which is of type none".into()
             , &node.token);
@@ -1239,7 +1243,7 @@ impl Visitor<Ast, Rc<DecoratedAst>> for Analyser {
         let kind = match kind {
             Some(kind) => {
                 let kind = self.get_type_from_ast(kind)?;
-
+                
                 if !kind.is_same(&expr_kind) {
                     self.error_no_exit(format!(
                             "Variable '{}' expected type {} but received {}",
@@ -1252,6 +1256,13 @@ impl Visitor<Ast, Rc<DecoratedAst>> for Analyser {
                 }
                 kind
             },
+            None if discriminant(&*expr_kind) == discriminant(&SpruceType::Any) => {
+                self.error_no_exit(
+                    "Cannot use inference on expression that returns any ".into(),
+                    &node.token,
+                );
+                Rc::clone(&expr_kind)
+            }
             None => Rc::clone(&expr_kind),
         };
 
@@ -1518,38 +1529,37 @@ impl Visitor<Ast, Rc<DecoratedAst>> for Analyser {
         ))
     }
 
-    fn visit_ternary(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
-        let AstData::Ternary { condition, true_body, false_body } = &node.data else { unreachable!() };
+    fn visit_payload(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
+        let AstData::Payload(expression) = &node.data else { unreachable!() };
 
-        let condition = self.visit(condition)?;
-        let true_body = self.visit(true_body)?;
-        let false_body = self.visit(false_body)?;
+        let expression = self.visit(expression)?;
+        let expr_kind = self.find_type_of(&expression)?;
 
-        let condition_type = self.find_type_of(&condition)?;
+        let function = match &self.scope_type {
+            ScopeType::Function(span) | ScopeType::Method(span) => {
+                let SpruceType::Function { return_type, .. } = &*self.table.find_local(&span, true).as_ref().unwrap().kind else { unreachable!() };
+                Some(Rc::clone(return_type))
+            }
+            _ => None,
+        };
 
-        if !condition_type.is_same(&SpruceType::Bool) {
-            self.error_no_exit(format!(
-                    "Ternary statement condition expects a bool, but is a {}",
-                    condition_type,
-                ),
-                &condition.token
-            );
+        if let Some(return_kind) = function {
+            if !return_kind.is_same(&expr_kind) {
+                self.error_no_exit(format!(
+                    "Cannot unwrap in function that does not return payload, with type {}",
+                    expr_kind,
+                ), &node.token);
+            }
         }
 
-        let true_type = self.find_type_of(&true_body)?;
-        let false_type = self.find_type_of(&false_body)?;
-
-        if !true_type.is_same(&false_type) {
+        if !expr_kind.is_same(&SpruceType::ErrorOrValue(Rc::new(SpruceType::Any), Rc::new(SpruceType::Any))) {
             self.error_no_exit(format!(
-                    "Ternary statement branches must return the same type. Expected {} but received {}",
-                    true_type,
-                    false_type,
-                ),
-                &false_body.token
-            );
+                "Cannot unwrap non-payload type {}",
+                expr_kind,
+            ), &node.token);
         }
 
-        Ok(DecoratedAst::new_ternary(node.token.clone(), condition, true_type, true_body, false_body))
+        Ok(DecoratedAst::new_payload(node.token.clone(), expr_kind, expression))
     }
 
     fn visit_if_statement(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
@@ -1826,7 +1836,7 @@ impl Visitor<Ast, Rc<DecoratedAst>> for Analyser {
             },
         };
 
-        let expr = if expression.is_some() { Some(self.visit(expression.as_ref().unwrap())?) } else { None };
+        let expr = if let Some(expression) = expression { Some(self.visit(expression)?) } else { None };
         if let Some(expr) = &expr {
             let expr_kind = self.find_type_of(expr)?;
             

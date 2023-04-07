@@ -46,7 +46,6 @@ pub enum DecoratedAstData {
     StructDefinition { kind: Rc<SpruceType>, is_ref: bool, items: Option<Vec<Rc<DecoratedAst>>> },
     StructField { kind: Rc<SpruceType>, default_value: Option<Rc<DecoratedAst>> },
 
-    Ternary { condition: Rc<DecoratedAst>, kind: Rc<SpruceType>, true_body: Rc<DecoratedAst>, false_body: Rc<DecoratedAst> },
     IfStatement { is_expression: bool, condition: Rc<DecoratedAst>, kind: Rc<SpruceType>, true_body: Rc<DecoratedAst>, false_body: Option<Rc<DecoratedAst>> },
     ForStatement { variable: Option<Rc<DecoratedAst>>, condition: Rc<DecoratedAst>, increment: Option<Rc<DecoratedAst>>, body: Rc<DecoratedAst> },
     DoWhileStatement { body: Rc<DecoratedAst>, condition: Rc<DecoratedAst> },
@@ -60,6 +59,7 @@ pub enum DecoratedAstData {
     SwitchStatement { condition: Rc<DecoratedAst>, cases: Vec<Rc<DecoratedAst>> },
     SwitchCase { case: Option<Rc<DecoratedAst>>, body: Rc<DecoratedAst> },
 
+    Payload(Rc<SpruceType>, Rc<DecoratedAst>),
     Raw { kind: Rc<SpruceType>, code: Vec<Rc<DecoratedAst>> },
     Lazy(Rc<DecoratedAst>),
     Defer(u32, Rc<DecoratedAst>),
@@ -220,6 +220,13 @@ impl DecoratedAst {
         })
     }
 
+    pub fn new_payload(token: Token, kind: Rc<SpruceType>, expression: Rc<DecoratedAst>) -> Rc<Self> {
+        Rc::new(Self {
+            token,
+            data: DecoratedAstData::Payload(kind, expression),
+        })
+    }
+
     pub fn new_raw(token: Token, kind: Rc<SpruceType>, code: Vec<Rc<DecoratedAst>>) -> Rc<Self> {
         Rc::new(Self {
             token,
@@ -266,19 +273,6 @@ impl DecoratedAst {
         Rc::new(Self {
             token,
             data: DecoratedAstData::StructField { kind, default_value },
-        })
-    }
-
-    pub fn new_ternary(
-        token: Token,
-        condition: Rc<DecoratedAst>,
-        kind: Rc<SpruceType>,
-        true_body: Rc<DecoratedAst>,
-        false_body: Rc<DecoratedAst>
-    ) -> Rc<Self> {
-        Rc::new(Self {
-            token,
-            data: DecoratedAstData::Ternary { condition, kind, true_body, false_body },
         })
     }
 

@@ -58,7 +58,6 @@ pub enum AstData {
     StructDefinition { is_ref: bool, items: Option<Vec<Rc<Ast>>> },
     StructField { type_signature: Rc<Ast>, default_value: Option<Rc<Ast>> },
 
-    Ternary { condition: Rc<Ast>, true_body: Rc<Ast>, false_body: Rc<Ast> },
     IfStatement { is_expression: bool, condition: Rc<Ast>, true_body: Rc<Ast>, false_body: Option<Rc<Ast>> },
     ForStatement { variable: Option<Rc<Ast>>, condition: Rc<Ast>, increment: Option<Rc<Ast>>, body: Rc<Ast> },
     DoWhileStatement { body: Rc<Ast>, condition: Rc<Ast> },
@@ -72,6 +71,7 @@ pub enum AstData {
     SwitchStatement { condition: Rc<Ast>, cases: Vec<Rc<Ast>> },
     SwitchCase { case: Option<Rc<Ast>>, body: Rc<Ast> },
 
+    Payload(Rc<Ast>),
     Raw { returns: Option<Rc<Ast>>, code: Vec<Rc<Ast>> },
     Lazy(Rc<Ast>),
     Defer(Rc<Ast>),
@@ -246,6 +246,13 @@ impl Ast {
         })
     }
 
+    pub fn new_payload(token: Token, expression: Rc<Ast>) -> Rc<Self> {
+        Rc::new(Self {
+            token,
+            data: AstData::Payload(expression),
+        })
+    }
+
     pub fn new_raw(token: Token, returns: Option<Rc<Ast>>, code: Vec<Rc<Ast>>) -> Rc<Self> {
         Rc::new(Self {
             token,
@@ -271,18 +278,6 @@ impl Ast {
         Rc::new(Self {
             token,
             data: AstData::Return(expression),
-        })
-    }
-
-    pub fn new_ternary(
-        token: Token,
-        condition: Rc<Ast>,
-        true_body: Rc<Ast>,
-        false_body: Rc<Ast>
-    ) -> Rc<Self> {
-        Rc::new(Self {
-            token,
-            data: AstData::Ternary { condition, true_body, false_body },
         })
     }
 

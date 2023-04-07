@@ -152,6 +152,23 @@ impl Compiler {
         }
     }
 
+    fn unwrap_error_as_ok(kind: &Rc<SpruceType>) -> String {
+        match &**kind {
+            SpruceType::ErrorOrValue(_, value) => Compiler::as_cs_type(value),
+            _ => unreachable!(),
+        }
+    }
+
+    fn unwrap_error_as_types(kind: &Rc<SpruceType>) -> (String, String) {
+        match &**kind {
+            SpruceType::ErrorOrValue(lhs, rhs) => (
+                Compiler::as_cs_type(lhs),
+                Compiler::as_cs_type(rhs),
+            ),
+            _ => unreachable!(),
+        }
+    }
+
     fn get_type_from_ast(&self, node: &Rc<DecoratedAst>) -> Result<String, SpruceErr> {
         let kind = Compiler::as_cs_type(match &node.data {
             DecoratedAstData::Identifier(kind) => kind,
@@ -162,7 +179,6 @@ impl Compiler {
             DecoratedAstData::Literal(kind) => kind,
             DecoratedAstData::ArrayLiteral(kind, _) => kind,
             DecoratedAstData::IfStatement { kind, .. } => kind,
-            DecoratedAstData::Ternary { kind, .. } => kind,
             DecoratedAstData::FunctionCall { kind, .. } => kind,
             DecoratedAstData::StructField { kind, .. } => kind,
             _ => return Err(SpruceErr::new(format!(
@@ -275,7 +291,7 @@ impl Compiler {
                     Compiler::as_cs_type(rhs),
                 )
             }
-            _ => unimplemented!(),
+            n @ _ => unimplemented!("Type: {n}"),
         }
     }
 }
@@ -304,7 +320,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
             DecoratedAstData::StructField {..} => self.visit_struct_field(node)?,
 
             DecoratedAstData::IfStatement {..} => self.visit_if_statement(node)?,
-            DecoratedAstData::Ternary {..} => self.visit_ternary(node)?,
+            DecoratedAstData::Payload(_, _) => self.visit_payload(node)?,
             DecoratedAstData::ForStatement {..} => self.visit_for_statement(node)?,
             DecoratedAstData::DoWhileStatement {..} => self.visit_do_while_statement(node)?,
             DecoratedAstData::Body(_, _) => self.visit_body(node, true)?,
@@ -460,9 +476,14 @@ impl Visitor<DecoratedAst, ()> for Compiler {
     fn visit_error_or_value(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::ErrorOrValue { kind, expression, .. } = &node.data else { unreachable!() };
 
-        self.output_code.push_str(&format!("new {}(", Compiler::as_cs_type(kind)));
-        self.visit(expression)?;
-        self.output_code.push(')');
+        match &expression.data {
+            DecoratedAstData::IfStatement {..} => self.visit(expression)?,
+            _ => {
+                self.output_code.push_str(&format!("new {}(", Compiler::as_cs_type(kind)));
+                self.visit(expression)?;
+                self.output_code.push(')');
+            } ,
+        }
 
         Ok(())
     }
@@ -768,15 +789,35 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_ternary(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
-        let DecoratedAstData::Ternary { condition, kind: _, true_body, false_body } = &node.data else { unreachable!() };
+    fn visit_payload(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
+        let DecoratedAstData::Payload(kind, expression) = &node.data else { unreachable!() };
 
-        self.output_code.push('(');
-        self.visit(condition)?;
-        self.output_code.push_str(") ? ");
-        self.wrap_in_lambda_call(true_body)?;
-        self.output_code.push_str(" : ");
-        self.wrap_in_lambda_call(false_body)?;
+        self.output_code.push_str(&format!(
+            "((Func<{}>)(() => {{\n",
+            Compiler::unwrap_error_as_ok(kind),
+        ));
+        self.indent();
+
+        self.output_code.push_str(&format!(
+            "{}var __error_value = ",
+            self.tab_string(),
+        ));
+        self.visit(expression)?;
+
+        let (lhs_kind, rhs_kind) = Compiler::unwrap_error_as_types(kind);
+        self.output_code.push_str(&format!(
+            ";\n{}if ({}.Is_ok(__error_value)) {{ return {}.Get_ok(__error_value); }} else {{ throw new {}.SpruceErrorValue<{}, {}>(__error_value); }}",
+            self.tab_string(),
+            SPRUCE_PRE, SPRUCE_PRE, SPRUCE_PRE,
+            lhs_kind, rhs_kind,
+        ));
+        
+        self.dedent();
+
+        self.output_code.push_str(&format!(
+            "\n{}}}))()",
+            self.tab_string(),
+        ));
 
         Ok(())
     }

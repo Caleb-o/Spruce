@@ -355,7 +355,7 @@ impl Visitor<Ast, ()> for NameResolver {
             AstData::VarAssignEqual {..} => self.visit_var_assign_equal(node)?,
 
             AstData::FunctionCall {..} => self.visit_function_call(node)?,
-            AstData::Ternary {..} => self.visit_ternary(node)?,
+            AstData::Payload(_) => self.visit_payload(node)?,
             AstData::IfStatement {..} => self.visit_if_statement(node)?,
             AstData::ForStatement {..} => self.visit_for_statement(node)?,
             AstData::DoWhileStatement {..} => self.visit_do_while_statement(node)?,
@@ -776,14 +776,9 @@ impl Visitor<Ast, ()> for NameResolver {
         unreachable!();
     }
 
-    fn visit_ternary(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {
-        let AstData::Ternary { condition, true_body, false_body } = &node.data else { unreachable!() };
-
-        self.visit(condition)?;
-        self.visit(true_body)?;
-        self.visit(false_body)?;
-
-        Ok(())
+    fn visit_payload(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {
+        let AstData::Payload(expression) = &node.data else { unreachable!() };
+        self.visit(expression)
     }
 
     fn visit_if_statement(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {

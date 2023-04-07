@@ -11,6 +11,17 @@ public static class SprucePrelude {
         public SpruceException(string message) : base(message) {}
     }
 
+    [Serializable]
+    public sealed class SpruceErrorValue<T, U> : Exception {
+        readonly ErrorOrValue<T, U> error_value;
+
+        public SpruceErrorValue(ErrorOrValue<T, U> error_value) : base() {
+            this.error_value = error_value;
+        }
+
+        public override string ToString() => $"Uncaught error value {error_value}";
+    }
+
     public sealed class Defer : IDisposable {
         readonly Action _action;
         public Defer(Action action) => _action = action;
@@ -101,10 +112,22 @@ public static class SprucePrelude {
             this.which = Which.Ok;
         }
 
+        public bool IsOk() => which == Which.Ok;
+        public bool IsError() => which == Which.Error;
+
+        public U GetOk() => Ok;
+        public T GetError() => Error;
+
         public override string ToString() {
             return which == Which.Ok ? $"ok {Ok}" : $"error {Error}";
         }
     }
+
+    public static bool Is_err<T, U>(ErrorOrValue<T, U> error_value) => error_value.IsError();
+    public static bool Is_ok<T, U>(ErrorOrValue<T, U> error_value) => error_value.IsOk();
+
+    public static T Get_error<T, U>(ErrorOrValue<T, U> error_value) => error_value.GetError();
+    public static U Get_ok<T, U>(ErrorOrValue<T, U> error_value) => error_value.GetOk();
 
     public static void Print(params object[] items) {
         StringBuilder sb = new();

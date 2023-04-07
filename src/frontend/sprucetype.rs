@@ -42,6 +42,7 @@ pub enum SpruceType {
 impl SpruceType {
     pub fn is_same(&self, other: &SpruceType) -> bool {
         match self {
+            Self::None => discriminant(self) == discriminant(other),
             Self::Any => true,
             Self::Array(k) => {
                 if discriminant(self) != discriminant(other) {
@@ -133,7 +134,7 @@ impl SpruceType {
                 }
 
                 let Self::ErrorOrValue(olhs, orhs) = other else { unreachable!() };
-                lhs.is_same(olhs) && rhs.is_same(orhs)
+                olhs.is_same(lhs) && orhs.is_same(rhs)
             }
             _ => discriminant(self) == discriminant(other),
         }

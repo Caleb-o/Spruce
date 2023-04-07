@@ -35,7 +35,7 @@ pub trait Visitor<T, U> {
     fn visit_struct_def(&mut self, node: &Rc<T>) -> Result<U, SpruceErr>;
     fn visit_struct_field(&mut self, node: &Rc<T>) -> Result<U, SpruceErr>;
     
-    fn visit_ternary(&mut self, node: &Rc<T>) -> Result<U, SpruceErr>;
+    fn visit_payload(&mut self, node: &Rc<T>) -> Result<U, SpruceErr>;
     fn visit_if_statement(&mut self, node: &Rc<T>) -> Result<U, SpruceErr>;
     fn visit_for_statement(&mut self, node: &Rc<T>) -> Result<U, SpruceErr>;
     fn visit_do_while_statement(&mut self, node: &Rc<T>) -> Result<U, SpruceErr>;

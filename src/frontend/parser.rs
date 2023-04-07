@@ -278,24 +278,19 @@ impl Parser {
         Ok(node)
     }
 
-    fn conditional(&mut self) -> Result<Rc<Ast>, SpruceErr> {
+    fn payload(&mut self) -> Result<Rc<Ast>, SpruceErr> {
         let mut node = self.and()?;
 
         if self.current.kind == TokenKind::QuestionMark {
             self.consume_here();
-
-            let true_body = self.expression()?;
-            self.consume(TokenKind::Colon, "Expect ':' after ternary true body")?;
-            let false_body = self.expression()?;
-
-            node = Ast::new_ternary(node.token.clone(), node, true_body, false_body);
+            node = Ast::new_payload(node.token.clone(), node);
         }
 
         Ok(node)
     }
 
     fn assignment(&mut self) -> Result<Rc<Ast>, SpruceErr> {
-        let mut node = self.conditional()?;
+        let mut node = self.payload()?;
 
         loop {
             node = match self.current.kind {
@@ -322,7 +317,7 @@ impl Parser {
                     let operator = self.current.clone();
                     self.consume_here();
                     match node.data {
-                        AstData::Identifier => Ast::new_var_assign_equal(node.token.clone(), operator, node, self.conditional()?),
+                        AstData::Identifier => Ast::new_var_assign_equal(node.token.clone(), operator, node, self.expression()?),
                         _ => return Err(self.error(format!(
                             "Cannot use '{}':{:?} on lhs of assignment operator '{}'",
                             node.token.span.slice_source(),
