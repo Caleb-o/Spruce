@@ -16,10 +16,16 @@ pub enum TypeKind {
     Tuple(Vec<Rc<Ast>>),
     Array(Rc<Ast>),
     Lazy(Rc<Ast>),
+    ErrorOrValue(Rc<Ast>, Rc<Ast>),
     Function {
         parameters: Option<Vec<Rc<Ast>>>,
         return_type: Rc<Ast>,
     },
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum ErrorOrValue {
+    Error, Value,
 }
 
 #[derive(Debug)]
@@ -31,6 +37,7 @@ pub enum AstData {
     TupleLiteral(Vec<Rc<Ast>>),
     ArrayLiteral(Vec<Rc<Ast>>),
     ExpressionStatement(bool, Rc<Ast>),
+    ErrorOrValue { which: ErrorOrValue, expression: Rc<Ast> },
 
     Comment,
 
@@ -222,6 +229,13 @@ impl Ast {
         Rc::new(Self {
             token: expression.token.clone(),
             data: AstData::ExpressionStatement(is_statement, expression),
+        })
+    }
+
+    pub fn new_error_or_value(which: ErrorOrValue, expression: Rc<Ast>) -> Rc<Self> {
+        Rc::new(Self {
+            token: expression.token.clone(),
+            data: AstData::ErrorOrValue { which, expression },
         })
     }
 

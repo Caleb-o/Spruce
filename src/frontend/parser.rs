@@ -2,7 +2,7 @@ use std::{rc::Rc, path::Path, fs, io::Error, collections::HashSet};
 
 use crate::{source::Source, util, RunArgs, error::{SpruceErr, SpruceErrData}};
 
-use super::{lexer::Lexer, token::{Token, TokenKind}, ast::{Ast, AstData, TypeKind}};
+use super::{lexer::Lexer, token::{Token, TokenKind}, ast::{Ast, AstData, TypeKind, ErrorOrValue}};
 
 pub struct Parser {
     lexer: Lexer,
@@ -130,6 +130,18 @@ impl Parser {
                 // })
                 Ok(identifier)
             },
+
+            TokenKind::ResultError | TokenKind::ResultOk => {
+                let token = self.current.clone();
+                self.consume_here();
+                let expression = self.expression()?;
+
+                Ok(Ast::new_error_or_value(match token.kind {
+                    TokenKind::ResultError => ErrorOrValue::Error,
+                    TokenKind::ResultOk => ErrorOrValue::Value,
+                    _ => unreachable!(),
+                }, expression))
+            }
 
             _ => Err(self.error(format!(
                 "Unexpected token found {:?} '{}'",
@@ -831,7 +843,7 @@ impl Parser {
     }
 
     fn collect_type(&mut self) -> Result<Rc<Ast>, SpruceErr> {
-        Ok(match self.current.kind {
+        let kind = match self.current.kind {
             TokenKind::Identifier | TokenKind::None => {
                 let identifier = self.current.clone();
                 self.consume_here();
@@ -889,7 +901,18 @@ impl Parser {
                 "Unknown item in type definition '{}'",
                 self.current.span.slice_source(),
             ))),
-        })
+        };
+
+        // Error union
+        if self.current.kind == TokenKind::Bang {
+            let token = self.current.clone();
+            self.consume_here();
+            let rhs_kind = self.collect_type()?;
+            return Ok(Ast::new_type(token, TypeKind::ErrorOrValue(kind, rhs_kind)));
+        }
+        // TODO: Optional?
+
+        Ok(kind)
     }
 
     fn var_declaration(&mut self) -> Result<Rc<Ast>, SpruceErr> {

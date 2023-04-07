@@ -2,11 +2,14 @@ use std::{rc::Rc, mem::discriminant, collections::HashSet};
 
 use crate::{source::Source, RunArgs, error::{SpruceErr, SpruceErrData}, nativefns::{self, ParamKind}, visitor::Visitor};
 
-use super::{token::{Token, Span, TokenKind}, functiondata::{Function, FunctionMeta}, symbols::Symbols, ast::{Ast, AstData, TypeKind}, decorated_ast::{DecoratedAst, DecoratedAstData, FunctionType}, sprucetype::{SpruceType, StructField}, name_resolution::{ResolutionTable, FunctionSignatureKind, StructSignature, FunctionSignature}, symtable::SymTable};
+use super::{token::{Token, Span, TokenKind}, functiondata::{Function, FunctionMeta}, symbols::Symbols, ast::{Ast, AstData, TypeKind, ErrorOrValue}, decorated_ast::{DecoratedAst, DecoratedAstData, FunctionType}, sprucetype::{SpruceType, StructField}, name_resolution::{ResolutionTable, FunctionSignatureKind, StructSignature, FunctionSignature}, symtable::SymTable};
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, PartialEq)]
 enum ScopeType {
-    None, Function, Method, Defer,
+    None,
+    Function(Span),
+    Method(Span),
+    Defer,
 }
 
 pub struct Analyser {
@@ -185,7 +188,7 @@ impl Analyser {
 
     #[inline]
     fn push_scope_type(&mut self, kind: ScopeType) -> ScopeType {
-        let prev = self.scope_type;
+        let prev = self.scope_type.clone();
         self.scope_type = kind;
         prev
     }
@@ -377,6 +380,7 @@ impl Analyser {
             DecoratedAstData::ArrayLiteral(kind, _) => Rc::clone(kind),
             DecoratedAstData::SymbolLiteral(_) => Rc::new(SpruceType::Symbol),
             DecoratedAstData::StructLiteral(kind, _) => Rc::clone(kind),
+            DecoratedAstData::ErrorOrValue { kind, .. } => Rc::clone(kind),
 
             DecoratedAstData::BinaryOp { kind, .. } => Rc::clone(kind),
             DecoratedAstData::UnaryOp { kind, .. } => Rc::clone(kind),
@@ -523,6 +527,12 @@ impl Analyser {
             },
             TypeKind::Array(ref inner) => Rc::new(SpruceType::Array(self.get_type_from_ast(inner)?)),
             TypeKind::Lazy(inner) => Rc::new(SpruceType::Lazy(self.get_type_from_ast(inner)?)),
+            TypeKind::ErrorOrValue(lhs, rhs) => {
+                Rc::new(SpruceType::ErrorOrValue(
+                    self.get_type_from_ast(lhs)?, 
+                    self.get_type_from_ast(rhs)?, 
+                ))
+            },
             TypeKind::Function { parameters, return_type } => {
                 Rc::new(SpruceType::Function {
                     is_native: false,
@@ -554,6 +564,7 @@ impl Visitor<Ast, Rc<DecoratedAst>> for Analyser {
             AstData::ArrayLiteral(_) => self.visit_array_literal(node)?,
             AstData::SymbolLiteral => self.visit_symbol_literal(node)?,
             AstData::StructLiteral(_, _) => self.visit_struct_literal(node)?,
+            AstData::ErrorOrValue {..} => self.visit_error_or_value(node)?,
 
             AstData::Type {..} => self.visit_type(node)?,
             AstData::Identifier => self.visit_identifier(node)?,
@@ -585,7 +596,7 @@ impl Visitor<Ast, Rc<DecoratedAst>> for Analyser {
 
             AstData::Parameter {..} => self.visit_parameter(node)?,
             AstData::Function {..} => {
-                let prev = self.push_scope_type(ScopeType::Function);
+                let prev = self.push_scope_type(ScopeType::Function(node.token.span.clone()));
                 let func = self.visit_function(node)?;
                 self.pop_scope_type(prev);
                 
@@ -653,7 +664,6 @@ impl Visitor<Ast, Rc<DecoratedAst>> for Analyser {
         let signature = self.find_struct(&identifier.span).unwrap().clone();
         let mut items = Vec::new();
 
-        // FIXME: Require initialisation of fields that don't contain a default value
         let mut fields_specified = Vec::new();
 
         for (field_name, arg) in arguments {
@@ -691,21 +701,18 @@ impl Visitor<Ast, Rc<DecoratedAst>> for Analyser {
             }
         }
 
-        // FIXME: This is all gross
         let SpruceType::Struct { fields, .. } = &*signature else { unreachable!() };
-        let field_no_defaults = if let Some(fields) = fields {
+        if let Some(fields) = fields {
             fields.iter()
                 .filter(|field| !field.has_default && !fields_specified.contains(&field.identifier.span))
                 .map(|field| field)
-                .collect()
-        } else { vec![] };
-
-        for field_name in field_no_defaults.into_iter() {
-            self.error_no_exit(format!(
-                "Field '{}' in struct literal '{}' is required to be initialised, as it has no default value",
-                field_name.identifier.span.slice_source(),
-                identifier.span.slice_source(),
-            ), identifier);
+                .for_each(|field_name| {
+                    self.error_no_exit(format!(
+                        "Field '{}' in struct literal '{}' is required to be initialised, as it has no default value",
+                        field_name.identifier.span.slice_source(),
+                        identifier.span.slice_source(),
+                    ), identifier);
+                });
         }
 
         Ok(DecoratedAst::new_struct_literal(identifier.clone(), signature, items))
@@ -760,6 +767,28 @@ impl Visitor<Ast, Rc<DecoratedAst>> for Analyser {
         Ok(DecoratedAst::new_array_literal(node.token.clone(), values, Rc::new(SpruceType::Array(list_type))))
     }
 
+    fn visit_error_or_value(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
+        let AstData::ErrorOrValue { which, expression } = &node.data else { unreachable!() };
+
+        let expression = self.visit(expression)?;
+        let kind = self.find_type_of(&expression)?;
+
+        let kind = match &self.scope_type {
+            ScopeType::Function(span) | ScopeType::Method(span) => {
+                let function = self.table.find_local(&span, true).unwrap();
+                let SpruceType::Function { return_type, .. } = &*function.kind else { unreachable!() };
+
+                Rc::clone(return_type)
+            }
+            _ => {
+                self.error_no_exit("Cannot use error or ok outside of a function or method".into(), &node.token);
+                kind
+            },
+        };
+
+        Ok(DecoratedAst::new_error_or_value(*which, expression, kind))
+    }
+
     fn visit_expression_statement(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         let AstData::ExpressionStatement(is_statement, inner) = &node.data else { unreachable!() };
         let inner = self.visit(inner)?;
@@ -778,6 +807,12 @@ impl Visitor<Ast, Rc<DecoratedAst>> for Analyser {
             (AstData::Lazy(_), _) | (_, AstData::Lazy(_)) => {
                 self.error_no_exit(
                     "Binary operation cannot contain lazy expressions".into(),
+                    &node.token
+                )
+            }
+            (AstData::ErrorOrValue{..}, _) | (_, AstData::ErrorOrValue{..}) => {
+                self.error_no_exit(
+                    "Binary operation cannot contain result expressions".into(),
                     &node.token
                 )
             }
@@ -852,11 +887,20 @@ impl Visitor<Ast, Rc<DecoratedAst>> for Analyser {
     fn visit_unary_op(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         let AstData::UnaryOp { rhs } = &node.data  else { unreachable!() };
         
-        if let AstData::Lazy(_) = &rhs.data {
-            self.error_no_exit(
-                "Unary operation cannot contain lazy expressions".into(),
-                &node.token
-            )
+        match &rhs.data {
+            AstData::Lazy(_) => {
+                self.error_no_exit(
+                    "Unary operation cannot contain lazy expressions".into(),
+                    &node.token
+                )
+            }
+            AstData::ErrorOrValue{..} => {
+                self.error_no_exit(
+                    "Unary operation cannot contain result expressions".into(),
+                    &node.token
+                )
+            }
+            _ => {}
         }
         
         let rhs = self.visit(&rhs)?;
@@ -932,6 +976,12 @@ impl Visitor<Ast, Rc<DecoratedAst>> for Analyser {
             (AstData::Lazy(_), _) | (_, AstData::Lazy(_)) => {
                 self.error_no_exit(
                     "Logical operation cannot contain lazy expressions".into(),
+                    &node.token
+                )
+            }
+            (AstData::ErrorOrValue{..}, _) | (_, AstData::ErrorOrValue{..}) => {
+                self.error_no_exit(
+                    "Logical operation cannot contain result expressions".into(),
                     &node.token
                 )
             }
@@ -1013,7 +1063,7 @@ impl Visitor<Ast, Rc<DecoratedAst>> for Analyser {
         let body_type = self.find_type_of(&body_ast)?;
 
         // Make sure the body matches the return type
-        if !body_type.is_same(&return_type) {
+        if !return_type.is_same(&body_type) {
             self.error_no_exit(format!(
                     "Function '{}' expects the return type {}, but has {}",
                     if *anonymous { "anonymous" } else { node.token.span.slice_source() },
@@ -1033,17 +1083,19 @@ impl Visitor<Ast, Rc<DecoratedAst>> for Analyser {
             }
         }
 
+        let is_method = discriminant(&self.scope_type) == discriminant(&ScopeType::Method(node.token.span.clone()));
+
         let function_type = if *anonymous {
             FunctionType::Anonymous  
-        } else if self.table.get_depth() > 0 && self.scope_type != ScopeType::Method {
+        } else if self.table.get_depth() > 0 && !is_method {
             FunctionType::Inner
-        } else if self.scope_type == ScopeType::Method {
+        } else if is_method {
             FunctionType::Method
         } else {
             FunctionType::Standard
         };
         
-        Ok(DecoratedAst::new_function(node.token.clone(), function_type, parameters, body_type, body_ast))
+        Ok(DecoratedAst::new_function(node.token.clone(), function_type, parameters, return_type, body_ast))
     }
 
     fn visit_function_call(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
@@ -1422,7 +1474,7 @@ impl Visitor<Ast, Rc<DecoratedAst>> for Analyser {
                             ), &item.token);
                         }
 
-                        let prev = self.push_scope_type(ScopeType::Method);
+                        let prev = self.push_scope_type(ScopeType::Method(item.token.span.clone()));
                         let func = self.visit_function(item)?;
                         self.pop_scope_type(prev);
 
@@ -1756,22 +1808,52 @@ impl Visitor<Ast, Rc<DecoratedAst>> for Analyser {
     fn visit_return_statement(&mut self, node: &Rc<Ast>) -> Result<Rc<DecoratedAst>, SpruceErr> {
         let AstData::Return(expression) = &node.data else { unreachable!() };
 
-        if self.scope_type == ScopeType::Defer {
-            self.error_no_exit(
-                "Cannot return inside of a defer block".into(),
-                &node.token,
-            )
-        }
-
-        let (kind, expression) = match expression {
-            Some(expr) => {
-                let expr = self.visit(expr)?;
-                (self.find_type_of(&expr)?, Some(expr))
-            }
-            None => (Rc::new(SpruceType::None), None),
+        let in_function = match self.scope_type {
+            ScopeType::Function(_) | ScopeType::Method(_) => true,
+            ScopeType::Defer => {
+                self.error_no_exit(
+                    "Cannot return inside of a defer block".into(),
+                    &node.token,
+                );
+                false
+            },
+            ScopeType::None => {
+                self.error_no_exit(
+                    "Cannot outside of functions".into(),
+                    &node.token,
+                );
+                false
+            },
         };
 
-        Ok(DecoratedAst::new_return(node.token.clone(), kind, expression))
+        let expr = if expression.is_some() { Some(self.visit(expression.as_ref().unwrap())?) } else { None };
+        if let Some(expr) = &expr {
+            let expr_kind = self.find_type_of(expr)?;
+            
+            if in_function {
+                let function = match &self.scope_type {
+                    ScopeType::Function(span) | ScopeType::Method(span) => self.find_function(span).unwrap(),
+                    _ => unreachable!(),
+                };
+                let Function::User { return_type, .. } = &function.function else { unreachable!() };
+
+                if return_type.is_same(&expr_kind) {
+                    let kind = Rc::clone(return_type);
+
+                    return Ok(DecoratedAst::new_return(
+                        node.token.clone(),
+                        Rc::clone(&kind),
+                        Some(DecoratedAst::new_error_or_value(ErrorOrValue::Value, Rc::clone(expr), kind)),
+                    ));
+                }
+            }
+        }
+
+        let kind = match &expr {
+            Some(expr) => self.find_type_of(expr)?,
+            _ => Rc::new(SpruceType::None),
+        };
+        Ok(DecoratedAst::new_return(node.token.clone(), kind, expr))
     }
 
     fn visit_body(&mut self, node: &Rc<Ast>, new_scope: bool) -> Result<Rc<DecoratedAst>, SpruceErr> {

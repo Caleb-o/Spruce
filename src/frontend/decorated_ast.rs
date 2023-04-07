@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use crate::source::Source;
 
-use super::{token::{Token, Span}, sprucetype::SpruceType};
+use super::{token::{Token, Span}, sprucetype::SpruceType, ast::ErrorOrValue};
 
 #[derive(Debug)]
 pub struct DecoratedAst {
@@ -24,6 +24,7 @@ pub enum DecoratedAstData {
     TupleLiteral(Rc<SpruceType>, Vec<Rc<DecoratedAst>>),
     ArrayLiteral(Rc<SpruceType>, Vec<Rc<DecoratedAst>>),
     ExpressionStatement(Rc<SpruceType>, bool, Rc<DecoratedAst>),
+    ErrorOrValue { kind: Rc<SpruceType>, which: ErrorOrValue, expression: Rc<DecoratedAst> },
 
     Comment,
 
@@ -188,6 +189,13 @@ impl DecoratedAst {
         Rc::new(Self {
             token: expression.token.clone(),
             data: DecoratedAstData::ExpressionStatement(kind, is_statement, expression),
+        })
+    }
+
+    pub fn new_error_or_value(which: ErrorOrValue, expression: Rc<DecoratedAst>, kind: Rc<SpruceType>) -> Rc<Self> {
+        Rc::new(Self {
+            token: expression.token.clone(),
+            data: DecoratedAstData::ErrorOrValue { kind, which, expression }
         })
     }
 

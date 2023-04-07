@@ -314,6 +314,10 @@ impl NameResolver {
             },
             TypeKind::Array(inner) => self.get_type_from_ast(inner)?,
             TypeKind::Lazy(inner) => self.get_type_from_ast(inner)?,
+            TypeKind::ErrorOrValue(lhs, rhs) => {
+                self.get_type_from_ast(lhs)?;
+                self.get_type_from_ast(rhs)?;
+            },
             TypeKind::Function { parameters, return_type } => {
                 match parameters {
                     Some(parameters) => {
@@ -337,6 +341,7 @@ impl Visitor<Ast, ()> for NameResolver {
             AstData::ArrayLiteral(_) => self.visit_array_literal(node)?,
             AstData::SymbolLiteral => self.visit_symbol_literal(node)?,
             AstData::StructLiteral(_, _) => self.visit_struct_literal(node)?,
+            AstData::ErrorOrValue {..} => self.visit_error_or_value(node)?,
 
             AstData::Type {..} => self.visit_type(node)?,
             AstData::Identifier => self.visit_identifier(node)?,
@@ -479,10 +484,14 @@ impl Visitor<Ast, ()> for NameResolver {
         Ok(())
     }
 
+    fn visit_error_or_value(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {
+        let AstData::ErrorOrValue { expression, .. } = &node.data else { unreachable!() };
+        self.visit(expression)
+    }
+
     fn visit_expression_statement(&mut self, node: &Rc<Ast>) -> Result<(), SpruceErr> {
         let AstData::ExpressionStatement(_, inner) = &node.data else { unreachable!() };
-        self.visit(inner)?;
-        Ok(())
+        self.visit(inner)
     }
 
     fn visit_comment(&mut self, _node: &Rc<Ast>) -> Result<(), SpruceErr> {

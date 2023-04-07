@@ -268,6 +268,13 @@ impl Compiler {
                 string
             }
             SpruceType::Struct { identifier, ..} => identifier.as_ref().unwrap().clone(),
+            SpruceType::ErrorOrValue(lhs, rhs) => {
+                format!(
+                    "{SPRUCE_PRE}.ErrorOrValue<{}, {}>",
+                    Compiler::as_cs_type(lhs),
+                    Compiler::as_cs_type(rhs),
+                )
+            }
             _ => unimplemented!(),
         }
     }
@@ -281,7 +288,9 @@ impl Visitor<DecoratedAst, ()> for Compiler {
             DecoratedAstData::ArrayLiteral(_, _) => self.visit_array_literal(node)?,
             DecoratedAstData::SymbolLiteral(_) => self.visit_symbol_literal(node)?,
             DecoratedAstData::StructLiteral(_, _) => self.visit_struct_literal(node)?,
+            DecoratedAstData::ErrorOrValue {..} => self.visit_error_or_value(node)?,
             DecoratedAstData::BinaryOp {..} => self.visit_binary_op(node)?,
+            DecoratedAstData::UnaryOp {..} => self.visit_unary_op(node)?,
             DecoratedAstData::LogicalOp {..} => self.visit_logical_op(node)?,
             DecoratedAstData::Identifier(_) => self.visit_identifier(node)?,
 
@@ -448,6 +457,16 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
+    fn visit_error_or_value(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
+        let DecoratedAstData::ErrorOrValue { kind, expression, .. } = &node.data else { unreachable!() };
+
+        self.output_code.push_str(&format!("new {}(", Compiler::as_cs_type(kind)));
+        self.visit(expression)?;
+        self.output_code.push(')');
+
+        Ok(())
+    }
+
     fn visit_expression_statement(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::ExpressionStatement(_, is_statement, expr) = &node.data else { unreachable!() };
 
@@ -490,7 +509,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
     }
 
     fn visit_binary_op(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
-        let DecoratedAstData::BinaryOp { kind: _, lhs, rhs } = &node.data else { unreachable!() };
+        let DecoratedAstData::BinaryOp { lhs, rhs, .. } = &node.data else { unreachable!() };
         
         self.visit(lhs)?;
         self.output_code.push_str(&format!(
@@ -501,8 +520,12 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         Ok(())
     }
 
-    fn visit_unary_op(&mut self, _node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
-        todo!()
+    fn visit_unary_op(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
+        let DecoratedAstData::UnaryOp { rhs, .. } = &node.data else { unreachable!() };
+        
+        self.output_code.push_str(node.token.span.slice_source());
+        self.visit(rhs)?;
+        Ok(())
     }
 
     fn visit_logical_op(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {

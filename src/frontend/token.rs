@@ -63,6 +63,8 @@ pub enum TokenKind {
     Do, While, Include, Switch, Lazy,
     Function, Struct, Return, Raw,
     Identifier, And, Or, Type, Ref,
+
+    ResultOk, ResultError,
     
     
     Comment,

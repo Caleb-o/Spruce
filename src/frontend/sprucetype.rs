@@ -24,6 +24,7 @@ pub enum SpruceType {
     Array(Rc<SpruceType>),
     Symbol,
     Lazy(Rc<SpruceType>),
+    ErrorOrValue(Rc<SpruceType>, Rc<SpruceType>),
     Function {
         is_native: bool,
         identifier: String,
@@ -125,6 +126,15 @@ impl SpruceType {
                 
                 s_identifier.as_ref().unwrap() == identifier.as_ref().unwrap()
             },
+            Self::ErrorOrValue(lhs, rhs) => {
+                if discriminant(self) != discriminant(other) {
+                    // Check if other type matches one of the variants
+                    return lhs.is_same(other) || rhs.is_same(other);
+                }
+
+                let Self::ErrorOrValue(olhs, orhs) = other else { unreachable!() };
+                lhs.is_same(olhs) && rhs.is_same(orhs)
+            }
             _ => discriminant(self) == discriminant(other),
         }
     }
@@ -156,6 +166,7 @@ impl Display for SpruceType {
                 tuplestr
             },
             Self::Lazy(inner) => format!("lazy {inner}"),
+            Self::ErrorOrValue(lhs, rhs) => format!("{lhs}!{rhs}"),
             Self::Function { parameters, return_type, .. } => {
                 let mut fnstr = String::from("fn(");
 

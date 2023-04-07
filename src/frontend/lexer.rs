@@ -162,6 +162,7 @@ impl Lexer {
             ]),
             'e' => self.check_if_matches(start, len, &[
                 ("lse", TokenKind::Else),
+                ("rror", TokenKind::ResultError),
             ]),
             'f' => self.check_if_matches(start, len, &[
                 ("n", TokenKind::Function),
@@ -174,7 +175,10 @@ impl Lexer {
                 ]),
             'l' => self.check_if_matches(start, len, &[("azy", TokenKind::Lazy)]),
             'n' => self.check_if_matches(start, len, &[("one", TokenKind::None)]),
-            'o' => self.check_if_matches(start, len, &[("r", TokenKind::Or)]),
+            'o' => self.check_if_matches(start, len, &[
+                ("r", TokenKind::Or),
+                ("k", TokenKind::ResultOk),
+            ]),
             'r' => self.check_if_matches(start, len, &[
                 ("eturn", TokenKind::Return),
                 ("ef", TokenKind::Ref),

@@ -12,6 +12,7 @@ pub trait Visitor<T, U> {
     fn visit_tuple_literal(&mut self, node: &Rc<T>) -> Result<U, SpruceErr>;
     fn visit_array_literal(&mut self, node: &Rc<T>) -> Result<U, SpruceErr>;
     fn visit_expression_statement(&mut self, node: &Rc<T>) -> Result<U, SpruceErr>;
+    fn visit_error_or_value(&mut self, node: &Rc<T>) -> Result<U, SpruceErr>;
     
     fn visit_comment(&mut self, node: &Rc<T>) -> Result<U, SpruceErr>;
     fn visit_raw(&mut self, node: &Rc<T>) -> Result<U, SpruceErr>;

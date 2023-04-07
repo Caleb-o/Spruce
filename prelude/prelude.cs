@@ -80,6 +80,32 @@ public static class SprucePrelude {
         }
     }
 
+    public sealed class ErrorOrValue<T, U> {
+        enum Which {
+            Ok, Error,
+        }
+
+        T Error;
+        U Ok;
+        Which which;
+
+        public ErrorOrValue(T err) {
+            this.Error = err;
+            this.Ok = default(U);
+            this.which = Which.Error;
+        }
+
+        public ErrorOrValue(U ok) {
+            this.Error = default(T);
+            this.Ok = ok;
+            this.which = Which.Ok;
+        }
+
+        public override string ToString() {
+            return which == Which.Ok ? $"ok {Ok}" : $"error {Error}";
+        }
+    }
+
     public static void Print(params object[] items) {
         StringBuilder sb = new();
 
