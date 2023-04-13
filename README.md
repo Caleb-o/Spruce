@@ -1,7 +1,7 @@
 # Spruce
 [![justforfunnoreally.dev badge](https://img.shields.io/badge/justforfunnoreally-dev-9ff)](https://justforfunnoreally.dev)
 
-An Interpreted Language written in Rust.
+A transpiler to C# written in Rust
 
 ## Sample
 ```
