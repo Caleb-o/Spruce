@@ -15,8 +15,11 @@ use compiler::Compiler;
 #[command(name = "spruce")]
 #[command(bin_name = "spruce")]
 enum SpruceCli {
+    #[clap(visible_alias="d")]
     Dump(RunArgs),
+    #[clap(visible_alias="c")]
     Check(RunArgs),
+    #[clap(visible_alias="r")]
     Run(RunArgs),
 }
 
