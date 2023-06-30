@@ -2,6 +2,7 @@
 members = [
     "spruce-shared",
     "spruce-front",
+    "spruce-mid",
     "spruce-back",
     "spruce-cli",
     "spruce-bin",

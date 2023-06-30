@@ -1,3 +1,5 @@
+use crate::source::Source;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(u8)]
 pub enum TokenKind {
@@ -88,5 +90,14 @@ pub struct Token {
 impl ToString for TokenKind {
     fn to_string(&self) -> String {
         format!("{self:?}")
+    }
+}
+
+impl Span {
+    pub fn compare(&self, source: &Source, other: &Span) -> bool {
+        let lhs = source.slice_from(*self).unwrap();
+        let rhs = source.slice_from(*other).unwrap();
+
+        lhs == rhs
     }
 }

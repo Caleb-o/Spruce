@@ -2,7 +2,7 @@ use crate::types::TypeKind;
 
 use super::token::Token;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Ast {
     pub token: Token,
     pub data: AstData,
@@ -14,7 +14,7 @@ pub enum ErrorOrValue {
     Value,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum AstData {
     Identifier,
     Literal,

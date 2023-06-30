@@ -1,6 +1,6 @@
 use crate::ast::Ast;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum TypeKind {
     Standard,
     Tuple(Vec<Box<Ast>>),
