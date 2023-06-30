@@ -71,10 +71,22 @@ pub enum TokenKind {
     Error,
 }
 
-#[derive(Debug, Clone)]
-pub struct Token<'a> {
+#[derive(Debug, Clone, Copy)]
+pub struct Span {
+    pub start: usize,
+    pub len: u16,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Token {
     pub kind: TokenKind,
     pub line: u32,
     pub column: u16,
-    pub lexeme: Option<&'a str>,
+    pub lexeme: Option<Span>,
+}
+
+impl ToString for TokenKind {
+    fn to_string(&self) -> String {
+        format!("{self:?}")
+    }
 }

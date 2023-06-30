@@ -1,4 +1,4 @@
-use crate::source::Source;
+use crate::{source::Source, token::Span};
 
 use super::token::{Token, TokenKind};
 
@@ -34,7 +34,7 @@ impl<'a> Lexer<'a> {
             return self.make_token(
                 TokenKind::Comment,
                 self.column,
-                Some(self.capture_slice(pos, self.pos)),
+                Some(self.capture_into(pos, self.pos)),
             );
         }
 
@@ -97,11 +97,14 @@ impl<'a> Lexer<'a> {
     }
 
     // Utility
-    fn capture_slice(&'a self, start: usize, end: usize) -> &'a str {
-        &self.source.content[start..end]
+    fn capture_into(&self, start: usize, end: usize) -> Span {
+        Span {
+            start,
+            len: (end - start) as u16,
+        }
     }
 
-    fn make_token(&'a self, kind: TokenKind, column: u16, lexeme: Option<&'a str>) -> Token {
+    fn make_token(&self, kind: TokenKind, column: u16, lexeme: Option<Span>) -> Token {
         Token {
             kind,
             line: self.line,
@@ -235,7 +238,7 @@ impl<'a> Lexer<'a> {
 
         match self.get_identifier_type(pos, self.pos - pos) {
             k @ TokenKind::Identifier => {
-                self.make_token(k, column, Some(self.capture_slice(pos, self.pos)))
+                self.make_token(k, column, Some(self.capture_into(pos, self.pos)))
             }
             k => self.make_token(k, column, None),
         }
@@ -256,7 +259,7 @@ impl<'a> Lexer<'a> {
         self.make_token(
             TokenKind::String,
             column,
-            Some(self.capture_slice(pos - 1, self.pos)),
+            Some(self.capture_into(pos - 1, self.pos)),
         )
     }
 
@@ -292,7 +295,7 @@ impl<'a> Lexer<'a> {
                 TokenKind::Int
             },
             column,
-            Some(self.capture_slice(pos, self.pos)),
+            Some(self.capture_into(pos, self.pos)),
         )
     }
 
@@ -325,18 +328,24 @@ impl<'a> Lexer<'a> {
 
 #[test]
 fn test_basic_slicing() {
-    let source = Source::from_literal("100 + 200");
+    let source = Source::from("100 + 200");
     let mut lexer = Lexer::new(&source);
 
-    assert_eq!(lexer.next().lexeme.unwrap(), "100");
+    assert_eq!(
+        source.slice_from(lexer.next().lexeme.unwrap()).unwrap(),
+        "100"
+    );
     assert!(lexer.next().lexeme.is_none());
-    assert_eq!(lexer.next().lexeme.unwrap(), "200");
+    assert_eq!(
+        source.slice_from(lexer.next().lexeme.unwrap()).unwrap(),
+        "200"
+    );
     assert_eq!(lexer.next().kind, TokenKind::EndOfFile);
 }
 
 #[test]
 fn double_tokens() {
-    let source = Source::from_literal("+= -=");
+    let source = Source::from("+= -=");
     let mut lexer = Lexer::new(&source);
 
     assert_eq!(lexer.next().kind, TokenKind::PlusEqual);
@@ -346,7 +355,7 @@ fn double_tokens() {
 
 #[test]
 fn keywords() {
-    let source = Source::from_literal("lazy defer");
+    let source = Source::from("lazy defer");
     let mut lexer = Lexer::new(&source);
 
     let token = lexer.next();
@@ -360,7 +369,7 @@ fn keywords() {
 
 #[test]
 fn keyword_and_identifier() {
-    let source = Source::from_literal("if foo");
+    let source = Source::from("if foo");
     let mut lexer = Lexer::new(&source);
 
     let token = lexer.next();
@@ -369,12 +378,12 @@ fn keyword_and_identifier() {
 
     let token = lexer.next();
     assert_eq!(token.kind, TokenKind::Identifier);
-    assert_eq!(token.lexeme.unwrap(), "foo");
+    assert_eq!(source.slice_from(token.lexeme.unwrap()).unwrap(), "foo");
 }
 
 #[test]
 fn invalid_token() {
-    let source = Source::from_literal("$");
+    let source = Source::from("$");
     let mut lexer = Lexer::new(&source);
 
     assert_eq!(lexer.next().kind, TokenKind::Error);

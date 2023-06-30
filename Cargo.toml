@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "spruce-shared",
     "spruce-front",
     "spruce-back",
     "spruce-cli",
