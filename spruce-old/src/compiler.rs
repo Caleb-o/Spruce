@@ -1,6 +1,21 @@
-use std::{rc::Rc, fs::{self, File}, path::Path, io::Write, default};
+use std::{
+    fs::{self, File},
+    io::Write,
+    path::Path,
+    rc::Rc,
+};
 
-use crate::{source::Source, frontend::{decorated_ast::{DecoratedAst, DecoratedAstData, FunctionType}, sprucetype::SpruceType, token::TokenKind, symbols::Symbols}, error::{SpruceErr, SpruceErrData}, visitor::Visitor};
+use crate::{
+    error::{SpruceErr, SpruceErrData},
+    frontend::{
+        decorated_ast::{DecoratedAst, DecoratedAstData, FunctionType},
+        sprucetype::SpruceType,
+        symbols::Symbols,
+        token::TokenKind,
+    },
+    source::Source,
+    visitor::Visitor,
+};
 
 const SPRUCE_PRE: &'static str = "SprucePrelude";
 const BYTES_BEFORE_WRITE: usize = 1024 * 1024;
@@ -23,7 +38,11 @@ impl Compiler {
             source,
             depth: 0,
             symbols,
-            file: fs::OpenOptions::new().append(true).create(true).open("out.cs").unwrap(),
+            file: fs::OpenOptions::new()
+                .append(true)
+                .create(true)
+                .open("out.cs")
+                .unwrap(),
             output_code: String::with_capacity(BYTES_BEFORE_WRITE),
         }
     }
@@ -41,14 +60,19 @@ impl Compiler {
 
     #[inline]
     fn error(&mut self, message: String) -> SpruceErr {
-        SpruceErr::new(message, SpruceErrData::Compiler { file_path: (*self.source.file_path).clone() })
+        SpruceErr::new(
+            message,
+            SpruceErrData::Compiler {
+                file_path: (*self.source.file_path).clone(),
+            },
+        )
     }
-    
+
     #[inline]
     fn indent(&mut self) {
         self.depth += 1;
     }
-    
+
     #[inline]
     fn dedent(&mut self) {
         self.depth -= 1;
@@ -73,26 +97,24 @@ impl Compiler {
         self.indent();
 
         for item in self.symbols.get_table() {
-            self.output_code.push_str(&format!(
-                "{}{},\n",
-                self.tab_string(),
-                item.slice_source(),
-            ));
+            self.output_code
+                .push_str(&format!("{}{},\n", self.tab_string(), item.slice_source(),));
         }
-        
+
         self.dedent();
         self.output_code.push_str("}\n\n");
     }
 
     fn boiler_plate(&mut self, root: Rc<DecoratedAst>) -> Result<(), SpruceErr> {
-        self.output_code.push_str(&fs::read_to_string("prelude/prelude.cs").unwrap());
+        self.output_code
+            .push_str(&fs::read_to_string("prelude/prelude.cs").unwrap());
         self.output_code.push_str("\n\n");
         self.generate_symbol_enum();
         self.output_code.push_str("sealed class Program\n{\n");
 
-        self.indent();        
+        self.indent();
         self.visit(&root)?;
-        
+
         self.output_code.push_str(&format!(
             "{}public static void Main() {{ try {{ new Program().main(); }} catch (Exception ex) {{ Console.WriteLine($\"Error Occured: {{ex}}\"); }} }}\n",
             self.tab_string(),
@@ -110,10 +132,10 @@ impl Compiler {
         let kind = Compiler::as_cs_type(&kind);
 
         if kind == "void" && (params.is_none() || params.as_ref().unwrap().len() == 0) {
-           self.output_code.push_str("((Action)((");
+            self.output_code.push_str("((Action)((");
         } else {
             self.output_code.push_str("((Func<");
-            
+
             if let Some(params) = params {
                 for item in params {
                     let DecoratedAstData::Parameter(kind) = &item.data else { unreachable!() };
@@ -161,10 +183,9 @@ impl Compiler {
 
     fn unwrap_error_as_types(kind: &Rc<SpruceType>) -> (String, String) {
         match &**kind {
-            SpruceType::ErrorOrValue(lhs, rhs) => (
-                Compiler::as_cs_type(lhs),
-                Compiler::as_cs_type(rhs),
-            ),
+            SpruceType::ErrorOrValue(lhs, rhs) => {
+                (Compiler::as_cs_type(lhs), Compiler::as_cs_type(rhs))
+            }
             _ => unreachable!(),
         }
     }
@@ -181,12 +202,14 @@ impl Compiler {
             DecoratedAstData::IfStatement { kind, .. } => kind,
             DecoratedAstData::FunctionCall { kind, .. } => kind,
             DecoratedAstData::StructField { kind, .. } => kind,
-            _ => return Err(SpruceErr::new(format!(
-                    "Cannot cast node '{:#?}' to type",
-                    node.data,
-                ),
-                SpruceErrData::Compiler { file_path: self.source.file_path.to_string() },
-            )),
+            _ => {
+                return Err(SpruceErr::new(
+                    format!("Cannot cast node '{:#?}' to type", node.data,),
+                    SpruceErrData::Compiler {
+                        file_path: self.source.file_path.to_string(),
+                    },
+                ))
+            }
         });
 
         Ok(kind)
@@ -226,9 +249,10 @@ impl Compiler {
         self.indent();
 
         self.visit(node)?;
-        
+
         self.dedent();
-        self.output_code.push_str(&format!("{}}}", self.tab_string()));
+        self.output_code
+            .push_str(&format!("{}}}", self.tab_string()));
         Ok(())
     }
 
@@ -258,24 +282,24 @@ impl Compiler {
                 format!("{}.Array<{}>", SPRUCE_PRE, Compiler::as_cs_type(inner))
             }
             SpruceType::Lazy(inner) => {
-                format!(
-                    "{}.Lazy<{}>",
-                    SPRUCE_PRE,
-                    Compiler::as_cs_type(inner)
-                )
+                format!("{}.Lazy<{}>", SPRUCE_PRE, Compiler::as_cs_type(inner))
             }
-            SpruceType::Function { parameters, return_type, .. } => {
+            SpruceType::Function {
+                parameters,
+                return_type,
+                ..
+            } => {
                 let mut string = String::from("Func<");
 
                 if let Some(parameters) = parameters {
                     for (idx, param) in parameters.iter().enumerate() {
                         string.push_str(&Compiler::as_cs_type(&param));
-                        
+
                         if idx < parameters.len() - 1 {
                             string.push_str(", ");
                         }
                     }
-                    
+
                     string.push_str(", ");
                 }
                 string.push_str(&Compiler::as_cs_type(&return_type));
@@ -283,7 +307,7 @@ impl Compiler {
 
                 string
             }
-            SpruceType::Struct { identifier, ..} => identifier.as_ref().unwrap().clone(),
+            SpruceType::Struct { identifier, .. } => identifier.as_ref().unwrap().clone(),
             SpruceType::ErrorOrValue(lhs, rhs) => {
                 format!(
                     "{SPRUCE_PRE}.ErrorOrValue<{}, {}>",
@@ -304,49 +328,48 @@ impl Visitor<DecoratedAst, ()> for Compiler {
             DecoratedAstData::ArrayLiteral(_, _) => self.visit_array_literal(node)?,
             DecoratedAstData::SymbolLiteral(_) => self.visit_symbol_literal(node)?,
             DecoratedAstData::StructLiteral(_, _) => self.visit_struct_literal(node)?,
-            DecoratedAstData::ErrorOrValue {..} => self.visit_error_or_value(node)?,
-            DecoratedAstData::BinaryOp {..} => self.visit_binary_op(node)?,
-            DecoratedAstData::UnaryOp {..} => self.visit_unary_op(node)?,
-            DecoratedAstData::LogicalOp {..} => self.visit_logical_op(node)?,
+            DecoratedAstData::ErrorOrValue { .. } => self.visit_error_or_value(node)?,
+            DecoratedAstData::BinaryOp { .. } => self.visit_binary_op(node)?,
+            DecoratedAstData::UnaryOp { .. } => self.visit_unary_op(node)?,
+            DecoratedAstData::LogicalOp { .. } => self.visit_logical_op(node)?,
             DecoratedAstData::Identifier(_) => self.visit_identifier(node)?,
 
-            DecoratedAstData::VarDeclaration {..} => self.visit_var_declaration(node)?,
+            DecoratedAstData::VarDeclaration { .. } => self.visit_var_declaration(node)?,
             DecoratedAstData::VarDeclarations(_) => self.visit_var_declarations(node)?,
-            DecoratedAstData::VarAssign {..} => self.visit_var_assign(node)?,
-            DecoratedAstData::VarAssignEqual {..} => self.visit_var_assign_equal(node)?,
-            DecoratedAstData::FunctionCall {..} => self.visit_function_call(node)?,
+            DecoratedAstData::VarAssign { .. } => self.visit_var_assign(node)?,
+            DecoratedAstData::VarAssignEqual { .. } => self.visit_var_assign_equal(node)?,
+            DecoratedAstData::FunctionCall { .. } => self.visit_function_call(node)?,
 
-            DecoratedAstData::StructDefinition {..} => self.visit_struct_def(node)?,
-            DecoratedAstData::StructField {..} => self.visit_struct_field(node)?,
+            DecoratedAstData::StructDefinition { .. } => self.visit_struct_def(node)?,
+            DecoratedAstData::StructField { .. } => self.visit_struct_field(node)?,
 
-            DecoratedAstData::IfStatement {..} => self.visit_if_statement(node)?,
+            DecoratedAstData::IfStatement { .. } => self.visit_if_statement(node)?,
             DecoratedAstData::Payload(_, _) => self.visit_payload(node)?,
-            DecoratedAstData::ForStatement {..} => self.visit_for_statement(node)?,
-            DecoratedAstData::DoWhileStatement {..} => self.visit_do_while_statement(node)?,
+            DecoratedAstData::ForStatement { .. } => self.visit_for_statement(node)?,
+            DecoratedAstData::DoWhileStatement { .. } => self.visit_do_while_statement(node)?,
             DecoratedAstData::Body(_, _) => self.visit_body(node, true)?,
-            DecoratedAstData::Function {..} => self.visit_function(node)?,
+            DecoratedAstData::Function { .. } => self.visit_function(node)?,
             DecoratedAstData::ParameterList(_) => self.visit_parameter_list(node)?,
             DecoratedAstData::Parameter(_) => self.visit_parameter(node)?,
-            DecoratedAstData::ExpressionStatement(_, _, _) => self.visit_expression_statement(node)?,
+            DecoratedAstData::ExpressionStatement(_, _, _) => {
+                self.visit_expression_statement(node)?
+            }
 
-            DecoratedAstData::IndexGetter {..} => self.visit_index_getter(node)?,
-            DecoratedAstData::IndexSetter {..} => self.visit_index_setter(node)?,
+            DecoratedAstData::IndexGetter { .. } => self.visit_index_getter(node)?,
+            DecoratedAstData::IndexSetter { .. } => self.visit_index_setter(node)?,
 
-            DecoratedAstData::GetProperty {..} => self.visit_property_getter(node)?,
-            DecoratedAstData::SetProperty {..} => self.visit_property_setter(node)?,
+            DecoratedAstData::GetProperty { .. } => self.visit_property_getter(node)?,
+            DecoratedAstData::SetProperty { .. } => self.visit_property_setter(node)?,
 
-            DecoratedAstData::Raw {..} => self.visit_raw(node)?,
+            DecoratedAstData::Raw { .. } => self.visit_raw(node)?,
             DecoratedAstData::Lazy(_) => self.visit_lazy(node)?,
             DecoratedAstData::Defer(_, _) => self.visit_defer(node)?,
             DecoratedAstData::Return(_, _) => self.visit_return_statement(node)?,
-            DecoratedAstData::Program {..} => self.visit_program(node)?,
+            DecoratedAstData::Program { .. } => self.visit_program(node)?,
             DecoratedAstData::Comment => self.visit_comment(node)?,
             DecoratedAstData::Empty => {}
 
-            _ => return Err(self.error(format!(
-                "Unknown node in compilation '{:#?}'",
-                node,
-            ))),
+            _ => return Err(self.error(format!("Unknown node in compilation '{:#?}'", node,))),
         }
 
         if self.output_code.len() >= BYTES_BEFORE_WRITE {
@@ -365,7 +388,8 @@ impl Visitor<DecoratedAst, ()> for Compiler {
                 if *is_native {
                     let identifier = node.token.span.slice_source();
                     let identifier = identifier[0..1].to_uppercase() + &identifier[1..];
-                    self.output_code.push_str(&format!("{SPRUCE_PRE}.{identifier}"));
+                    self.output_code
+                        .push_str(&format!("{SPRUCE_PRE}.{identifier}"));
                 } else {
                     self.output_code.push_str(node.token.span.slice_source());
                 }
@@ -391,7 +415,8 @@ impl Visitor<DecoratedAst, ()> for Compiler {
 
     fn visit_literal(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         if node.token.kind == TokenKind::String {
-            self.output_code.push_str(&format!("\"{}\"", node.token.span.slice_source()));
+            self.output_code
+                .push_str(&format!("\"{}\"", node.token.span.slice_source()));
             return Ok(());
         }
 
@@ -411,16 +436,12 @@ impl Visitor<DecoratedAst, ()> for Compiler {
     fn visit_struct_literal(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::StructLiteral(_, items) = &node.data else { unreachable!() };
 
-        self.output_code.push_str(&format!(
-            "new {}(){{ ",
-            node.token.span.slice_source(),
-        ));
+        self.output_code
+            .push_str(&format!("new {}(){{ ", node.token.span.slice_source(),));
 
         for (idx, (field_name, arg)) in items.iter().enumerate() {
-            self.output_code.push_str(&format!(
-                "{} = ",
-                field_name.slice_source(),
-            ));
+            self.output_code
+                .push_str(&format!("{} = ", field_name.slice_source(),));
 
             if let Some(arg) = arg {
                 self.visit(arg)?;
@@ -440,13 +461,13 @@ impl Visitor<DecoratedAst, ()> for Compiler {
 
     fn visit_tuple_literal(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::TupleLiteral(_, expressions) = &node.data else { unreachable!() };
-        
+
         self.output_code.push('(');
-        
+
         for (idx, item) in expressions.iter().enumerate() {
             self.visit(item)?;
-            
-            if idx < expressions.len() - 1 { 
+
+            if idx < expressions.len() - 1 {
                 self.output_code.push_str(", ");
             }
         }
@@ -458,7 +479,8 @@ impl Visitor<DecoratedAst, ()> for Compiler {
     fn visit_array_literal(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::ArrayLiteral(kind, values) = &node.data else { unreachable!() };
 
-        self.output_code.push_str(&format!("new {}(){{ ", Compiler::as_cs_type(kind)));
+        self.output_code
+            .push_str(&format!("new {}(){{ ", Compiler::as_cs_type(kind)));
 
         for (idx, arg) in values.iter().enumerate() {
             self.visit(arg)?;
@@ -477,12 +499,13 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         let DecoratedAstData::ErrorOrValue { kind, expression, .. } = &node.data else { unreachable!() };
 
         match &expression.data {
-            DecoratedAstData::IfStatement {..} => self.visit(expression)?,
+            DecoratedAstData::IfStatement { .. } => self.visit(expression)?,
             _ => {
-                self.output_code.push_str(&format!("new {}(", Compiler::as_cs_type(kind)));
+                self.output_code
+                    .push_str(&format!("new {}(", Compiler::as_cs_type(kind)));
                 self.visit(expression)?;
                 self.output_code.push(')');
-            } ,
+            }
         }
 
         Ok(())
@@ -531,19 +554,17 @@ impl Visitor<DecoratedAst, ()> for Compiler {
 
     fn visit_binary_op(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::BinaryOp { lhs, rhs, .. } = &node.data else { unreachable!() };
-        
+
         self.visit(lhs)?;
-        self.output_code.push_str(&format!(
-            " {} ",
-            node.token.span.slice_source(),
-        ));
+        self.output_code
+            .push_str(&format!(" {} ", node.token.span.slice_source(),));
         self.visit(rhs)?;
         Ok(())
     }
 
     fn visit_unary_op(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::UnaryOp { rhs, .. } = &node.data else { unreachable!() };
-        
+
         self.output_code.push_str(node.token.span.slice_source());
         self.visit(rhs)?;
         Ok(())
@@ -551,12 +572,10 @@ impl Visitor<DecoratedAst, ()> for Compiler {
 
     fn visit_logical_op(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::LogicalOp { kind: _, lhs, rhs } = &node.data else { unreachable!() };
-        
+
         self.visit(lhs)?;
-        self.output_code.push_str(&format!(
-            " {} ",
-            node.token.span.slice_source(),
-        ));
+        self.output_code
+            .push_str(&format!(" {} ", node.token.span.slice_source(),));
         self.visit(rhs)?;
         Ok(())
     }
@@ -594,7 +613,8 @@ impl Visitor<DecoratedAst, ()> for Compiler {
 
         match function_type {
             FunctionType::Standard | FunctionType::Method => {
-                self.output_code.push_str(&format!("{}public ", self.tab_string()));
+                self.output_code
+                    .push_str(&format!("{}public ", self.tab_string()));
             }
             FunctionType::Inner => {
                 self.output_code.push_str(&format!("{}", self.tab_string()));
@@ -610,10 +630,11 @@ impl Visitor<DecoratedAst, ()> for Compiler {
             Compiler::as_cs_type(kind),
             node.token.span.slice_source(),
         ));
-        
+
         self.visit(parameters)?;
 
-        self.output_code.push_str(&format!(")\n{}", self.tab_string()));
+        self.output_code
+            .push_str(&format!(")\n{}", self.tab_string()));
         match &body.data {
             DecoratedAstData::Body(_, _) => self.visit_body(body, true)?,
             _ => self.wrap_in_body(body)?,
@@ -643,14 +664,14 @@ impl Visitor<DecoratedAst, ()> for Compiler {
 
     fn visit_var_declaration(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::VarDeclaration { is_mutable: _, kind, expression } = &node.data else { unreachable!() };
-        
+
         self.output_code.push_str(&format!(
             "{}{} {}",
             self.tab_string(),
             Compiler::as_cs_type(kind),
             node.token.span.slice_source(),
         ));
-        
+
         match expression.data {
             DecoratedAstData::Empty => {}
             _ => {
@@ -664,7 +685,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
 
     fn visit_var_declarations(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::VarDeclarations(decls) = &node.data else { unreachable!() };
-        
+
         for decl in decls {
             self.visit_var_declaration(decl)?;
         }
@@ -674,24 +695,22 @@ impl Visitor<DecoratedAst, ()> for Compiler {
 
     fn visit_var_assign(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::VarAssign { lhs, expression } = &node.data else { unreachable!() };
-        
+
         self.visit(lhs)?;
         self.output_code.push_str(" = ");
         self.visit(expression)?;
-        
+
         Ok(())
     }
 
     fn visit_var_assign_equal(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::VarAssignEqual { operator, lhs, expression } = &node.data else { unreachable!() };
-        
+
         self.visit(lhs)?;
-        self.output_code.push_str(&format!(
-            " {} ",
-            operator.span.slice_source(),
-        ));
+        self.output_code
+            .push_str(&format!(" {} ", operator.span.slice_source(),));
         self.visit(expression)?;
-        
+
         Ok(())
     }
 
@@ -717,14 +736,17 @@ impl Visitor<DecoratedAst, ()> for Compiler {
             }
 
             if items.len() > 0 {
-                if let DecoratedAstData::Function {..} = &items.last().unwrap().data {
+                if let DecoratedAstData::Function { .. } = &items.last().unwrap().data {
                     self.output_code.pop();
                 }
             }
         }
 
         let SpruceType::Struct { fields, .. } = &**kind else { unreachable!() };
-        self.output_code.push_str(&format!("\n{}public override string ToString(){{\n", self.tab_string()));
+        self.output_code.push_str(&format!(
+            "\n{}public override string ToString(){{\n",
+            self.tab_string()
+        ));
         self.indent();
 
         if let Some(fields) = fields {
@@ -735,10 +757,8 @@ impl Visitor<DecoratedAst, ()> for Compiler {
             ));
 
             for (idx, field) in fields.iter().enumerate() {
-                self.output_code.push_str(&format!(
-                    "{{{}}}",
-                    field.identifier.span.slice_source(),
-                ));
+                self.output_code
+                    .push_str(&format!("{{{}}}", field.identifier.span.slice_source(),));
 
                 if idx < fields.len() - 1 {
                     self.output_code.push_str(", ");
@@ -757,14 +777,13 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         self.output_code.push_str(";\n");
 
         self.dedent();
-        self.output_code.push_str(&format!("{}}}\n", self.tab_string()));
+        self.output_code
+            .push_str(&format!("{}}}\n", self.tab_string()));
 
         self.dedent();
 
-        self.output_code.push_str(&format!(
-            "{}}}\n\n",
-            self.tab_string(),
-        ));
+        self.output_code
+            .push_str(&format!("{}}}\n\n", self.tab_string(),));
 
         Ok(())
     }
@@ -798,10 +817,8 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         ));
         self.indent();
 
-        self.output_code.push_str(&format!(
-            "{}var __error_value = ",
-            self.tab_string(),
-        ));
+        self.output_code
+            .push_str(&format!("{}var __error_value = ", self.tab_string(),));
         self.visit(expression)?;
 
         let (lhs_kind, rhs_kind) = Compiler::unwrap_error_as_types(kind);
@@ -811,13 +828,11 @@ impl Visitor<DecoratedAst, ()> for Compiler {
             SPRUCE_PRE, SPRUCE_PRE, SPRUCE_PRE,
             lhs_kind, rhs_kind,
         ));
-        
+
         self.dedent();
 
-        self.output_code.push_str(&format!(
-            "\n{}}}))()",
-            self.tab_string(),
-        ));
+        self.output_code
+            .push_str(&format!("\n{}}}))()", self.tab_string(),));
 
         Ok(())
     }
@@ -834,20 +849,17 @@ impl Visitor<DecoratedAst, ()> for Compiler {
             self.output_code.push_str(" : ");
             self.wrap_in_lambda_call(false_body.as_ref().unwrap())?;
         } else {
-            self.output_code.push_str(&format!(
-                "{}if (",
-                self.tab_string(),
-            ));
+            self.output_code
+                .push_str(&format!("{}if (", self.tab_string(),));
             self.visit(condition)?;
-            self.output_code.push_str(&format!(")\n{}", self.tab_string()));
+            self.output_code
+                .push_str(&format!(")\n{}", self.tab_string()));
             self.visit(true_body)?;
 
             if let Some(false_body) = false_body {
                 self.output_code.pop();
-                self.output_code.push_str(&format!(
-                    "{}else\n",
-                    self.tab_string(),
-                ));
+                self.output_code
+                    .push_str(&format!("{}else\n", self.tab_string(),));
                 self.visit(false_body)?;
             } else {
                 self.output_code.push('\n');
@@ -860,10 +872,8 @@ impl Visitor<DecoratedAst, ()> for Compiler {
     fn visit_for_statement(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::ForStatement { variable, condition, increment, body } = &node.data else { unreachable!() };
 
-        self.output_code.push_str(&format!(
-            "{}for (",
-            self.tab_string(),
-        ));
+        self.output_code
+            .push_str(&format!("{}for (", self.tab_string(),));
 
         if let Some(variable) = variable {
             self.visit(variable)?;
@@ -871,10 +881,10 @@ impl Visitor<DecoratedAst, ()> for Compiler {
         } else {
             self.output_code.push(';');
         }
-        
+
         self.visit(condition)?;
         self.output_code.push_str("; ");
-            
+
         if let Some(increment) = increment {
             self.visit(increment)?;
         }
@@ -889,7 +899,8 @@ impl Visitor<DecoratedAst, ()> for Compiler {
     fn visit_do_while_statement(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::DoWhileStatement { body, condition } = &node.data else { unreachable!() };
 
-        self.output_code.push_str(&format!("{}do ", self.tab_string()));
+        self.output_code
+            .push_str(&format!("{}do ", self.tab_string()));
         self.visit(body)?;
 
         self.output_code.push_str(" while (");
@@ -991,10 +1002,8 @@ impl Visitor<DecoratedAst, ()> for Compiler {
     fn visit_return_statement(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::Return(_, expr) = &node.data else { unreachable!() };
 
-        self.output_code.push_str(&format!(
-            "{}return",
-            self.tab_string(),
-        ));
+        self.output_code
+            .push_str(&format!("{}return", self.tab_string(),));
 
         if let Some(expr) = expr {
             self.output_code.push(' ');
@@ -1018,7 +1027,8 @@ impl Visitor<DecoratedAst, ()> for Compiler {
 
         self.dedent();
 
-        self.output_code.push_str(&format!("{}}}", self.tab_string()));
+        self.output_code
+            .push_str(&format!("{}}}", self.tab_string()));
         Ok(())
     }
 
@@ -1028,7 +1038,7 @@ impl Visitor<DecoratedAst, ()> for Compiler {
 
     fn visit_program(&mut self, node: &Rc<DecoratedAst>) -> Result<(), SpruceErr> {
         let DecoratedAstData::Program { source: _, body } = &node.data else { unreachable!() };
-        
+
         for item in body {
             self.visit(item)?;
         }

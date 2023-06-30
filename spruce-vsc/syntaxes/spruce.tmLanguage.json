@@ -1,0 +1,73 @@
+{
+	"name": "Spruce",
+	"patterns": [
+		{ "include": "#comments" },
+		{ "include": "#keywords" },
+		{ "include": "#identifiers" },
+		{ "include": "#numbers" },
+		{ "include": "#strings" },
+		{ "include": "#strings-single" }
+	],
+	"repository": {
+		"comments": {
+			"patterns": [
+				{
+					"begin": "#",
+					"end": "\n",
+					"name": "comment.line.hash"
+				}
+			]
+		},
+		"keywords": {
+			"patterns": [{
+				"name": "keyword.control.spruce",
+				"match": "\\b(if|else|for|fn|lazy|var|val|type|struct|include|and|or|return|defer|switch|do|while|int|float|bool|string|none)\\b"
+			}]
+		},
+		"identifiers": {
+			"patterns": [{
+				"match": "([[:alpha:]0-9_]+)",
+				"captures": {
+					"0": {
+						"name": "entity.name.spruce"
+					}
+				}
+			}]
+		},
+		"numbers": {
+			"patterns": [
+				{
+					"name": "constant.numeric",
+					"match": "[0-9]"
+				},
+				{
+					"name": "constant.numeric.float",
+					"match": "[0-9]+(\\.[0-9]+)"
+				}
+			]
+		},
+		"strings": {
+			"name": "string.quoted.double.spruce",
+			"begin": "\"",
+			"end": "\"",
+			"patterns": [
+				{
+					"name": "constant.character.escape.spruce",
+					"match": "\\\\."
+				}
+			]
+		},
+		"strings-single": {
+			"name": "string.quoted.single.spruce",
+			"begin": "'",
+			"end": "'",
+			"patterns": [
+				{
+					"name": "constant.character.escape.spruce",
+					"match": "\\\\."
+				}
+			]
+		}
+	},
+	"scopeName": "source.spruce"
+}

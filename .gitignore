@@ -21,4 +21,5 @@ experimenting.sp
 *.svg
 *.exe
 
-out.cs
+# Any generated C# that comes from testing
+*.cs

@@ -1,0 +1,29 @@
+{
+  "name": "spruce",
+  "displayName": "spruce",
+  "description": "A scripting language",
+  "author": {
+    "name": "Caleb",
+    "url": "https://github.com/Caleb-o/Spruce"
+  },
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.77.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [{
+      "id": "spruce",
+      "aliases": ["Spruce", "spruce"],
+      "extensions": [".so"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "spruce",
+      "scopeName": "source.spruce",
+      "path": "./syntaxes/spruce.tmLanguage.json"
+    }]
+  }
+}
